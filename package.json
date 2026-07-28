@@ -11,6 +11,32 @@
   "categories": ["SCM Providers"],
   "activationEvents": ["onView:gitool.commitView"],
   "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gitool",
+          "title": "Gitool",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "gitool": [
+        {
+          "type": "webview",
+          "id": "gitool.commitView",
+          "name": "文件提交"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "gitool.refresh",
+        "title": "Gitool：刷新仓库状态"
+      }
+    ]
+  },
   "scripts": {
     "vscode:prepublish": "npm run build",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('media/main.js',{force:true})\"",

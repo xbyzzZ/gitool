@@ -7,6 +7,9 @@ import type {
 } from './commit-service.js';
 import { RepositoryOperationLock } from './operation-lock.js';
 import type {
+  OperationState,
+} from '../domain/view-model.js';
+import type {
   PushRequest,
   PushResult,
   PushService,
@@ -293,7 +296,7 @@ export class RepositoryWriteCoordinator {
     context: WriteContext,
     request: RepositoryCommitRequest,
   ): Promise<CommitResult> {
-    context.state.operation = { kind: 'running', action: 'commit' };
+    this.setOperation(context.state, { kind: 'running', action: 'commit' });
     try {
       const result = await this.dependencies.commitService.commit({
         repositoryRoot: context.state.rootPath,
@@ -305,17 +308,17 @@ export class RepositoryWriteCoordinator {
         ),
         files: context.files,
       });
-      context.state.operation = {
+      this.setOperation(context.state, {
         kind: 'commit-succeeded',
         commitHash: result.commitHash,
-      };
+      });
       return result;
     } catch (error) {
-      context.state.operation = {
+      this.setOperation(context.state, {
         kind: 'failed',
         action: 'commit',
         message: errorMessage(error),
-      };
+      });
       throw error;
     }
   }
@@ -334,7 +337,7 @@ export class RepositoryWriteCoordinator {
 
   private async pushPending(state: RepositoryContext): Promise<PushResult> {
     const pending = this.requirePendingPush(state);
-    state.operation = { kind: 'running', action: 'push' };
+    this.setOperation(state, { kind: 'running', action: 'push' });
     try {
       if (pending.targetBranch.length === 0) {
         this.pendingPushes.delete(state.id);
@@ -355,20 +358,20 @@ export class RepositoryWriteCoordinator {
           ...(pending.setUpstream ? { setUpstream: true } : {}),
         },
       );
-      state.operation = {
+      this.setOperation(state, {
         kind: 'commit-succeeded',
         commitHash: pending.commitHash,
-      };
+      });
       if (result.kind === 'pushed') {
         this.pendingPushes.delete(state.id);
       }
       return result;
     } catch (error) {
-      state.operation = {
+      this.setOperation(state, {
         kind: 'push-failed',
         commitHash: pending.commitHash,
         message: errorMessage(error),
-      };
+      });
       throw error;
     }
   }
@@ -409,48 +412,56 @@ export class RepositoryWriteCoordinator {
     action: 'remote',
     operation: () => Promise<T>,
   ): Promise<T> {
-    state.operation = { kind: 'running', action };
+    this.setOperation(state, { kind: 'running', action });
     try {
       const result = await operation();
-      state.operation = { kind: 'idle' };
+      this.setOperation(state, { kind: 'idle' });
       return result;
     } catch (error) {
-      state.operation = {
+      this.setOperation(state, {
         kind: 'failed',
         action,
         message: errorMessage(error),
-      };
+      });
       throw error;
     }
   }
 
   private async trashUnlocked(context: WriteContext): Promise<TrashResult> {
-    context.state.operation = { kind: 'running', action: 'trash' };
+    this.setOperation(context.state, { kind: 'running', action: 'trash' });
     try {
       const result = await this.dependencies.trashService.moveToTrash(
         context.state.rootPath,
         context.files.map((file) => file.path),
       );
       if (result.failed.length === 0) {
-        context.state.operation = { kind: 'idle' };
+        this.setOperation(context.state, { kind: 'idle' });
       } else {
         const scope = result.succeeded.length === 0 ? '失败' : '部分失败';
-        context.state.operation = {
+        this.setOperation(context.state, {
           kind: 'failed',
           action: 'trash',
           message: `移入废纸篓${scope}：成功 `
             + `${String(result.succeeded.length)} 个，失败 `
             + `${String(result.failed.length)} 个`,
-        };
+        });
       }
       return result;
     } catch (error) {
-      context.state.operation = {
+      this.setOperation(context.state, {
         kind: 'failed',
         action: 'trash',
         message: errorMessage(error),
-      };
+      });
       throw error;
     }
+  }
+
+  private setOperation(
+    state: RepositoryContext,
+    operation: OperationState,
+  ): void {
+    state.operation = operation;
+    this.dependencies.registry.notifyChange();
   }
 }

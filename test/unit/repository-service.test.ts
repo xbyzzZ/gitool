@@ -161,6 +161,80 @@ function createService(
 }
 
 describe('RepositoryService', () => {
+  it('外部和本地状态变化均向视图订阅者发出通知', () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    const { service } = createService([repository]);
+    const versions: number[] = [];
+    const listener = service.onDidChange(() => {
+      versions.push(service.getViewModel().version);
+    });
+
+    repository.changed.fire(undefined);
+    service.setFileSelected('a.ts', false);
+    service.setCommitMessage('新提交信息');
+
+    expect(versions).toEqual([1, 1, 1]);
+    listener.dispose();
+    service.setFileSelected('a.ts', true);
+    expect(versions).toEqual([1, 1, 1]);
+  });
+
+  it('写操作的运行和完成状态均向视图订阅者发出通知', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    let finishCommit: ((value: {
+      readonly commitHash: string;
+      readonly committedPaths: readonly string[];
+    }) => void) | undefined;
+    const commit = vi.fn().mockReturnValue(new Promise((resolveCommit) => {
+      finishCommit = resolveCommit;
+    }));
+    const { service } = createService([repository], true, {
+      commitService: { commit },
+    });
+    const operations: string[] = [];
+    service.onDidChange(() => {
+      operations.push(service.getViewModel().operation.kind);
+    });
+
+    const pending = service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '提交',
+      selectedIds: ['a.ts'],
+    });
+    expect(operations).toEqual(['running']);
+
+    finishCommit?.({
+      commitHash: 'abc123',
+      committedPaths: ['a.ts'],
+    });
+    await pending;
+    expect(operations).toEqual(['running', 'commit-succeeded']);
+  });
+
+  it('可把已创建但未推送的提交标记为可重试状态', () => {
+    const repository = new TestRepository('/workspace/repo-a');
+    const { service } = createService([repository]);
+    const operations: string[] = [];
+    service.onDidChange(() => {
+      operations.push(service.getViewModel().operation.kind);
+    });
+
+    expect(service.reportPushFailure('abc123', '尚未选择远程')).toBe(true);
+    expect(service.getViewModel().operation).toEqual({
+      kind: 'push-failed',
+      commitHash: 'abc123',
+      message: '尚未选择远程',
+    });
+    expect(operations).toEqual(['push-failed']);
+  });
+
   it('仓库状态事件触发后递增版本并重新合并选择', () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {

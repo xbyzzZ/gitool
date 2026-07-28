@@ -1,6 +1,9 @@
 import { SelectionStore } from '../domain/selection-store.js';
+import type * as vscode from 'vscode';
+import type { FileChange } from '../domain/change-model.js';
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { BuiltinGitApi } from '../git/builtin-git-api.js';
+import type { BuiltinRepository } from '../git/builtin-git-api.js';
 import type { CommitResult } from './commit-service.js';
 import type { RepositoryOperationLock } from './operation-lock.js';
 import type { PushResult } from './push-service.js';
@@ -62,10 +65,38 @@ export class RepositoryService {
     });
   }
 
+  readonly onDidChange: vscode.Event<void> = (
+    listener,
+    thisArgs,
+    disposables,
+  ) => this.registry.onDidChange(
+    listener,
+    thisArgs,
+    disposables,
+  );
+
   getViewModel(): RepositoryViewModel {
     return this.registry.getViewModel(
       this.dependencies.isWorkspaceTrusted(),
     );
+  }
+
+  getRepository(id: string): BuiltinRepository | undefined {
+    return this.registry.get(id)?.repository;
+  }
+
+  getFileChange(id: string, fileId: string): FileChange | undefined {
+    return this.registry.get(id)?.changes.find(
+      (change) => change.id === fileId,
+    );
+  }
+
+  reportFailure(action: string, message: string): boolean {
+    return this.registry.reportFailure(action, message);
+  }
+
+  reportPushFailure(commitHash: string, message: string): boolean {
+    return this.registry.reportPushFailure(commitHash, message);
   }
 
   selectRepository(id: string): RepositoryViewModel {

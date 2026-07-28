@@ -31,9 +31,28 @@ function repositoryId(repository: BuiltinRepository): string {
 export class RepositoryRegistry implements vscode.Disposable {
   private readonly repositories = new Map<string, RepositoryContext>();
   private readonly lastVersions = new Map<string, number>();
+  private readonly changeListeners = new Set<() => unknown>();
   private readonly lifecycleListeners: readonly vscode.Disposable[];
   private currentRepositoryId: string | undefined;
   private disposed = false;
+
+  readonly onDidChange: vscode.Event<void> = (
+    listener,
+    thisArgs,
+    disposables,
+  ) => {
+    const effectiveListener = thisArgs === undefined
+      ? (): unknown => listener()
+      : (): unknown => listener.call(thisArgs);
+    this.changeListeners.add(effectiveListener);
+    const disposable: vscode.Disposable = {
+      dispose: () => {
+        this.changeListeners.delete(effectiveListener);
+      },
+    };
+    disposables?.push(disposable);
+    return disposable;
+  };
 
   constructor(
     gitApi: BuiltinGitApi,
@@ -84,14 +103,18 @@ export class RepositoryRegistry implements vscode.Disposable {
       throw new Error('仓库不存在或已关闭');
     }
     this.currentRepositoryId = id;
-    return this.getViewModel(trusted);
+    const model = this.getViewModel(trusted);
+    this.notifyChange();
+    return model;
   }
 
   async refresh(trusted: boolean): Promise<RepositoryViewModel> {
     const state = this.getCurrent();
     await state.repository.status();
     this.synchronizeState(state, false);
-    return this.getViewModel(trusted);
+    const model = this.getViewModel(trusted);
+    this.notifyChange();
+    return model;
   }
 
   setFileSelected(
@@ -105,7 +128,9 @@ export class RepositoryRegistry implements vscode.Disposable {
     }
     this.selectionStore.setSelected(state.id, fileId, selected);
     state.selectedIds = this.selectionStore.reconcile(state.id, state.changes);
-    return this.getViewModel(trusted);
+    const model = this.getViewModel(trusted);
+    this.notifyChange();
+    return model;
   }
 
   setGroup(
@@ -121,7 +146,9 @@ export class RepositoryRegistry implements vscode.Disposable {
       .map((change) => change.id);
     this.selectionStore.setGroup(state.id, ids, selected);
     state.selectedIds = this.selectionStore.reconcile(state.id, state.changes);
-    return this.getViewModel(trusted);
+    const model = this.getViewModel(trusted);
+    this.notifyChange();
+    return model;
   }
 
   setCommitMessage(
@@ -130,11 +157,45 @@ export class RepositoryRegistry implements vscode.Disposable {
   ): RepositoryViewModel {
     const state = this.getCurrent();
     state.commitMessage = message;
-    return this.getViewModel(trusted);
+    const model = this.getViewModel(trusted);
+    this.notifyChange();
+    return model;
   }
 
   get(id: string): RepositoryContext | undefined {
     return this.repositories.get(id);
+  }
+
+  reportFailure(action: string, message: string): boolean {
+    if (this.currentRepositoryId === undefined) {
+      return false;
+    }
+    const state = this.repositories.get(this.currentRepositoryId);
+    if (state === undefined) {
+      return false;
+    }
+    state.operation = { kind: 'failed', action, message };
+    this.notifyChange();
+    return true;
+  }
+
+  reportPushFailure(commitHash: string, message: string): boolean {
+    if (this.currentRepositoryId === undefined) {
+      return false;
+    }
+    const state = this.repositories.get(this.currentRepositoryId);
+    if (state === undefined) {
+      return false;
+    }
+    state.operation = { kind: 'push-failed', commitHash, message };
+    this.notifyChange();
+    return true;
+  }
+
+  notifyChange(): void {
+    for (const listener of [...this.changeListeners]) {
+      listener();
+    }
   }
 
   dispose(): void {
@@ -150,6 +211,7 @@ export class RepositoryRegistry implements vscode.Disposable {
     }
     this.repositories.clear();
     this.currentRepositoryId = undefined;
+    this.changeListeners.clear();
   }
 
   private addRepository(repository: BuiltinRepository): void {
@@ -181,10 +243,12 @@ export class RepositoryRegistry implements vscode.Disposable {
     };
     state.changeListener = repository.state.onDidChange(() => {
       this.synchronizeState(state, true);
+      this.notifyChange();
     });
     this.repositories.set(id, state);
     this.synchronizeState(state, false);
     this.currentRepositoryId ??= id;
+    this.notifyChange();
   }
 
   private removeRepository(repository: BuiltinRepository): void {
@@ -199,6 +263,7 @@ export class RepositoryRegistry implements vscode.Disposable {
     if (this.currentRepositoryId === id) {
       this.currentRepositoryId = this.repositories.keys().next().value;
     }
+    this.notifyChange();
   }
 
   private synchronizeState(
