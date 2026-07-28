@@ -32,7 +32,7 @@ export class RepositoryRegistry implements vscode.Disposable {
   private readonly repositories = new Map<string, RepositoryContext>();
   private readonly lastVersions = new Map<string, number>();
   private readonly changeListeners = new Set<() => unknown>();
-  private readonly lifecycleListeners: readonly vscode.Disposable[];
+  private readonly lifecycleListeners: vscode.Disposable[] = [];
   private currentRepositoryId: string | undefined;
   private disposed = false;
 
@@ -58,17 +58,22 @@ export class RepositoryRegistry implements vscode.Disposable {
     gitApi: BuiltinGitApi,
     private readonly selectionStore = new SelectionStore(),
   ) {
-    for (const repository of gitApi.repositories) {
-      this.addRepository(repository);
-    }
-    this.lifecycleListeners = [
-      gitApi.onDidOpenRepository((repository) => {
+    try {
+      for (const repository of gitApi.repositories) {
         this.addRepository(repository);
-      }),
-      gitApi.onDidCloseRepository((repository) => {
-        this.removeRepository(repository);
-      }),
-    ];
+      }
+      this.lifecycleListeners.push(
+        gitApi.onDidOpenRepository((repository) => {
+          this.addRepository(repository);
+        }),
+        gitApi.onDidCloseRepository((repository) => {
+          this.removeRepository(repository);
+        }),
+      );
+    } catch (error) {
+      this.dispose();
+      throw error;
+    }
   }
 
   getViewModel(trusted: boolean): RepositoryViewModel {

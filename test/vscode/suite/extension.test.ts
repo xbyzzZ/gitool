@@ -185,6 +185,11 @@ suite('Gitool 扩展', () => {
       '测试：只提交已跟踪文件',
     );
     assert.equal(
+      await git(repositoryA.id, ['show', '--format=', '--name-only', 'HEAD']),
+      'tracked.txt',
+      '第一次提交应精确只包含所选已跟踪文件',
+    );
+    assert.equal(
       await git(repositoryA.id, ['diff', '--cached', '--name-only']),
       'preserved.txt',
       '未选择的暂存文件应继续留在暂存区',
@@ -226,6 +231,7 @@ suite('Gitool 扩展', () => {
       kind: 'needs-remote',
       remotes: ['origin'],
     });
+    const pendingPushCommit = await git(repositoryA.id, ['rev-parse', 'HEAD']);
     await vscode.commands.executeCommand(
       'gitool.test.selectPushRemote',
       'origin',
@@ -239,6 +245,14 @@ suite('Gitool 扩展', () => {
       ]),
       'origin/main',
       '首次推送应建立同名上游',
+    );
+    assert.equal(
+      await git(join(dirname(repositoryA.id), 'remote.git'), [
+        'rev-parse',
+        'refs/heads/main',
+      ]),
+      pendingPushCommit,
+      '首次推送应把待推送提交精确写入裸远程 main',
     );
 
     const fixtureRoot = dirname(repositoryA.id);

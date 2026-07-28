@@ -49,6 +49,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:vscode": "npm run build && node ./dist/test/vscode/run-tests.js",
+    "prepare:vscode-gui": "npm run build && node ./dist/test/vscode/prepare-gui-workspace.js",
+    "cleanup:vscode-gui": "npm run build && node ./dist/test/vscode/cleanup-gui-workspace.js",
     "build": "node esbuild.mjs",
     "package": "npm run check && npm run build && vsce package --no-dependencies"
   },

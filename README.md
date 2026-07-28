@@ -84,6 +84,8 @@ npm run package
 - `npm run check`：依次执行类型检查、Lint 和 Vitest。
 - `npm run build`：构建扩展入口和 Webview 客户端。
 - `npm run test:vscode`：下载或复用隔离的 VS Code Electron，并运行 Extension Host 测试。
+- `npm run prepare:vscode-gui`：创建不会自动删除的隔离双仓库工作区，并输出 Extension Development Host 启动命令和安全清理命令，供人工界面与系统废纸篓验收。
+- `npm run cleanup:vscode-gui -- <验收根目录>`：只允许清理系统临时目录直属的 `gt-g-*` 或 `gitool-gui-*` 隔离验收根目录。
 - `npm run package`：验证、构建并生成单个 VSIX。
 
-Extension Host 测试会使用 `/private/tmp` 下的短路径临时用户目录和扩展目录，结束后自动清理；不会安装到用户正式 VS Code。
+Extension Host 测试会使用 Node.js `tmpdir()` 返回的系统临时目录，结束后自动清理；不会安装到用户正式 VS Code。macOS 使用更短的 `gt-u-*`、`gt-e-*` 和 `gt-a-*` 前缀，避免 Electron 主进程 Unix socket 超过系统路径长度限制。Linux 和 Windows 使用各自的系统临时目录和可读的 `gitool-*` 前缀；测试要求该临时目录可写，并允许启动桌面版 VS Code Electron。

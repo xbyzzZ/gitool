@@ -14,11 +14,11 @@ import { GitoolViewProvider } from './webview/view-provider.js';
 import type { RepositoryViewModel } from './domain/view-model.js';
 
 interface BuiltinGitExtensionExports {
-  getAPI(version: 1): BuiltinGitApi;
+  getAPI(version: 1): unknown;
 }
 
 export interface GitoolRuntime extends vscode.Disposable {
-  readonly mode: 'ready' | 'git-unavailable';
+  readonly mode: 'ready' | 'git-unavailable' | 'initialization-failed';
 }
 
 const gitUnavailableMessage =
@@ -39,13 +39,28 @@ class Runtime implements GitoolRuntime {
       return;
     }
     this.disposed = true;
-    for (const disposable of [...this.disposables].reverse()) {
-      disposable.dispose();
-    }
+    disposeReverse(this.disposables);
   }
 }
 
-class GitUnavailableViewProvider implements vscode.WebviewViewProvider {
+interface ErrorViewContent {
+  readonly title: string;
+  readonly heading: string;
+  readonly message: string;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('\'', '&#39;');
+}
+
+class ErrorViewProvider implements vscode.WebviewViewProvider {
+  constructor(private readonly content: ErrorViewContent) {}
+
   resolveWebviewView(view: vscode.WebviewView): void {
     view.webview.options = { enableScripts: false };
     view.webview.html = [
@@ -55,11 +70,11 @@ class GitUnavailableViewProvider implements vscode.WebviewViewProvider {
       '<meta charset="UTF-8">',
       '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';">',
       '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-      '<title>Gitool 不可用</title>',
+      `<title>${escapeHtml(this.content.title)}</title>`,
       '</head>',
       '<body>',
-      '<h2>Gitool 无法启动</h2>',
-      `<p>${gitUnavailableMessage}</p>`,
+      `<h2>${escapeHtml(this.content.heading)}</h2>`,
+      `<p>${escapeHtml(this.content.message)}</p>`,
       '</body>',
       '</html>',
     ].join('');
@@ -75,10 +90,67 @@ function isBuiltinGitExtensionExports(
     && typeof value.getAPI === 'function';
 }
 
+function isBuiltinGitApi(value: unknown): value is BuiltinGitApi {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate = value as {
+    readonly git?: unknown;
+    readonly repositories?: unknown;
+    readonly onDidOpenRepository?: unknown;
+    readonly onDidCloseRepository?: unknown;
+    readonly toGitUri?: unknown;
+  };
+  const git = candidate.git;
+  return typeof git === 'object'
+    && git !== null
+    && typeof (git as { readonly path?: unknown }).path === 'string'
+    && Array.isArray(candidate.repositories)
+    && typeof candidate.onDidOpenRepository === 'function'
+    && typeof candidate.onDidCloseRepository === 'function'
+    && typeof candidate.toGitUri === 'function';
+}
+
+type GitApiAcquisition =
+  | { readonly kind: 'ready'; readonly gitApi: BuiltinGitApi }
+  | { readonly kind: 'unavailable'; readonly reason: string };
+
+async function acquireGitApi(
+  extension: vscode.Extension<unknown>,
+): Promise<GitApiAcquisition> {
+  try {
+    const exportsValue = await extension.activate();
+    if (!isBuiltinGitExtensionExports(exportsValue)) {
+      throw new Error('内置 Git 扩展未提供 API 版本 1');
+    }
+    const apiValue = exportsValue.getAPI(1);
+    if (!isBuiltinGitApi(apiValue)) {
+      throw new Error('内置 Git 扩展 API 版本 1 的运行时契约无效');
+    }
+    return { kind: 'ready', gitApi: apiValue };
+  } catch (error) {
+    return { kind: 'unavailable', reason: errorMessage(error) };
+  }
+}
+
 function errorMessage(error: unknown): string {
   return redactSensitiveText(
     error instanceof Error ? error.message : String(error),
   );
+}
+
+function disposeReverse(disposables: readonly vscode.Disposable[]): void {
+  const errors: Error[] = [];
+  for (const disposable of [...disposables].reverse()) {
+    try {
+      disposable.dispose();
+    } catch (error) {
+      errors.push(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, '释放 Gitool 资源失败');
+  }
 }
 
 async function confirmTrash(
@@ -106,96 +178,135 @@ async function refreshSafely(service: RepositoryService): Promise<void> {
   }
 }
 
-function registerUnavailableRuntime(): GitoolRuntime {
-  const provider = new GitUnavailableViewProvider();
-  const disposables: vscode.Disposable[] = [
-    vscode.window.registerWebviewViewProvider(
+function registerErrorRuntime(
+  mode: 'git-unavailable' | 'initialization-failed',
+  content: ErrorViewContent,
+): GitoolRuntime {
+  const provider = new ErrorViewProvider(content);
+  const disposables: vscode.Disposable[] = [];
+  try {
+    disposables.push(vscode.window.registerWebviewViewProvider(
       GitoolViewProvider.viewType,
       provider,
-    ),
-    vscode.commands.registerCommand('gitool.refresh', async () => {
-      await vscode.window.showErrorMessage(`Gitool：${gitUnavailableMessage}`);
-    }),
-  ];
-  return new Runtime('git-unavailable', disposables);
+    ));
+    disposables.push(vscode.commands.registerCommand(
+      'gitool.refresh',
+      async () => {
+        await vscode.window.showErrorMessage(`Gitool：${content.message}`);
+      },
+    ));
+    return new Runtime(mode, disposables);
+  } catch (error) {
+    try {
+      disposeReverse(disposables);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `注册 ${content.heading}视图失败，且资源清理失败`,
+      );
+    }
+    throw error;
+  }
+}
+
+function registerUnavailableRuntime(reason?: string): GitoolRuntime {
+  const message = reason === undefined
+    ? gitUnavailableMessage
+    : `${gitUnavailableMessage} 原因：${reason}`;
+  return registerErrorRuntime('git-unavailable', {
+    title: 'Gitool 不可用',
+    heading: 'Gitool 无法启动',
+    message,
+  });
+}
+
+function registerInitializationFailedRuntime(error: unknown): GitoolRuntime {
+  return registerErrorRuntime('initialization-failed', {
+    title: 'Gitool 初始化失败',
+    heading: 'Gitool 初始化失败',
+    message: `Gitool 初始化失败：${errorMessage(error)}`,
+  });
 }
 
 function registerReadyRuntime(
   context: vscode.ExtensionContext,
   gitApi: BuiltinGitApi,
 ): GitoolRuntime {
-  const git = new GitRunner(gitApi.git.path || 'git');
-  const repositoryService = new RepositoryService({
-    gitApi,
-    commitService: new CommitService(git),
-    pushService: new PushService(),
-    remoteService: new RemoteService(git),
-    trashService: new TrashService({
-      confirm: confirmTrash,
-      delete: async (uri, options) => {
-        await vscode.workspace.fs.delete(vscode.Uri.file(uri.fsPath), options);
-      },
-    }),
-    operationLock: new RepositoryOperationLock(),
-    isWorkspaceTrusted: () => vscode.workspace.isTrusted,
-  });
-  const provider = new GitoolViewProvider({
-    extensionUri: context.extensionUri,
-    gitApi,
-    repositoryService,
-  });
+  const disposables: vscode.Disposable[] = [];
+  try {
+    const git = new GitRunner(gitApi.git.path || 'git');
+    const repositoryService = new RepositoryService({
+      gitApi,
+      commitService: new CommitService(git),
+      pushService: new PushService(),
+      remoteService: new RemoteService(git),
+      trashService: new TrashService({
+        confirm: confirmTrash,
+        delete: async (uri, options) => {
+          await vscode.workspace.fs.delete(vscode.Uri.file(uri.fsPath), options);
+        },
+      }),
+      operationLock: new RepositoryOperationLock(),
+      isWorkspaceTrusted: () => vscode.workspace.isTrusted,
+    });
+    disposables.push(repositoryService);
+    const provider = new GitoolViewProvider({
+      extensionUri: context.extensionUri,
+      gitApi,
+      repositoryService,
+    });
+    disposables.push(provider);
 
-  const disposables: vscode.Disposable[] = [
-    repositoryService,
-    provider,
-    vscode.window.registerWebviewViewProvider(
+    disposables.push(vscode.window.registerWebviewViewProvider(
       GitoolViewProvider.viewType,
       provider,
-    ),
-    vscode.commands.registerCommand('gitool.refresh', async () => {
-      await refreshSafely(repositoryService);
-    }),
-    vscode.workspace.onDidGrantWorkspaceTrust(() => {
+    ));
+    disposables.push(vscode.commands.registerCommand(
+      'gitool.refresh',
+      async () => {
+        await refreshSafely(repositoryService);
+      },
+    ));
+    disposables.push(vscode.workspace.onDidGrantWorkspaceTrust(() => {
       void refreshSafely(repositoryService);
-    }),
-  ];
-  if (context.extensionMode === vscode.ExtensionMode.Test) {
-    const currentScope = (): {
-      readonly repositoryId: string;
-      readonly version: number;
-      readonly selectedIds: readonly string[];
-    } => {
-      const model = repositoryService.getViewModel();
-      if (model.currentRepositoryId === undefined) {
-        throw new Error('当前没有打开的 Git 仓库');
-      }
-      return {
-        repositoryId: model.currentRepositoryId,
-        version: model.version,
-        selectedIds: model.selectedIds,
+    }));
+    if (context.extensionMode === vscode.ExtensionMode.Test) {
+      const currentScope = (): {
+        readonly repositoryId: string;
+        readonly version: number;
+        readonly selectedIds: readonly string[];
+      } => {
+        const model = repositoryService.getViewModel();
+        if (model.currentRepositoryId === undefined) {
+          throw new Error('当前没有打开的 Git 仓库');
+        }
+        return {
+          repositoryId: model.currentRepositoryId,
+          version: model.version,
+          selectedIds: model.selectedIds,
+        };
       };
-    };
-    disposables.push(
-      vscode.commands.registerCommand(
+
+      disposables.push(vscode.commands.registerCommand(
         'gitool.test.getState',
         (): RepositoryViewModel => repositoryService.getViewModel(),
-      ),
-      vscode.commands.registerCommand(
+      ));
+      disposables.push(vscode.commands.registerCommand(
         'gitool.test.selectRepository',
         (repositoryId: string): RepositoryViewModel =>
           repositoryService.selectRepository(repositoryId),
-      ),
-      vscode.commands.registerCommand(
+      ));
+      disposables.push(vscode.commands.registerCommand(
         'gitool.test.refresh',
         async (): Promise<RepositoryViewModel> =>
           await repositoryService.refresh(),
-      ),
-      vscode.commands.registerCommand(
+      ));
+      disposables.push(vscode.commands.registerCommand(
         'gitool.test.setFileSelected',
         (fileId: string, selected: boolean): RepositoryViewModel =>
           repositoryService.setFileSelected(fileId, selected),
-      ),
-      vscode.commands.registerCommand(
+      ));
+      disposables.push(vscode.commands.registerCommand(
         'gitool.test.commit',
         async (message: string) => {
           const scope = currentScope();
@@ -206,8 +317,8 @@ function registerReadyRuntime(
           await repositoryService.refresh();
           return result;
         },
-      ),
-      vscode.commands.registerCommand(
+      ));
+      disposables.push(vscode.commands.registerCommand(
         'gitool.test.commitAndPush',
         async (message: string) => {
           const scope = currentScope();
@@ -216,8 +327,8 @@ function registerReadyRuntime(
             message,
           });
         },
-      ),
-      vscode.commands.registerCommand(
+      ));
+      disposables.push(vscode.commands.registerCommand(
         'gitool.test.selectPushRemote',
         async (remote: string) => {
           const scope = currentScope();
@@ -229,8 +340,8 @@ function registerReadyRuntime(
           await repositoryService.refresh();
           return result;
         },
-      ),
-      vscode.commands.registerCommand(
+      ));
+      disposables.push(vscode.commands.registerCommand(
         'gitool.test.retryPush',
         async () => {
           const scope = currentScope();
@@ -241,8 +352,8 @@ function registerReadyRuntime(
           await repositoryService.refresh();
           return result;
         },
-      ),
-      vscode.commands.registerCommand(
+      ));
+      disposables.push(vscode.commands.registerCommand(
         'gitool.test.setRemoteUrl',
         async (remote: string, url: string) => {
           const scope = currentScope();
@@ -255,10 +366,20 @@ function registerReadyRuntime(
           await repositoryService.refresh();
           return result;
         },
-      ),
-    );
+      ));
+    }
+    return new Runtime('ready', disposables);
+  } catch (error) {
+    try {
+      disposeReverse(disposables);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `Gitool 初始化失败：${errorMessage(error)}；资源清理同时失败`,
+      );
+    }
+    throw error;
   }
-  return new Runtime('ready', disposables);
 }
 
 export async function activate(
@@ -271,13 +392,15 @@ export async function activate(
   if (gitExtension === undefined) {
     runtime = registerUnavailableRuntime();
   } else {
-    try {
-      const exportsValue = await gitExtension.activate();
-      runtime = isBuiltinGitExtensionExports(exportsValue)
-        ? registerReadyRuntime(context, exportsValue.getAPI(1))
-        : registerUnavailableRuntime();
-    } catch {
-      runtime = registerUnavailableRuntime();
+    const acquisition = await acquireGitApi(gitExtension);
+    if (acquisition.kind === 'unavailable') {
+      runtime = registerUnavailableRuntime(acquisition.reason);
+    } else {
+      try {
+        runtime = registerReadyRuntime(context, acquisition.gitApi);
+      } catch (error) {
+        runtime = registerInitializationFailedRuntime(error);
+      }
     }
   }
 

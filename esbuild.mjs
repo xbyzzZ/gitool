@@ -32,6 +32,8 @@ const vscodeTestEntries = [
   'test/vscode/run-tests.ts',
   'test/vscode/suite/index.ts',
   'test/vscode/suite/extension.test.ts',
+  'test/vscode/prepare-gui-workspace.ts',
+  'test/vscode/cleanup-gui-workspace.ts',
 ].filter(existsSync);
 
 if (vscodeTestEntries.length > 0) {

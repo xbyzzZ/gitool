@@ -457,6 +457,16 @@ describe('RepositoryService', () => {
     });
   });
 
+  it('现有仓库状态映射失败时释放已注册的仓库监听', () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'unknown.ts', 99)],
+    });
+
+    expect(() => createService([repository])).toThrow('未知的 Git 状态：99');
+    expect(repository.changed.listenerCount()).toBe(0);
+  });
+
   it('关闭仓库和释放服务时注销对应监听器', () => {
     const repositoryA = new TestRepository('/workspace/repo-a');
     const repositoryB = new TestRepository('/workspace/repo-b');
