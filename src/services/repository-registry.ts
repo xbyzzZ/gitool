@@ -190,7 +190,7 @@ export class RepositoryRegistry implements vscode.Disposable {
   private removeRepository(repository: BuiltinRepository): void {
     const id = repositoryId(repository);
     const state = this.repositories.get(id);
-    if (state?.repository !== repository) {
+    if (state === undefined) {
       return;
     }
     state.changeListener.dispose();

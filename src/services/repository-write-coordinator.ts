@@ -154,12 +154,13 @@ export class RepositoryWriteCoordinator {
     return await this.operationLock.runExclusive(
       context.state.id,
       async () => {
+        this.requireAttachedHead(context.state);
         this.pendingPushes.delete(context.state.id);
         const commitResult = await this.commitUnlocked(context, request);
-        const head = context.state.repository.state.HEAD;
-        const localBranch = head?.name ?? '';
-        const targetBranch = head?.upstream?.name ?? localBranch;
-        const targetRemote = head?.upstream === undefined
+        const head = this.requireAttachedHead(context.state);
+        const localBranch = head.name;
+        const targetBranch = head.upstream?.name ?? localBranch;
+        const targetRemote = head.upstream === undefined
           ? undefined
           : this.remoteIdentity(
             context.state.repository,
@@ -170,7 +171,7 @@ export class RepositoryWriteCoordinator {
           commitHash: commitResult.commitHash,
           localBranch,
           targetBranch,
-          setUpstream: head?.upstream === undefined,
+          setUpstream: head.upstream === undefined,
           ...(targetRemote === undefined ? {} : { targetRemote }),
         });
         return await this.pushPending(context.state);
@@ -274,6 +275,20 @@ export class RepositoryWriteCoordinator {
     };
   }
 
+  private requireAttachedHead(
+    state: RepositoryContext,
+  ): NonNullable<BuiltinRepository['state']['HEAD']> & {
+    readonly name: string;
+  } {
+    const head = state.repository.state.HEAD;
+    if (head?.name === undefined || head.name.length === 0) {
+      throw new Error('当前处于游离 HEAD，不能提交并推送');
+    }
+    return head as NonNullable<BuiltinRepository['state']['HEAD']> & {
+      readonly name: string;
+    };
+  }
+
   private async commitUnlocked(
     context: WriteContext,
     request: RepositoryCommitRequest,
@@ -321,6 +336,10 @@ export class RepositoryWriteCoordinator {
     const pending = this.requirePendingPush(state);
     state.operation = { kind: 'running', action: 'push' };
     try {
+      if (pending.targetBranch.length === 0) {
+        this.pendingPushes.delete(state.id);
+        throw new Error('推送重试上下文缺少目标分支，请重新提交并推送');
+      }
       this.verifyRemoteIdentity(state.repository, pending);
       const result = await this.dependencies.pushService.push(
         state.repository,
@@ -329,14 +348,10 @@ export class RepositoryWriteCoordinator {
             ? {}
             : { selectedRemote: pending.targetRemote.name }),
           localBranch: pending.localBranch,
-          ...(pending.targetBranch.length === 0
-            ? {}
-            : {
-              exactRefspec: {
-                sourceRef: pending.commitHash,
-                targetBranch: pending.targetBranch,
-              },
-            }),
+          exactRefspec: {
+            sourceRef: pending.commitHash,
+            targetBranch: pending.targetBranch,
+          },
           ...(pending.setUpstream ? { setUpstream: true } : {}),
         },
       );

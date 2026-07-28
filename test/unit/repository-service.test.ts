@@ -464,6 +464,35 @@ describe('RepositoryService', () => {
     expect(created.service.getViewModel().version).toBe(1);
   });
 
+  it('不同 wrapper 的关闭事件立即封存已进入提交服务的 generation', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    const closeWrapper = new TestRepository('/workspace/./repo-a');
+    const lifecycle: { gitApi?: TestGitApi } = {};
+    const commit = vi.fn(async (request: CommitRequest) => {
+      lifecycle.gitApi?.closed.fire(closeWrapper);
+      if (!await request.verifyVersion(request.expectedVersion)) {
+        throw new Error('提交前版本复核失败');
+      }
+      return { commitHash: 'abc123', committedPaths: ['a.ts'] };
+    });
+    const created = createService([repository], true, {
+      commitService: { commit },
+    });
+    lifecycle.gitApi = created.gitApi;
+
+    await expect(created.service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '关闭前请求',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('提交前版本复核失败');
+    expect(repository.changed.listenerCount()).toBe(0);
+    expect(created.service.getViewModel().currentRepositoryId).toBeUndefined();
+  });
+
   it('存在冲突时在进入任一写服务前拒绝操作', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {
@@ -562,6 +591,129 @@ describe('RepositoryService', () => {
       message: '提交',
       selectedIds: ['a.ts'],
     })).rejects.toThrow('提交失败');
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('游离 HEAD 的提交并推送在提交服务前被拒绝', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead(undefined);
+    const { service, commit, push } = createService([repository]);
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '禁止的提交并推送',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('当前处于游离 HEAD，不能提交并推送');
+    expect(commit).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('游离 HEAD 仍允许普通本地提交', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead(undefined);
+    const { service, commit, push } = createService([repository]);
+
+    await expect(service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '本地提交',
+      selectedIds: ['a.ts'],
+    })).resolves.toMatchObject({ commitHash: 'abc123' });
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('提交期间切到游离 HEAD 不创建可回退到当前分支的推送上下文', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    const commit = vi.fn().mockImplementation(() => {
+      repository.setHead(undefined);
+      return Promise.resolve({
+        commitHash: 'abc123',
+        committedPaths: ['a.ts'],
+      });
+    });
+    const push = vi.fn()
+      .mockRejectedValueOnce(new Error('当前处于游离 HEAD，不能提交并推送'))
+      .mockResolvedValueOnce({
+        kind: 'pushed',
+        remote: 'other',
+        branch: 'other',
+      });
+    const { service } = createService([repository], true, {
+      commitService: { commit },
+      pushService: { push },
+    });
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '提交后变为游离',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('当前处于游离 HEAD，不能提交并推送');
+    repository.setHead({
+      name: 'other',
+      upstream: { remote: 'other', name: 'other' },
+    });
+    repository.setRemotes([{
+      name: 'other',
+      pushUrl: 'https://example.test/other.git',
+    }]);
+    repository.changed.fire(undefined);
+
+    await expect(service.retryPush({
+      repositoryId: root,
+      version: 1,
+    })).rejects.toThrow('没有可重试的推送');
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('空目标分支的旧式推送上下文不得回退当前 upstream', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      upstream: { remote: 'origin', name: '' },
+    });
+    repository.setRemotes([{
+      name: 'origin',
+      pushUrl: 'https://example.test/origin.git',
+    }]);
+    const { service, commit, push } = createService([repository]);
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '空目标边界',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('推送重试上下文缺少目标分支，请重新提交并推送');
+    repository.setHead({
+      name: 'other',
+      upstream: { remote: 'other', name: 'other' },
+    });
+    repository.setRemotes([{
+      name: 'other',
+      pushUrl: 'https://example.test/other.git',
+    }]);
+    repository.changed.fire(undefined);
+
+    await expect(service.retryPush({
+      repositoryId: root,
+      version: 1,
+    })).rejects.toThrow('没有可重试的推送');
+    expect(commit).toHaveBeenCalledTimes(1);
     expect(push).not.toHaveBeenCalled();
   });
 
