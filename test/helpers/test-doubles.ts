@@ -11,6 +11,11 @@ export interface FakePushCall {
   readonly setUpstream: boolean | undefined;
 }
 
+export interface FakeSetBranchUpstreamCall {
+  readonly branchName: string;
+  readonly upstream: string;
+}
+
 export interface FakeBuiltinRepositoryOptions {
   readonly head?: {
     readonly name?: string;
@@ -28,6 +33,7 @@ const noOpEvent: vscode.Event<void> = () => ({
 
 export class FakeBuiltinRepository implements BuiltinRepository {
   readonly pushCalls: FakePushCall[] = [];
+  readonly setBranchUpstreamCalls: FakeSetBranchUpstreamCall[] = [];
 
   readonly rootUri = {} as vscode.Uri;
 
@@ -55,6 +61,11 @@ export class FakeBuiltinRepository implements BuiltinRepository {
     setUpstream?: boolean,
   ): Promise<void> {
     this.pushCalls.push({ remoteName, branchName, setUpstream });
+    return Promise.resolve();
+  }
+
+  setBranchUpstream(branchName: string, upstream: string): Promise<void> {
+    this.setBranchUpstreamCalls.push({ branchName, upstream });
     return Promise.resolve();
   }
 }

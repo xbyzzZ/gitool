@@ -34,6 +34,7 @@ export interface BuiltinRepository {
     branchName?: string,
     setUpstream?: boolean,
   ): Promise<void>;
+  setBranchUpstream(branchName: string, upstream: string): Promise<void>;
 }
 
 export interface BuiltinGitApi {

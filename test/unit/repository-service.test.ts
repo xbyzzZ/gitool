@@ -4,6 +4,8 @@ import { SelectionStore } from '../../src/domain/selection-store.js';
 import type {
   BuiltinChange,
   BuiltinGitApi,
+  BuiltinHead,
+  BuiltinRemote,
   BuiltinRepository,
 } from '../../src/git/builtin-git-api.js';
 import type { CommitRequest } from '../../src/services/commit-service.js';
@@ -75,6 +77,23 @@ class TestRepository implements BuiltinRepository {
 
   push(): Promise<void> {
     return Promise.resolve();
+  }
+
+  setBranchUpstream(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  setHead(head: BuiltinHead | undefined): void {
+    const mutableState = this.state as { HEAD?: BuiltinHead };
+    if (head === undefined) {
+      delete mutableState.HEAD;
+    } else {
+      mutableState.HEAD = head;
+    }
+  }
+
+  setRemotes(remotes: readonly BuiltinRemote[]): void {
+    (this.state as { remotes: readonly BuiltinRemote[] }).remotes = remotes;
   }
 }
 
@@ -368,6 +387,83 @@ describe('RepositoryService', () => {
     expect(gitApi.closed.listenerCount()).toBe(0);
   });
 
+  it('同路径仓库关闭重开后拒绝旧版本提交请求', async () => {
+    const root = '/workspace/repo-a';
+    const oldRepository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    const newRepository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    const { service, gitApi, commit } = createService([oldRepository]);
+    const oldVersion = service.getViewModel().version;
+
+    gitApi.closed.fire(oldRepository);
+    gitApi.opened.fire(newRepository);
+
+    expect(service.getViewModel().version).toBeGreaterThan(oldVersion);
+    await expect(service.commit({
+      repositoryId: root,
+      version: oldVersion,
+      message: '旧请求',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it('同路径仓库关闭重开后拒绝旧版本废纸篓请求', async () => {
+    const root = '/workspace/repo-a';
+    const oldRepository = new TestRepository(root, {
+      untracked: [change(root, 'a.ts', 7)],
+    });
+    const newRepository = new TestRepository(root, {
+      untracked: [change(root, 'a.ts', 7)],
+    });
+    const { service, gitApi, trash } = createService([oldRepository]);
+    const oldVersion = service.getViewModel().version;
+
+    gitApi.closed.fire(oldRepository);
+    gitApi.opened.fire(newRepository);
+
+    await expect(service.trash({
+      repositoryId: root,
+      version: oldVersion,
+      fileIds: ['a.ts'],
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+    expect(trash).not.toHaveBeenCalled();
+  });
+
+  it('提交服务临界复核时拒绝已关闭重开的仓库 generation', async () => {
+    const root = '/workspace/repo-a';
+    const oldRepository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    const newRepository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    const lifecycle: { gitApi?: TestGitApi } = {};
+    const commit = vi.fn(async (request: CommitRequest) => {
+      lifecycle.gitApi?.closed.fire(oldRepository);
+      lifecycle.gitApi?.opened.fire(newRepository);
+      if (!await request.verifyVersion(request.expectedVersion)) {
+        throw new Error('提交前版本复核失败');
+      }
+      return { commitHash: 'abc123', committedPaths: ['a.ts'] };
+    });
+    const created = createService([oldRepository], true, {
+      commitService: { commit },
+    });
+    lifecycle.gitApi = created.gitApi;
+
+    await expect(created.service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '旧 generation 请求',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('提交前版本复核失败');
+    expect(created.service.getViewModel().version).toBe(1);
+  });
+
   it('存在冲突时在进入任一写服务前拒绝操作', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {
@@ -491,6 +587,69 @@ describe('RepositoryService', () => {
     });
   });
 
+  it('废纸篓部分成功时返回明细并记录失败摘要', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      untracked: [
+        change(root, 'a.ts', 7),
+        change(root, 'b.ts', 7),
+      ],
+    });
+    const trashResult = {
+      kind: 'completed',
+      succeeded: ['a.ts'],
+      failed: [{ path: 'b.ts', message: '权限不足' }],
+    } as const;
+    const trash = vi.fn().mockResolvedValue(trashResult);
+    const { service } = createService([repository], true, {
+      trashService: { moveToTrash: trash },
+    });
+
+    await expect(service.trash({
+      repositoryId: root,
+      version: 0,
+      fileIds: ['a.ts', 'b.ts'],
+    })).resolves.toEqual(trashResult);
+    expect(service.getViewModel().operation).toEqual({
+      kind: 'failed',
+      action: 'trash',
+      message: '移入废纸篓部分失败：成功 1 个，失败 1 个',
+    });
+  });
+
+  it('废纸篓全部失败时返回明细并记录失败摘要', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      untracked: [
+        change(root, 'a.ts', 7),
+        change(root, 'b.ts', 7),
+      ],
+    });
+    const trashResult = {
+      kind: 'completed',
+      succeeded: [],
+      failed: [
+        { path: 'a.ts', message: '权限不足' },
+        { path: 'b.ts', message: '文件占用' },
+      ],
+    } as const;
+    const trash = vi.fn().mockResolvedValue(trashResult);
+    const { service } = createService([repository], true, {
+      trashService: { moveToTrash: trash },
+    });
+
+    await expect(service.trash({
+      repositoryId: root,
+      version: 0,
+      fileIds: ['a.ts', 'b.ts'],
+    })).resolves.toEqual(trashResult);
+    expect(service.getViewModel().operation).toEqual({
+      kind: 'failed',
+      action: 'trash',
+      message: '移入废纸篓失败：成功 0 个，失败 2 个',
+    });
+  });
+
   it('远程修改失败后记录可观察的操作状态', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root);
@@ -550,5 +709,232 @@ describe('RepositoryService', () => {
     });
     expect(commit).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledTimes(2);
+  });
+
+  it('HEAD 和上游变化后重试仍推送原提交到原目标', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      upstream: { remote: 'origin', name: 'release/main' },
+    });
+    repository.setRemotes([{
+      name: 'origin',
+      pushUrl: 'https://example.test/original.git',
+    }]);
+    const push = vi.fn()
+      .mockRejectedValueOnce(new Error('网络断开'))
+      .mockResolvedValueOnce({
+        kind: 'pushed',
+        remote: 'origin',
+        branch: 'release/main',
+      });
+    const { service, commit } = createService([repository], true, {
+      pushService: { push },
+    });
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('网络断开');
+
+    repository.setHead({
+      name: 'other',
+      upstream: { remote: 'backup', name: 'other-target' },
+    });
+    repository.setRemotes([
+      {
+        name: 'origin',
+        pushUrl: 'https://example.test/original.git',
+      },
+      {
+        name: 'backup',
+        pushUrl: 'https://example.test/backup.git',
+      },
+    ]);
+    repository.changed.fire(undefined);
+
+    await expect(service.retryPush({
+      repositoryId: root,
+      version: 1,
+    })).resolves.toEqual({
+      kind: 'pushed',
+      remote: 'origin',
+      branch: 'release/main',
+    });
+    const expectedPushRequest = {
+      selectedRemote: 'origin',
+      localBranch: 'main',
+      exactRefspec: {
+        sourceRef: 'abc123',
+        targetBranch: 'release/main',
+      },
+    };
+    expect(push).toHaveBeenNthCalledWith(
+      1,
+      repository,
+      expectedPushRequest,
+    );
+    expect(push).toHaveBeenNthCalledWith(
+      2,
+      repository,
+      expectedPushRequest,
+    );
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('目标远程 URL 变化后拒绝重试原推送', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      upstream: { remote: 'origin', name: 'main' },
+    });
+    repository.setRemotes([{
+      name: 'origin',
+      pushUrl: 'https://example.test/original.git',
+    }]);
+    const push = vi.fn()
+      .mockRejectedValueOnce(new Error('网络断开'))
+      .mockResolvedValueOnce({
+        kind: 'pushed',
+        remote: 'origin',
+        branch: 'main',
+      });
+    const { service, commit } = createService([repository], true, {
+      pushService: { push },
+    });
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('网络断开');
+    repository.setRemotes([{
+      name: 'origin',
+      pushUrl: 'https://example.test/replaced.git',
+    }]);
+    repository.changed.fire(undefined);
+
+    await expect(service.retryPush({
+      repositoryId: root,
+      version: 1,
+    })).rejects.toThrow('推送目标远程已变化，请重新提交并推送');
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('普通提交成功后失效旧推送重试上下文', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      upstream: { remote: 'origin', name: 'main' },
+    });
+    repository.setRemotes([{
+      name: 'origin',
+      pushUrl: 'https://example.test/original.git',
+    }]);
+    const commit = vi.fn()
+      .mockResolvedValueOnce({
+        commitHash: 'old123',
+        committedPaths: ['a.ts'],
+      })
+      .mockResolvedValueOnce({
+        commitHash: 'new456',
+        committedPaths: ['a.ts'],
+      });
+    const push = vi.fn()
+      .mockRejectedValueOnce(new Error('网络断开'))
+      .mockResolvedValueOnce({
+        kind: 'pushed',
+        remote: 'origin',
+        branch: 'main',
+      });
+    const { service } = createService([repository], true, {
+      commitService: { commit },
+      pushService: { push },
+    });
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '旧提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('网络断开');
+    await expect(service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '新提交',
+      selectedIds: ['a.ts'],
+    })).resolves.toMatchObject({ commitHash: 'new456' });
+
+    await expect(service.retryPush({
+      repositoryId: root,
+      version: 0,
+    })).rejects.toThrow('没有可重试的推送');
+    expect(commit).toHaveBeenCalledTimes(2);
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it('明确开始新的提交操作即失效旧推送重试上下文', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      upstream: { remote: 'origin', name: 'main' },
+    });
+    repository.setRemotes([{
+      name: 'origin',
+      pushUrl: 'https://example.test/original.git',
+    }]);
+    const commit = vi.fn()
+      .mockResolvedValueOnce({
+        commitHash: 'old123',
+        committedPaths: ['a.ts'],
+      })
+      .mockRejectedValueOnce(new Error('新提交失败'));
+    const push = vi.fn()
+      .mockRejectedValueOnce(new Error('网络断开'))
+      .mockResolvedValueOnce({
+        kind: 'pushed',
+        remote: 'origin',
+        branch: 'main',
+      });
+    const { service } = createService([repository], true, {
+      commitService: { commit },
+      pushService: { push },
+    });
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '旧提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('网络断开');
+    await expect(service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '新提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('新提交失败');
+
+    await expect(service.retryPush({
+      repositoryId: root,
+      version: 0,
+    })).rejects.toThrow('没有可重试的推送');
+    expect(commit).toHaveBeenCalledTimes(2);
+    expect(push).toHaveBeenCalledTimes(1);
   });
 });

@@ -251,4 +251,43 @@ describe('PushService', () => {
     })).rejects.toThrow('当前处于游离 HEAD，不能推送');
     expect(repository.pushCalls).toEqual([]);
   });
+
+  it('精确 refspec 推送不受当前 HEAD 和上游变化影响', async () => {
+    const repository = new FakeBuiltinRepository({
+      head: {
+        name: 'other',
+        upstream: { remote: 'backup', name: 'other-target' },
+      },
+      remotes: [
+        { name: 'origin', fetchUrl: 'https://example.com/a.git' },
+        { name: 'backup', fetchUrl: 'https://example.com/b.git' },
+      ],
+    });
+    const service = new PushService();
+
+    const result = await service.push(repository, {
+      selectedRemote: 'origin',
+      localBranch: 'main',
+      exactRefspec: {
+        sourceRef: 'abc123',
+        targetBranch: 'release/main',
+      },
+      setUpstream: true,
+    });
+
+    expect(result).toEqual({
+      kind: 'pushed',
+      remote: 'origin',
+      branch: 'release/main',
+    });
+    expect(repository.pushCalls).toEqual([{
+      remoteName: 'origin',
+      branchName: 'abc123:refs/heads/release/main',
+      setUpstream: false,
+    }]);
+    expect(repository.setBranchUpstreamCalls).toEqual([{
+      branchName: 'main',
+      upstream: 'origin/release/main',
+    }]);
+  });
 });

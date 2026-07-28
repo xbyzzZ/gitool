@@ -3,6 +3,11 @@ import type { BuiltinRepository } from '../git/builtin-git-api.js';
 export interface PushRequest {
   readonly selectedRemote?: string;
   readonly localBranch: string;
+  readonly exactRefspec?: {
+    readonly sourceRef: string;
+    readonly targetBranch: string;
+  };
+  readonly setUpstream?: boolean;
 }
 
 export type PushResult =
@@ -14,6 +19,37 @@ export class PushService {
     repository: BuiltinRepository,
     request: PushRequest,
   ): Promise<PushResult> {
+    if (request.exactRefspec !== undefined) {
+      if (request.selectedRemote === undefined) {
+        return {
+          kind: 'needs-remote',
+          remotes: repository.state.remotes.map((remote) => remote.name),
+        };
+      }
+      if (!repository.state.remotes.some(
+        (remote) => remote.name === request.selectedRemote,
+      )) {
+        throw new Error(`远程 ${request.selectedRemote} 不存在`);
+      }
+      await repository.push(
+        request.selectedRemote,
+        `${request.exactRefspec.sourceRef}:refs/heads/`
+          + request.exactRefspec.targetBranch,
+        false,
+      );
+      if (request.setUpstream === true) {
+        await repository.setBranchUpstream(
+          request.localBranch,
+          `${request.selectedRemote}/${request.exactRefspec.targetBranch}`,
+        );
+      }
+      return {
+        kind: 'pushed',
+        remote: request.selectedRemote,
+        branch: request.exactRefspec.targetBranch,
+      };
+    }
+
     const head = repository.state.HEAD;
     if (head?.name === undefined || head.name.length === 0) {
       throw new Error('当前处于游离 HEAD，不能推送');
