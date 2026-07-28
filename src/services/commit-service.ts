@@ -2,7 +2,7 @@ import { isAbsolute, join } from 'node:path';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import type { FileChange } from '../domain/change-model.js';
-import { GitRunner } from '../git/git-runner.js';
+import { GitRunner, redactSensitiveText } from '../git/git-runner.js';
 
 export interface CommitRequest {
   readonly repositoryRoot: string;
@@ -138,6 +138,7 @@ export class CommitService {
     try {
       if (untrackedPaths.length > 0) {
         await this.git.run(request.repositoryRoot, [
+          '--literal-pathspecs',
           'add',
           '--intent-to-add',
           '--',
@@ -152,6 +153,7 @@ export class CommitService {
         mode: 0o600,
       });
       await this.git.run(request.repositoryRoot, [
+        '--literal-pathspecs',
         'commit',
         '--only',
         '--file',
@@ -161,29 +163,36 @@ export class CommitService {
       ]);
       commitCommandSucceeded = true;
 
-      const hashResult = await this.git.run(request.repositoryRoot, [
-        'rev-parse',
-        'HEAD',
-      ]);
-      const commitHash = hashResult.stdout.trim();
+      const hashResult = await this.git.runForMachineParsing(
+        request.repositoryRoot,
+        ['rev-parse', 'HEAD'],
+      );
+      const commitHash = hashResult.rawStdout.trim();
       if (commitHash.length === 0) {
         throw new Error('Git 未返回提交哈希');
       }
 
-      const treeResult = await this.git.run(request.repositoryRoot, [
-        'diff-tree',
-        '--root',
-        '--no-commit-id',
-        '--name-status',
-        '-r',
-        '-z',
-        'HEAD',
-      ]);
-      const actualPaths = parseCommittedPaths(treeResult.stdout);
+      const treeResult = await this.git.runForMachineParsing(
+        request.repositoryRoot,
+        [
+          'diff-tree',
+          '--root',
+          '--no-commit-id',
+          '--name-status',
+          '-r',
+          '-z',
+          'HEAD',
+        ],
+      );
+      const actualPaths = parseCommittedPaths(treeResult.rawStdout);
       if (!pathsEqual(actualPaths, commitPaths)) {
+        const expectedDiagnostic =
+          redactSensitiveText(JSON.stringify(commitPaths));
+        const actualDiagnostic =
+          redactSensitiveText(JSON.stringify(actualPaths));
         throw new Error(
-          `提交路径核对失败：预期 ${JSON.stringify(commitPaths)}，`
-          + `实际 ${JSON.stringify(actualPaths)}`,
+          `提交路径核对失败：预期 ${expectedDiagnostic}，`
+          + `实际 ${actualDiagnostic}`,
         );
       }
       result = {
@@ -195,6 +204,7 @@ export class CommitService {
       if (!commitCommandSucceeded && untrackedPaths.length > 0) {
         try {
           await this.git.run(request.repositoryRoot, [
+            '--literal-pathspecs',
             'rm',
             '--cached',
             '--quiet',

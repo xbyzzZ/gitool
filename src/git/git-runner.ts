@@ -1,10 +1,18 @@
 import { spawn } from 'node:child_process';
-import type { GitResult, GitRunOptions } from './git-types.js';
+import type {
+  GitMachineOutput,
+  GitResult,
+  GitRunOptions,
+} from './git-types.js';
 
-export type { GitResult, GitRunOptions } from './git-types.js';
+export type {
+  GitMachineOutput,
+  GitResult,
+  GitRunOptions,
+} from './git-types.js';
 
 const sensitiveQueryParameter =
-  /([?&](?:access_token|auth_token|token|password|passwd|secret)=)[^&#\s]*/giu;
+  /([?&](?:access_token|auth_token|token|password|passwd|secret)=)[^&#\s"'<>]*/giu;
 const urlUserInfo = /([a-z][a-z0-9+.-]*:\/\/)([^/@\s]+)@/giu;
 
 export function redactSensitiveText(text: string): string {
@@ -47,6 +55,30 @@ export class GitRunner {
     args: readonly string[],
     options: GitRunOptions = {},
   ): Promise<GitResult> {
+    const rawResult = await this.execute(repositoryRoot, args, options);
+    return {
+      stdout: redactSensitiveText(rawResult.stdout),
+      stderr: redactSensitiveText(rawResult.stderr),
+      exitCode: rawResult.exitCode,
+    };
+  }
+
+  /**
+   * 只供哈希、NUL 分隔路径等机器数据解析使用；调用方不得记录原始输出。
+   */
+  async runForMachineParsing(
+    repositoryRoot: string,
+    args: readonly string[],
+  ): Promise<GitMachineOutput> {
+    const rawResult = await this.execute(repositoryRoot, args);
+    return { rawStdout: rawResult.stdout };
+  }
+
+  private async execute(
+    repositoryRoot: string,
+    args: readonly string[],
+    options: GitRunOptions = {},
+  ): Promise<GitResult> {
     const command = displayCommand(this.gitPath, args);
 
     return await new Promise<GitResult>((resolve, reject) => {
@@ -84,7 +116,11 @@ export class GitRunner {
         };
 
         if (result.exitCode !== 0 && options.allowFailure !== true) {
-          reject(new GitCommandError(result.exitCode, command, result.stderr));
+          reject(new GitCommandError(
+            result.exitCode,
+            command,
+            result.stderr,
+          ));
           return;
         }
         resolve(result);

@@ -9,3 +9,7 @@ export interface GitRunOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly allowFailure?: boolean;
 }
+
+export interface GitMachineOutput {
+  readonly rawStdout: string;
+}
