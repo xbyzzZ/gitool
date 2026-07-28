@@ -46,4 +46,18 @@ describe('RepositoryOperationLock', () => {
     await expect(lock.runExclusive('repo-a', () => Promise.resolve('second')))
       .resolves.toBe('second');
   });
+
+  it('写操作抛错后释放同一仓库的锁', async () => {
+    const lock = new RepositoryOperationLock();
+
+    await expect(lock.runExclusive(
+      'repo-a',
+      () => {
+        throw new Error('写操作失败');
+      },
+    )).rejects.toThrow('写操作失败');
+
+    await expect(lock.runExclusive('repo-a', () => Promise.resolve('recovered')))
+      .resolves.toBe('recovered');
+  });
 });

@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   TrashService,
@@ -65,6 +65,70 @@ describe('TrashService', () => {
     ])).rejects.toThrow('目标不在当前仓库内');
 
     expect(confirmed).toBe(false);
+  });
+
+  it('拒绝绝对路径、空路径和仓库根目录', async () => {
+    const repositoryRoot = resolve('workspace', 'repo');
+    let confirmations = 0;
+    const service = new TrashService({
+      confirm: () => {
+        confirmations += 1;
+        return Promise.resolve(true);
+      },
+      delete: () => Promise.reject(new Error('非法路径不能进入删除阶段')),
+    });
+
+    for (const invalidPath of [
+      resolve(repositoryRoot, '..', 'outside.txt'),
+      '',
+      '.',
+    ]) {
+      await expect(service.moveToTrash(repositoryRoot, [invalidPath]))
+        .rejects.toThrow('目标不在当前仓库内');
+    }
+
+    expect(confirmations).toBe(0);
+  });
+
+  it('拒绝解析后落在相似仓库前缀目录的路径', async () => {
+    const repositoryRoot = resolve('workspace', 'repo');
+    const targetInSimilarPrefix = resolve('workspace', 'repo-other', 'a.txt');
+    const escapedPath = relative(repositoryRoot, targetInSimilarPrefix);
+    const service = new TrashService({
+      confirm: () => Promise.resolve(true),
+      delete: () => Promise.reject(new Error('非法路径不能进入删除阶段')),
+    });
+
+    await expect(service.moveToTrash(repositoryRoot, [escapedPath]))
+      .rejects.toThrow('目标不在当前仓库内');
+  });
+
+  it('批次中有非法路径时在确认和删除前拒绝整个批次', async () => {
+    const repositoryRoot = resolve('workspace', 'repo');
+    const escapedPath = relative(
+      repositoryRoot,
+      resolve('workspace', 'repo-other', 'a.txt'),
+    );
+    let confirmations = 0;
+    let deletions = 0;
+    const service = new TrashService({
+      confirm: () => {
+        confirmations += 1;
+        return Promise.resolve(true);
+      },
+      delete: () => {
+        deletions += 1;
+        return Promise.resolve();
+      },
+    });
+
+    await expect(service.moveToTrash(repositoryRoot, [
+      join('tmp', 'valid.txt'),
+      escapedPath,
+    ])).rejects.toThrow('目标不在当前仓库内');
+
+    expect(confirmations).toBe(0);
+    expect(deletions).toBe(0);
   });
 
   it('用户取消时不删除任何文件', async () => {
