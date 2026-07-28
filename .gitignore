@@ -1,2 +1,9 @@
 .worktrees/
 .superpowers/
+node_modules/
+dist/
+media/main.js
+coverage/
+.vscode-test/
+*.vsix
+.DS_Store

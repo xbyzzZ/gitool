@@ -1,0 +1,39 @@
+{
+  "name": "gitool-file-commit",
+  "displayName": "Gitool 文件提交",
+  "description": "像 PyCharm 一样按文件选择、提交和推送 Git 变更",
+  "version": "0.1.0",
+  "publisher": "xbyzzz",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.125.0"
+  },
+  "categories": ["SCM Providers"],
+  "activationEvents": ["onView:gitool.commitView"],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('media/main.js',{force:true})\"",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:vscode": "npm run build && node ./dist/test/vscode/run-tests.js",
+    "build": "node esbuild.mjs",
+    "package": "npm run check && npm run build && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/mocha": "10.0.10",
+    "@types/node": "26.1.1",
+    "@types/vscode": "1.125.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "3.9.2",
+    "esbuild": "0.28.1",
+    "eslint": "10.8.0",
+    "mocha": "11.7.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}
