@@ -14,6 +14,7 @@ export interface BuiltinRemote {
 
 export interface BuiltinHead {
   readonly name?: string;
+  readonly commit?: string;
   readonly upstream?: { readonly remote: string; readonly name: string };
 }
 

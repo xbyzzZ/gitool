@@ -187,6 +187,140 @@ function createService(
 }
 
 describe('RepositoryService', () => {
+  it('普通提交写前同分支 HEAD 提交静默前移时拒绝旧请求', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      commit: '111',
+    });
+    repository.onStatus(() => {
+      repository.setHead({
+        name: 'main',
+        commit: '222',
+      });
+    });
+    const { service, commit } = createService([repository]);
+
+    await expect(service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '过期提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+
+    expect(commit).not.toHaveBeenCalled();
+    expect(service.getViewModel().version).toBe(1);
+  });
+
+  it('提交并推送写前同分支 HEAD 提交静默前移时拒绝旧请求', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      commit: '111',
+    });
+    repository.onStatus(() => {
+      repository.setHead({
+        name: 'main',
+        commit: '222',
+      });
+    });
+    const { service, commit, push } = createService([repository]);
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '过期提交并推送',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+
+    expect(commit).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('选择推送远程前同分支 HEAD 提交静默前移时拒绝原请求', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      commit: '111',
+    });
+    const push = vi.fn().mockResolvedValue({
+      kind: 'needs-remote',
+      remotes: ['origin'],
+    });
+    const { service } = createService([repository], true, {
+      pushService: { push },
+    });
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '创建待选远程提交',
+      selectedIds: ['a.ts'],
+    })).resolves.toMatchObject({ kind: 'needs-remote' });
+    repository.onStatus(() => {
+      repository.setHead({
+        name: 'main',
+        commit: '222',
+      });
+    });
+
+    await expect(service.selectPushRemote({
+      repositoryId: root,
+      version: 0,
+      remote: 'origin',
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it('重试推送前同分支 HEAD 提交静默前移时拒绝原请求', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      commit: '111',
+      upstream: { remote: 'origin', name: 'main' },
+    });
+    repository.setRemotes([{
+      name: 'origin',
+      pushUrl: 'https://example.test/original.git',
+    }]);
+    const push = vi.fn().mockRejectedValue(new Error('网络断开'));
+    const { service } = createService([repository], true, {
+      pushService: { push },
+    });
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '创建待重试提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('网络断开');
+    repository.onStatus(() => {
+      repository.setHead({
+        name: 'main',
+        commit: '222',
+        upstream: { remote: 'origin', name: 'main' },
+      });
+    });
+
+    await expect(service.retryPush({
+      repositoryId: root,
+      version: 0,
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
   it('提交写入前在仓库锁内读取真实状态', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {
@@ -925,8 +1059,16 @@ describe('RepositoryService', () => {
     const repository = new TestRepository(root, {
       working: [change(root, 'a.ts')],
     });
+    repository.setHead({
+      name: 'main',
+      commit: '111',
+    });
     const commit = vi.fn().mockImplementation(() => {
       repository.setChanges({});
+      repository.setHead({
+        name: 'main',
+        commit: '222',
+      });
       return Promise.resolve({
         commitHash: 'abc123',
         committedPaths: ['a.ts'],

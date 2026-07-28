@@ -28,6 +28,7 @@ export interface RepositoryContext {
 interface RepositoryHeadSnapshot {
   readonly present: boolean;
   readonly name?: string;
+  readonly commit?: string;
   readonly upstream?: {
     readonly remote: string;
     readonly name: string;
@@ -60,6 +61,7 @@ function captureSnapshot(
     head: {
       present: head !== undefined,
       ...(head?.name === undefined ? {} : { name: head.name }),
+      ...(head?.commit === undefined ? {} : { commit: head.commit }),
       ...(head?.upstream === undefined
         ? {}
         : {
