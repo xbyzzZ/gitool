@@ -49,6 +49,8 @@ class TestRepository implements BuiltinRepository {
   readonly changed = createEvent<undefined>();
   readonly rootUri: vscode.Uri;
   readonly state: BuiltinRepository['state'];
+  statusCalls = 0;
+  private statusEffect: (() => void) | undefined;
 
   constructor(
     rootPath: string,
@@ -72,6 +74,8 @@ class TestRepository implements BuiltinRepository {
   }
 
   status(): Promise<void> {
+    this.statusCalls += 1;
+    this.statusEffect?.();
     return Promise.resolve();
   }
 
@@ -94,6 +98,28 @@ class TestRepository implements BuiltinRepository {
 
   setRemotes(remotes: readonly BuiltinRemote[]): void {
     (this.state as { remotes: readonly BuiltinRemote[] }).remotes = remotes;
+  }
+
+  setChanges(changes: {
+    readonly index?: readonly BuiltinChange[];
+    readonly working?: readonly BuiltinChange[];
+    readonly untracked?: readonly BuiltinChange[];
+    readonly merge?: readonly BuiltinChange[];
+  }): void {
+    const mutableState = this.state as {
+      indexChanges: readonly BuiltinChange[];
+      workingTreeChanges: readonly BuiltinChange[];
+      untrackedChanges: readonly BuiltinChange[];
+      mergeChanges: readonly BuiltinChange[];
+    };
+    mutableState.indexChanges = changes.index ?? [];
+    mutableState.workingTreeChanges = changes.working ?? [];
+    mutableState.untrackedChanges = changes.untracked ?? [];
+    mutableState.mergeChanges = changes.merge ?? [];
+  }
+
+  onStatus(effect: () => void): void {
+    this.statusEffect = effect;
   }
 }
 
@@ -161,6 +187,147 @@ function createService(
 }
 
 describe('RepositoryService', () => {
+  it('提交写入前在仓库锁内读取真实状态', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.onStatus(() => {
+      repository.changed.fire(undefined);
+    });
+    const { service, commit } = createService([repository]);
+
+    await expect(service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '提交',
+      selectedIds: ['a.ts'],
+    })).resolves.toMatchObject({ commitHash: 'abc123' });
+
+    expect(repository.statusCalls).toBe(1);
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('提交写前静默改变所选文件分类时同步快照并拒绝旧请求', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      untracked: [change(root, 'a.ts', 7)],
+    });
+    const { service, commit } = createService([repository]);
+    service.setFileSelected('a.ts', true);
+    repository.onStatus(() => {
+      repository.setChanges({
+        index: [change(root, 'a.ts', 1)],
+      });
+    });
+
+    await expect(service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '过期提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+
+    expect(repository.statusCalls).toBe(1);
+    expect(commit).not.toHaveBeenCalled();
+    expect(service.getViewModel()).toMatchObject({
+      version: 1,
+      changes: [{
+        id: 'a.ts',
+        staged: true,
+        untracked: false,
+      }],
+    });
+  });
+
+  it('废纸篓写前静默把未跟踪文件加入索引时拒绝且不删除', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      untracked: [change(root, 'a.ts', 7)],
+    });
+    const { service, trash } = createService([repository]);
+    service.setFileSelected('a.ts', true);
+    repository.onStatus(() => {
+      repository.setChanges({
+        index: [change(root, 'a.ts', 1)],
+      });
+    });
+
+    await expect(service.trash({
+      repositoryId: root,
+      version: 0,
+      fileIds: ['a.ts'],
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+
+    expect(repository.statusCalls).toBe(1);
+    expect(trash).not.toHaveBeenCalled();
+  });
+
+  it('提交并推送写前静默切换 HEAD 时拒绝且不提交', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    const { service, commit, push } = createService([repository]);
+    repository.onStatus(() => {
+      repository.setHead({ name: 'other' });
+    });
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '过期分支提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+
+    expect(repository.statusCalls).toBe(1);
+    expect(commit).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(service.getViewModel()).toMatchObject({
+      version: 1,
+      branch: 'other',
+    });
+  });
+
+  it('重试推送前远程身份静默变化时拒绝原版本', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      upstream: { remote: 'origin', name: 'main' },
+    });
+    repository.setRemotes([{
+      name: 'origin',
+      pushUrl: 'https://example.test/original.git',
+    }]);
+    const push = vi.fn().mockRejectedValue(new Error('网络断开'));
+    const { service } = createService([repository], true, {
+      pushService: { push },
+    });
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '创建待重试提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('网络断开');
+    repository.onStatus(() => {
+      repository.setRemotes([{
+        name: 'origin',
+        pushUrl: 'https://example.test/changed.git',
+      }]);
+    });
+
+    await expect(service.retryPush({
+      repositoryId: root,
+      version: 0,
+    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
+
+    expect(repository.statusCalls).toBe(3);
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
   it('外部和本地状态变化均向视图订阅者发出通知', () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {
@@ -176,10 +343,10 @@ describe('RepositoryService', () => {
     service.setFileSelected('a.ts', false);
     service.setCommitMessage('新提交信息');
 
-    expect(versions).toEqual([1, 1, 1]);
+    expect(versions).toEqual([0, 0, 0]);
     listener.dispose();
     service.setFileSelected('a.ts', true);
-    expect(versions).toEqual([1, 1, 1]);
+    expect(versions).toEqual([0, 0, 0]);
   });
 
   it('写操作的运行和完成状态均向视图订阅者发出通知', async () => {
@@ -208,7 +375,9 @@ describe('RepositoryService', () => {
       message: '提交',
       selectedIds: ['a.ts'],
     });
-    expect(operations).toEqual(['running']);
+    await vi.waitFor(() => {
+      expect(operations).toEqual(['running']);
+    });
 
     finishCommit?.({
       commitHash: 'abc123',
@@ -248,15 +417,21 @@ describe('RepositoryService', () => {
       selectedIds: ['a.ts'],
     });
 
+    repository.setChanges({
+      working: [
+        change(root, 'a.ts'),
+        change(root, 'b.ts'),
+      ],
+    });
     repository.changed.fire(undefined);
 
     expect(service.getViewModel()).toMatchObject({
       version: 1,
-      selectedIds: ['a.ts'],
+      selectedIds: ['a.ts', 'b.ts'],
     });
   });
 
-  it('刷新引发状态事件时版本只递增一次', async () => {
+  it('刷新引发无语义变化的状态事件时版本不递增', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root);
     vi.spyOn(repository, 'status').mockImplementation(() => {
@@ -265,7 +440,7 @@ describe('RepositoryService', () => {
     });
     const { service } = createService([repository]);
 
-    await expect(service.refresh()).resolves.toMatchObject({ version: 1 });
+    await expect(service.refresh()).resolves.toMatchObject({ version: 0 });
   });
 
   it('切换仓库时恢复各自的选择和提交信息', () => {
@@ -302,6 +477,9 @@ describe('RepositoryService', () => {
       working: [change(root, 'a.ts')],
     });
     const { service, commit } = createService([repository]);
+    repository.setChanges({
+      working: [change(root, 'b.ts')],
+    });
     repository.changed.fire(undefined);
 
     await expect(service.commit({
@@ -319,6 +497,9 @@ describe('RepositoryService', () => {
       working: [change(root, 'a.ts')],
     });
     const commit = vi.fn(async (request: CommitRequest) => {
+      repository.setChanges({
+        working: [change(root, 'b.ts')],
+      });
       repository.changed.fire(undefined);
       if (!await request.verifyVersion(request.expectedVersion)) {
         throw new Error('提交前版本复核失败');
@@ -739,6 +920,52 @@ describe('RepositoryService', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it('提交并推送在待选远程前同步自身产生的仓库变化', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    const commit = vi.fn().mockImplementation(() => {
+      repository.setChanges({});
+      return Promise.resolve({
+        commitHash: 'abc123',
+        committedPaths: ['a.ts'],
+      });
+    });
+    const push = vi.fn()
+      .mockResolvedValueOnce({
+        kind: 'needs-remote',
+        remotes: ['origin'],
+      })
+      .mockResolvedValueOnce({
+        kind: 'pushed',
+        remote: 'origin',
+        branch: 'main',
+      });
+    const { service } = createService([repository], true, {
+      commitService: { commit },
+      pushService: { push },
+    });
+
+    await expect(service.commitAndPush({
+      repositoryId: root,
+      version: 0,
+      message: '提交并等待远程',
+      selectedIds: ['a.ts'],
+    })).resolves.toMatchObject({ kind: 'needs-remote' });
+    expect(service.getViewModel()).toMatchObject({
+      version: 1,
+      changes: [],
+    });
+
+    await expect(service.selectPushRemote({
+      repositoryId: root,
+      version: 1,
+      remote: 'origin',
+    })).resolves.toMatchObject({ kind: 'pushed' });
+    expect(push).toHaveBeenCalledTimes(2);
+  });
+
   it('游离 HEAD 的提交并推送在提交服务前被拒绝', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {
@@ -817,7 +1044,7 @@ describe('RepositoryService', () => {
 
     await expect(service.retryPush({
       repositoryId: root,
-      version: 1,
+      version: 2,
     })).rejects.toThrow('没有可重试的推送');
     expect(commit).toHaveBeenCalledTimes(1);
     expect(push).not.toHaveBeenCalled();

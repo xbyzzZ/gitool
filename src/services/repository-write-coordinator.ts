@@ -132,14 +132,11 @@ export class RepositoryWriteCoordinator {
   }
 
   async commit(request: RepositoryCommitRequest): Promise<CommitResult> {
-    const context = this.prepareWrite(
+    return await this.runValidatedWrite(
       request.repositoryId,
       request.version,
       request.selectedIds,
-    );
-    return await this.operationLock.runExclusive(
-      context.state.id,
-      async () => {
+      async (context) => {
         this.pendingPushes.delete(context.state.id);
         return await this.commitUnlocked(context, request);
       },
@@ -149,17 +146,17 @@ export class RepositoryWriteCoordinator {
   async commitAndPush(
     request: RepositoryCommitRequest,
   ): Promise<PushResult> {
-    const context = this.prepareWrite(
+    return await this.runValidatedWrite(
       request.repositoryId,
       request.version,
       request.selectedIds,
-    );
-    return await this.operationLock.runExclusive(
-      context.state.id,
-      async () => {
+      async (context) => {
         this.requireAttachedHead(context.state);
         this.pendingPushes.delete(context.state.id);
         const commitResult = await this.commitUnlocked(context, request);
+        await this.dependencies.registry.refreshRepositorySnapshot(
+          context.state.id,
+        );
         const head = this.requireAttachedHead(context.state);
         const localBranch = head.name;
         const targetBranch = head.upstream?.name ?? localBranch;
@@ -185,13 +182,11 @@ export class RepositoryWriteCoordinator {
   async selectPushRemote(
     request: SelectPushRemoteRequest,
   ): Promise<PushResult> {
-    const context = this.prepareWrite(
+    return await this.runValidatedWrite(
       request.repositoryId,
       request.version,
-    );
-    return await this.operationLock.runExclusive(
-      context.state.id,
-      async () => {
+      [],
+      async (context) => {
         const pending = this.requirePendingPush(context.state);
         this.pendingPushes.set(context.state.id, {
           ...pending,
@@ -206,13 +201,11 @@ export class RepositoryWriteCoordinator {
   }
 
   async retryPush(request: RepositoryVersionRequest): Promise<PushResult> {
-    const context = this.prepareWrite(
+    return await this.runValidatedWrite(
       request.repositoryId,
       request.version,
-    );
-    return await this.operationLock.runExclusive(
-      context.state.id,
-      async () => {
+      [],
+      async (context) => {
         this.requirePendingPush(context.state);
         return await this.pushPending(context.state);
       },
@@ -220,25 +213,20 @@ export class RepositoryWriteCoordinator {
   }
 
   async trash(request: TrashRequest): Promise<TrashResult> {
-    const context = this.prepareWrite(
+    return await this.runValidatedWrite(
       request.repositoryId,
       request.version,
       request.fileIds,
-    );
-    return await this.operationLock.runExclusive(
-      context.state.id,
-      async () => await this.trashUnlocked(context),
+      async (context) => await this.trashUnlocked(context),
     );
   }
 
   async setRemoteUrl(request: SetRemoteUrlRequest): Promise<RemoteInfo> {
-    const context = this.prepareWrite(
+    return await this.runValidatedWrite(
       request.repositoryId,
       request.version,
-    );
-    return await this.operationLock.runExclusive(
-      context.state.id,
-      async () => await this.runOperation(
+      [],
+      async (context) => await this.runOperation(
         context.state,
         'remote',
         async () => await this.dependencies.remoteService.setUrl(
@@ -254,21 +242,30 @@ export class RepositoryWriteCoordinator {
     this.pendingPushes.clear();
   }
 
-  private prepareWrite(
+  private async runValidatedWrite<T>(
     id: string,
     version: number,
-    fileIds: readonly string[] = [],
-  ): WriteContext {
+    fileIds: readonly string[],
+    operation: (context: WriteContext) => Promise<T>,
+  ): Promise<T> {
+    return await this.operationLock.runExclusive(
+      id,
+      async () => await operation(
+        await this.prepareWrite(id, version, fileIds),
+      ),
+    );
+  }
+
+  private async prepareWrite(
+    id: string,
+    version: number,
+    fileIds: readonly string[],
+  ): Promise<WriteContext> {
     if (!this.dependencies.isWorkspaceTrusted()) {
       throw new Error('未信任的工作区不能执行写操作');
     }
-    const state = this.dependencies.registry.get(id);
-    if (state === undefined) {
-      throw new Error('仓库不存在或已关闭');
-    }
-    if (state.version !== version) {
-      throw new Error('仓库状态已变化，请刷新后重试');
-    }
+    const state = await this.dependencies.registry
+      .refreshAndValidateWriteSnapshot(id, version);
     if (state.changes.some((change) => change.conflicted)) {
       throw new Error('存在冲突文件，不能执行写操作');
     }

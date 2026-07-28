@@ -18,14 +18,73 @@ export interface RepositoryContext {
   readonly repository: BuiltinRepository;
   changeListener: vscode.Disposable;
   version: number;
+  snapshot: RepositorySnapshot;
   changes: readonly FileChange[];
   selectedIds: ReadonlySet<string>;
   commitMessage: string;
   operation: OperationState;
 }
 
+interface RepositoryHeadSnapshot {
+  readonly present: boolean;
+  readonly name?: string;
+  readonly upstream?: {
+    readonly remote: string;
+    readonly name: string;
+  };
+}
+
+interface RepositoryRemoteSnapshot {
+  readonly name: string;
+  readonly fetchUrl?: string;
+  readonly pushUrl?: string;
+}
+
+interface RepositorySnapshot {
+  readonly changes: readonly FileChange[];
+  readonly head: RepositoryHeadSnapshot;
+  readonly remotes: readonly RepositoryRemoteSnapshot[];
+}
+
 function repositoryId(repository: BuiltinRepository): string {
   return resolve(repository.rootUri.fsPath);
+}
+
+function captureSnapshot(
+  rootPath: string,
+  repository: BuiltinRepository,
+): RepositorySnapshot {
+  const head = repository.state.HEAD;
+  return {
+    changes: mapRepositoryChanges(rootPath, repository.state),
+    head: {
+      present: head !== undefined,
+      ...(head?.name === undefined ? {} : { name: head.name }),
+      ...(head?.upstream === undefined
+        ? {}
+        : {
+            upstream: {
+              remote: head.upstream.remote,
+              name: head.upstream.name,
+            },
+          }),
+    },
+    remotes: repository.state.remotes
+      .map((remote) => ({
+        name: remote.name,
+        ...(remote.fetchUrl === undefined
+          ? {}
+          : { fetchUrl: remote.fetchUrl }),
+        ...(remote.pushUrl === undefined
+          ? {}
+          : { pushUrl: remote.pushUrl }),
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  };
+}
+
+function snapshotKey(snapshot: RepositorySnapshot): string {
+  return JSON.stringify(snapshot);
 }
 
 export class RepositoryRegistry implements vscode.Disposable {
@@ -80,7 +139,7 @@ export class RepositoryRegistry implements vscode.Disposable {
     const state = this.currentRepositoryId === undefined
       ? undefined
       : this.repositories.get(this.currentRepositoryId);
-    const head = state?.repository.state.HEAD;
+    const head = state?.snapshot.head;
     const upstream = head?.upstream;
     return {
       version: state?.version ?? 0,
@@ -115,11 +174,53 @@ export class RepositoryRegistry implements vscode.Disposable {
 
   async refresh(trusted: boolean): Promise<RepositoryViewModel> {
     const state = this.getCurrent();
-    await state.repository.status();
-    this.synchronizeState(state, false);
+    await this.refreshSnapshot(state);
     const model = this.getViewModel(trusted);
     this.notifyChange();
     return model;
+  }
+
+  async refreshRepositorySnapshot(id: string): Promise<RepositoryContext> {
+    const state = this.repositories.get(id);
+    if (state === undefined) {
+      throw new Error('仓库不存在或已关闭');
+    }
+    await this.refreshSnapshot(state);
+    this.notifyChange();
+    return state;
+  }
+
+  async refreshAndValidateWriteSnapshot(
+    id: string,
+    expectedVersion: number,
+  ): Promise<RepositoryContext> {
+    const state = this.repositories.get(id);
+    if (state === undefined) {
+      throw new Error('仓库不存在或已关闭');
+    }
+    if (state.version !== expectedVersion) {
+      throw new Error('仓库状态已变化，请刷新后重试');
+    }
+
+    const previousSnapshotKey = snapshotKey(state.snapshot);
+    await state.repository.status();
+    if (
+      this.repositories.get(id) !== state
+      || state.version !== expectedVersion
+    ) {
+      throw new Error('仓库状态已变化，请刷新后重试');
+    }
+
+    const refreshedSnapshot = captureSnapshot(
+      state.rootPath,
+      state.repository,
+    );
+    if (snapshotKey(refreshedSnapshot) !== previousSnapshotKey) {
+      this.applySnapshot(state, refreshedSnapshot, true);
+      this.notifyChange();
+      throw new Error('仓库状态已变化，请刷新后重试');
+    }
+    return state;
   }
 
   setFileSelected(
@@ -241,17 +342,18 @@ export class RepositoryRegistry implements vscode.Disposable {
       repository,
       changeListener: { dispose: () => undefined },
       version: lastVersion === undefined ? 0 : lastVersion + 1,
+      snapshot: captureSnapshot(id, repository),
       changes: [],
       selectedIds: new Set<string>(),
       commitMessage: '',
       operation: { kind: 'idle' },
     };
     state.changeListener = repository.state.onDidChange(() => {
-      this.synchronizeState(state, true);
+      this.synchronizeStateIfChanged(state, true);
       this.notifyChange();
     });
     this.repositories.set(id, state);
-    this.synchronizeState(state, false);
+    this.applySnapshot(state, state.snapshot, false);
     this.currentRepositoryId ??= id;
     this.notifyChange();
   }
@@ -271,15 +373,43 @@ export class RepositoryRegistry implements vscode.Disposable {
     this.notifyChange();
   }
 
-  private synchronizeState(
+  private synchronizeStateIfChanged(
     state: RepositoryContext,
     incrementVersion: boolean,
-  ): void {
-    state.changes = mapRepositoryChanges(
+  ): boolean {
+    const snapshot = captureSnapshot(
       state.rootPath,
-      state.repository.state,
+      state.repository,
     );
-    state.selectedIds = this.selectionStore.reconcile(state.id, state.changes);
+    if (snapshotKey(snapshot) === snapshotKey(state.snapshot)) {
+      return false;
+    }
+    this.applySnapshot(state, snapshot, incrementVersion);
+    return true;
+  }
+
+  private async refreshSnapshot(state: RepositoryContext): Promise<void> {
+    const versionBeforeStatus = state.version;
+    await state.repository.status();
+    if (this.repositories.get(state.id) !== state) {
+      throw new Error('仓库不存在或已关闭');
+    }
+    if (state.version === versionBeforeStatus) {
+      this.synchronizeStateIfChanged(state, true);
+    }
+  }
+
+  private applySnapshot(
+    state: RepositoryContext,
+    snapshot: RepositorySnapshot,
+    incrementVersion: boolean,
+  ): void {
+    state.snapshot = snapshot;
+    state.changes = snapshot.changes;
+    state.selectedIds = this.selectionStore.reconcile(
+      state.id,
+      snapshot.changes,
+    );
     if (incrementVersion) {
       state.version += 1;
     }
