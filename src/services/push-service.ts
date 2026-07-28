@@ -32,6 +32,10 @@ export class PushService {
       };
     }
 
+    if (request.localBranch !== head.name) {
+      throw new Error('请求分支与当前分支不一致');
+    }
+
     if (request.selectedRemote === undefined) {
       return {
         kind: 'needs-remote',
@@ -39,11 +43,17 @@ export class PushService {
       };
     }
 
-    await repository.push(request.selectedRemote, request.localBranch, true);
+    if (!repository.state.remotes.some(
+      (remote) => remote.name === request.selectedRemote,
+    )) {
+      throw new Error(`远程 ${request.selectedRemote} 不存在`);
+    }
+
+    await repository.push(request.selectedRemote, head.name, true);
     return {
       kind: 'pushed',
       remote: request.selectedRemote,
-      branch: request.localBranch,
+      branch: head.name,
     };
   }
 }

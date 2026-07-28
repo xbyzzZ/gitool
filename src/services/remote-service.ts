@@ -13,6 +13,21 @@ function removeOutputLineEnding(output: string): string {
   return output.replace(/\r?\n$/u, '');
 }
 
+async function remoteUrlMatches(
+  git: GitRunner,
+  repositoryRoot: string,
+  name: string,
+  expectedUrl: string,
+): Promise<boolean> {
+  const machineOutput = await git.runForMachineParsing(repositoryRoot, [
+    'remote',
+    'get-url',
+    '--',
+    name,
+  ]);
+  return removeOutputLineEnding(machineOutput.rawStdout) === expectedUrl;
+}
+
 export class RemoteService {
   constructor(private readonly git: GitRunner) {}
 
@@ -25,6 +40,7 @@ export class RemoteService {
       url: removeOutputLineEnding((await this.git.run(repositoryRoot, [
         'remote',
         'get-url',
+        '--',
         name,
       ])).stdout),
     })));
@@ -44,16 +60,10 @@ export class RemoteService {
       throw new Error(`远程 ${name} 不存在`);
     }
 
-    await this.git.run(repositoryRoot, ['remote', 'set-url', name, url]);
-    const actualUrl = (await this.git.run(repositoryRoot, [
-      'remote',
-      'get-url',
-      name,
-    ])).stdout;
-    const actualRemoteUrl = removeOutputLineEnding(actualUrl);
-    if (actualRemoteUrl !== redactSensitiveText(url)) {
+    await this.git.run(repositoryRoot, ['remote', 'set-url', '--', name, url]);
+    if (!await remoteUrlMatches(this.git, repositoryRoot, name, url)) {
       throw new Error(`远程 ${name} URL 写入后核对失败`);
     }
-    return { name, url: actualRemoteUrl };
+    return { name, url: redactSensitiveText(url) };
   }
 }
