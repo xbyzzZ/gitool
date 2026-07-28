@@ -18,6 +18,7 @@ export interface GitoolViewProviderDependencies {
 interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
+  readonly acknowledgedRequestId?: string;
 }
 
 interface RemotePickItem extends vscode.QuickPickItem {
@@ -57,19 +58,24 @@ function messageAction(message: WebviewMessage): string {
   }
 }
 
-function selectedRequest(model: RepositoryViewModel, version: number): {
+function selectedRequest(
+  model: RepositoryViewModel,
+  message: Extract<WebviewMessage, {
+    readonly type: 'commit' | 'commitAndPush';
+  }>,
+): {
   readonly repositoryId: string;
   readonly version: number;
   readonly message: string;
   readonly selectedIds: readonly string[];
 } {
-  if (model.currentRepositoryId === undefined) {
-    throw new Error('当前没有打开的 Git 仓库');
+  if (message.message.trim().length === 0) {
+    throw new Error('提交消息不能为空');
   }
   return {
-    repositoryId: model.currentRepositoryId,
-    version,
-    message: model.commitMessage,
+    repositoryId: message.repositoryId,
+    version: message.version,
+    message: message.message,
     selectedIds: model.selectedIds,
   };
 }
@@ -144,6 +150,9 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       this.reportError(messageAction(message), error);
     }
+    await this.postState(
+      'requestId' in message ? message.requestId : undefined,
+    );
   }
 
   private async handleMessage(message: WebviewMessage): Promise<void> {
@@ -159,62 +168,88 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         service.selectRepository(message.repositoryId);
         return;
       case 'toggleFile':
+        this.requireRepository(message.repositoryId);
         service.setFileSelected(message.fileId, message.selected);
         return;
       case 'setGroup':
+        this.requireRepository(message.repositoryId);
         service.setGroup(message.group, message.selected);
         return;
       case 'setCommitMessage':
+        this.requireRepository(message.repositoryId);
         service.setCommitMessage(message.message);
         return;
       case 'openDiff':
-        await this.openDiff(message.fileId);
+        this.requireRepository(message.repositoryId);
+        await this.openDiff(message.repositoryId, message.fileId);
         return;
-      case 'commit':
-        await service.commit(selectedRequest(
-          service.getViewModel(),
+      case 'commit': {
+        const model = this.requireScope(
+          message.repositoryId,
           message.version,
-        ));
+        );
+        await service.commit(selectedRequest(model, message));
         await service.refresh();
         return;
+      }
       case 'commitAndPush':
-        await this.commitAndPush(message.version);
+        await this.commitAndPush(message);
         return;
       case 'selectPushRemote':
+        this.requireScope(message.repositoryId, message.version);
         await service.selectPushRemote({
-          ...this.versionRequest(message.version),
+          repositoryId: message.repositoryId,
+          version: message.version,
           remote: message.remote,
         });
         await service.refresh();
         return;
       case 'retryPush':
-        await this.retryPush(message.version);
+        await this.retryPush(message.repositoryId, message.version);
         return;
       case 'trash':
-        await this.trash(message.version, message.fileIds);
+        await this.trash(
+          message.repositoryId,
+          message.version,
+          message.fileIds,
+        );
         return;
       case 'editRemoteUrl':
-        await this.editRemoteUrl(message.version);
+        await this.editRemoteUrl(message.repositoryId, message.version);
         return;
     }
   }
 
-  private versionRequest(version: number): {
-    readonly repositoryId: string;
-    readonly version: number;
-  } {
-    const repositoryId = this.dependencies.repositoryService
-      .getViewModel().currentRepositoryId;
-    if (repositoryId === undefined) {
-      throw new Error('当前没有打开的 Git 仓库');
+  private requireRepository(repositoryId: string): RepositoryViewModel {
+    const model = this.dependencies.repositoryService.getViewModel();
+    if (model.currentRepositoryId !== repositoryId) {
+      throw new Error('界面来源仓库与当前仓库不一致，请等待刷新');
     }
-    return { repositoryId, version };
+    return model;
   }
 
-  private async commitAndPush(version: number): Promise<void> {
+  private requireScope(
+    repositoryId: string,
+    version: number,
+  ): RepositoryViewModel {
+    const model = this.requireRepository(repositoryId);
+    if (model.version !== version) {
+      throw new Error('仓库状态已变化，请刷新后重试');
+    }
+    return model;
+  }
+
+  private async commitAndPush(
+    message: Extract<WebviewMessage, {
+      readonly type: 'commitAndPush';
+    }>,
+  ): Promise<void> {
     const service = this.dependencies.repositoryService;
-    const initialModel = service.getViewModel();
-    const request = selectedRequest(initialModel, version);
+    const initialModel = this.requireScope(
+      message.repositoryId,
+      message.version,
+    );
+    const request = selectedRequest(initialModel, message);
     const result = await service.commitAndPush(request);
     if (result.kind === 'needs-remote') {
       await this.continuePushWithRemote(request.repositoryId, result);
@@ -254,9 +289,12 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     await service.refresh();
   }
 
-  private async retryPush(version: number): Promise<void> {
+  private async retryPush(
+    repositoryId: string,
+    version: number,
+  ): Promise<void> {
     const service = this.dependencies.repositoryService;
-    const repositoryId = this.versionRequest(version).repositoryId;
+    this.requireScope(repositoryId, version);
     const result = await service.retryPush({ repositoryId, version });
     if (result.kind === 'needs-remote') {
       await this.continuePushWithRemote(repositoryId, result);
@@ -280,12 +318,10 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async openDiff(fileId: string): Promise<void> {
-    const model = this.dependencies.repositoryService.getViewModel();
-    const repositoryId = model.currentRepositoryId;
-    if (repositoryId === undefined) {
-      throw new Error('当前没有打开的 Git 仓库');
-    }
+  private async openDiff(
+    repositoryId: string,
+    fileId: string,
+  ): Promise<void> {
     const service = this.dependencies.repositoryService;
     const repository = service.getRepository(repositoryId);
     const change = service.getFileChange(repositoryId, fileId);
@@ -324,18 +360,12 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async trash(
+    repositoryId: string,
     version: number,
     fileIds: readonly string[],
   ): Promise<void> {
     const service = this.dependencies.repositoryService;
-    const model = service.getViewModel();
-    if (model.currentRepositoryId === undefined) {
-      throw new Error('当前没有打开的 Git 仓库');
-    }
-    if (model.version !== version) {
-      throw new Error('仓库状态已变化，请刷新后重试');
-    }
-    const repositoryId = model.currentRepositoryId;
+    const model = this.requireScope(repositoryId, version);
     const selected = new Set(model.selectedIds);
     const changes = fileIds.map((fileId) => {
       const change = service.getFileChange(repositoryId, fileId);
@@ -369,16 +399,13 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     await service.refresh();
   }
 
-  private async editRemoteUrl(version: number): Promise<void> {
+  private async editRemoteUrl(
+    repositoryId: string,
+    version: number,
+  ): Promise<void> {
     const service = this.dependencies.repositoryService;
-    const model = service.getViewModel();
-    if (model.currentRepositoryId === undefined) {
-      throw new Error('当前没有打开的 Git 仓库');
-    }
-    if (model.version !== version) {
-      throw new Error('仓库状态已变化，请刷新后重试');
-    }
-    const repository = service.getRepository(model.currentRepositoryId);
+    this.requireScope(repositoryId, version);
+    const repository = service.getRepository(repositoryId);
     if (repository === undefined) {
       throw new Error('当前仓库不存在或已关闭');
     }
@@ -441,7 +468,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     }
 
     await service.setRemoteUrl({
-      repositoryId: model.currentRepositoryId,
+      repositoryId,
       version,
       remote: selectedRemote.name,
       url: normalizedUrl,
@@ -449,7 +476,9 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     await service.refresh();
   }
 
-  private async postState(): Promise<void> {
+  private async postState(
+    acknowledgedRequestId?: string,
+  ): Promise<void> {
     const webview = this.webview;
     if (webview === undefined) {
       return;
@@ -457,12 +486,21 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     const message: StateMessage = {
       type: 'state',
       model: this.dependencies.repositoryService.getViewModel(),
+      ...(acknowledgedRequestId === undefined
+        ? {}
+        : { acknowledgedRequestId }),
     };
     await webview.postMessage(message);
   }
 
   private reportError(action: string, error: unknown): void {
     const message = errorMessage(error);
+    if (
+      this.dependencies.repositoryService.getViewModel().operation.kind
+        === 'running'
+    ) {
+      return;
+    }
     if (
       action === '推送'
       && this.dependencies.repositoryService.getViewModel().operation.kind

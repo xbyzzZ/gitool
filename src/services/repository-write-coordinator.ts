@@ -296,6 +296,7 @@ export class RepositoryWriteCoordinator {
     context: WriteContext,
     request: RepositoryCommitRequest,
   ): Promise<CommitResult> {
+    context.state.commitMessage = request.message;
     this.setOperation(context.state, { kind: 'running', action: 'commit' });
     try {
       const result = await this.dependencies.commitService.commit({

@@ -12,6 +12,7 @@ interface VsCodeApi {
 interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
+  readonly acknowledgedRequestId?: string;
 }
 
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -57,6 +58,10 @@ const controls = {
 let currentModel: RepositoryViewModel | undefined;
 let commitMessageTimer: number | undefined;
 let pendingCommitMessage: string | undefined;
+let pendingWriteRequestId: string | undefined;
+let pendingRepositoryId: string | undefined;
+let pendingRepositoryRequestId: string | undefined;
+let writeRequestSequence = 0;
 
 const changeLabels: Readonly<Record<FileChange['kind'], string>> = {
   modified: 'M',
@@ -105,6 +110,7 @@ function layerLabel(change: FileChange): string {
 
 function renderFile(
   change: FileChange,
+  repositoryId: string,
   selected: boolean,
   selectionDisabled: boolean,
 ): HTMLDivElement {
@@ -124,6 +130,7 @@ function renderFile(
   checkbox.addEventListener('change', () => {
     post({
       type: 'toggleFile',
+      repositoryId,
       fileId: change.id,
       selected: checkbox.checked,
     });
@@ -144,7 +151,7 @@ function renderFile(
   path.setAttribute('aria-label', `打开 ${path.title} 的变更`);
   setText(path, path.title);
   path.addEventListener('click', () => {
-    post({ type: 'openDiff', fileId: change.id });
+    post({ type: 'openDiff', repositoryId, fileId: change.id });
   });
 
   const layer = document.createElement('span');
@@ -158,13 +165,19 @@ function renderFile(
 function replaceChildren(
   container: HTMLElement,
   changes: readonly FileChange[],
+  repositoryId: string | undefined,
   selected: ReadonlySet<string>,
   selectionDisabled: boolean,
 ): void {
   const fragment = document.createDocumentFragment();
+  if (repositoryId === undefined) {
+    container.replaceChildren(fragment);
+    return;
+  }
   for (const change of changes) {
     fragment.append(renderFile(
       change,
+      repositoryId,
       selected.has(change.id),
       selectionDisabled,
     ));
@@ -234,7 +247,8 @@ function updateRepository(model: RepositoryViewModel): void {
     for (const repository of model.repositories) {
       const option = document.createElement('option');
       option.value = repository.id;
-      option.selected = repository.id === model.currentRepositoryId;
+      option.selected = repository.id
+        === (pendingRepositoryId ?? model.currentRepositoryId);
       option.title = repository.rootPath;
       setText(option, repository.label);
       options.append(option);
@@ -256,7 +270,16 @@ function updateRepository(model: RepositoryViewModel): void {
   );
 }
 
-function render(model: RepositoryViewModel): void {
+function render(
+  model: RepositoryViewModel,
+  acknowledgeHostState: boolean,
+): void {
+  if (acknowledgeHostState) {
+    if (model.currentRepositoryId === pendingRepositoryId) {
+      pendingRepositoryId = undefined;
+      pendingRepositoryRequestId = undefined;
+    }
+  }
   currentModel = model;
   layout.setAttribute('aria-busy', model.operation.kind === 'running'
     ? 'true'
@@ -269,7 +292,10 @@ function render(model: RepositoryViewModel): void {
   const untracked = model.changes.filter((change) => change.untracked);
   const running = model.operation.kind === 'running';
   const noRepository = model.currentRepositoryId === undefined;
-  const selectionDisabled = running || noRepository;
+  const waitingForRepository = pendingRepositoryId !== undefined;
+  const locallyBusy = pendingWriteRequestId !== undefined
+    || waitingForRepository;
+  const selectionDisabled = running || locallyBusy || noRepository;
 
   setText(
     controls.selectionSummary,
@@ -280,12 +306,14 @@ function render(model: RepositoryViewModel): void {
   replaceChildren(
     controls.trackedGroup,
     tracked,
+    model.currentRepositoryId,
     selected,
     selectionDisabled,
   );
   replaceChildren(
     controls.untrackedGroup,
     untracked,
+    model.currentRepositoryId,
     selected,
     selectionDisabled,
   );
@@ -317,13 +345,16 @@ function render(model: RepositoryViewModel): void {
   const canWrite = model.trusted
     && !noRepository
     && !running
+    && !locallyBusy
     && !hasConflict;
   const canCommit = canWrite
     && selected.size > 0
     && controls.commitMessage.value.trim().length > 0;
 
-  controls.repositorySelect.disabled = running || model.repositories.length < 2;
-  controls.refreshButton.disabled = running;
+  controls.repositorySelect.disabled = running
+    || locallyBusy
+    || model.repositories.length < 2;
+  controls.refreshButton.disabled = running || locallyBusy;
   controls.editRemoteButton.disabled = !canWrite;
   controls.trashButton.disabled = !canWrite || selectedUntracked.length === 0;
   controls.commitMessage.disabled = !canWrite;
@@ -331,7 +362,12 @@ function render(model: RepositoryViewModel): void {
   controls.commitPushButton.disabled = !canCommit || model.detached;
 
   const feedback = operationFeedback(model.operation);
-  setText(controls.operationStatus, feedback.message);
+  setText(
+    controls.operationStatus,
+    feedback.message.length === 0 && pendingWriteRequestId !== undefined
+      ? '正在处理请求…'
+      : feedback.message,
+  );
   setText(controls.errorStatus, feedback.error);
   controls.errorStatus.hidden = feedback.error.length === 0;
   controls.retryPushButton.hidden = !feedback.retry;
@@ -352,11 +388,51 @@ function withModel(callback: (model: RepositoryViewModel) => void): void {
   }
 }
 
+function cancelCommitMessageTimer(): void {
+  if (commitMessageTimer !== undefined) {
+    window.clearTimeout(commitMessageTimer);
+    commitMessageTimer = undefined;
+  }
+}
+
+function beginWrite(
+  model: RepositoryViewModel,
+): {
+  readonly repositoryId: string;
+  readonly version: number;
+  readonly requestId: string;
+} | undefined {
+  if (
+    pendingWriteRequestId !== undefined
+    || pendingRepositoryId !== undefined
+    || model.operation.kind === 'running'
+    || model.currentRepositoryId === undefined
+  ) {
+    return undefined;
+  }
+  writeRequestSequence += 1;
+  pendingWriteRequestId = `write-${String(writeRequestSequence)}`;
+  render(model, false);
+  return {
+    repositoryId: model.currentRepositoryId,
+    version: model.version,
+    requestId: pendingWriteRequestId,
+  };
+}
+
 controls.repositorySelect.addEventListener('change', () => {
   if (controls.repositorySelect.value.length > 0) {
+    pendingRepositoryId = controls.repositorySelect.value;
+    writeRequestSequence += 1;
+    pendingRepositoryRequestId = `switch-${String(writeRequestSequence)}`;
+    cancelCommitMessageTimer();
+    if (currentModel !== undefined) {
+      render(currentModel, false);
+    }
     post({
       type: 'selectRepository',
       repositoryId: controls.repositorySelect.value,
+      requestId: pendingRepositoryRequestId,
     });
   }
 });
@@ -365,60 +441,109 @@ controls.refreshButton.addEventListener('click', () => {
 });
 controls.editRemoteButton.addEventListener('click', () => {
   withModel((model) => {
-    post({ type: 'editRemoteUrl', version: model.version });
+    const scope = beginWrite(model);
+    if (scope !== undefined) {
+      post({ type: 'editRemoteUrl', ...scope });
+    }
   });
 });
 controls.trackedToggle.addEventListener('change', () => {
-  post({
-    type: 'setGroup',
-    group: 'tracked',
-    selected: controls.trackedToggle.checked,
+  withModel((model) => {
+    if (model.currentRepositoryId !== undefined) {
+      post({
+        type: 'setGroup',
+        repositoryId: model.currentRepositoryId,
+        group: 'tracked',
+        selected: controls.trackedToggle.checked,
+      });
+    }
   });
 });
 controls.untrackedToggle.addEventListener('change', () => {
-  post({
-    type: 'setGroup',
-    group: 'untracked',
-    selected: controls.untrackedToggle.checked,
+  withModel((model) => {
+    if (model.currentRepositoryId !== undefined) {
+      post({
+        type: 'setGroup',
+        repositoryId: model.currentRepositoryId,
+        group: 'untracked',
+        selected: controls.untrackedToggle.checked,
+      });
+    }
   });
 });
 controls.trashButton.addEventListener('click', () => {
   withModel((model) => {
+    const scope = beginWrite(model);
+    if (scope === undefined) {
+      return;
+    }
     const selected = selectedSet(model);
     const fileIds = model.changes
       .filter((change) => change.untracked && selected.has(change.id))
       .map((change) => change.id);
     if (fileIds.length > 0) {
-      post({ type: 'trash', version: model.version, fileIds });
+      post({ type: 'trash', ...scope, fileIds });
+    } else {
+      pendingWriteRequestId = undefined;
+      render(model, false);
     }
   });
 });
 controls.commitMessage.addEventListener('input', () => {
   pendingCommitMessage = controls.commitMessage.value;
-  if (commitMessageTimer !== undefined) {
-    window.clearTimeout(commitMessageTimer);
+  cancelCommitMessageTimer();
+  if (currentModel !== undefined) {
+    render(currentModel, false);
+  }
+  const repositoryId = currentModel?.currentRepositoryId;
+  if (repositoryId === undefined) {
+    return;
   }
   commitMessageTimer = window.setTimeout(() => {
     commitMessageTimer = undefined;
     post({
       type: 'setCommitMessage',
+      repositoryId,
       message: controls.commitMessage.value,
     });
   }, 150);
 });
 controls.commitButton.addEventListener('click', () => {
   withModel((model) => {
-    post({ type: 'commit', version: model.version });
+    const message = controls.commitMessage.value;
+    if (message.trim().length === 0) {
+      return;
+    }
+    const scope = beginWrite(model);
+    if (scope === undefined) {
+      return;
+    }
+    cancelCommitMessageTimer();
+    pendingCommitMessage = message;
+    post({ type: 'commit', ...scope, message });
   });
 });
 controls.commitPushButton.addEventListener('click', () => {
   withModel((model) => {
-    post({ type: 'commitAndPush', version: model.version });
+    const message = controls.commitMessage.value;
+    if (message.trim().length === 0) {
+      return;
+    }
+    const scope = beginWrite(model);
+    if (scope === undefined) {
+      return;
+    }
+    cancelCommitMessageTimer();
+    pendingCommitMessage = message;
+    post({ type: 'commitAndPush', ...scope, message });
   });
 });
 controls.retryPushButton.addEventListener('click', () => {
   withModel((model) => {
-    post({ type: 'retryPush', version: model.version });
+    const scope = beginWrite(model);
+    if (scope !== undefined) {
+      post({ type: 'retryPush', ...scope });
+    }
   });
 });
 
@@ -433,7 +558,22 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
     && typeof message.model === 'object'
     && message.model !== null
   ) {
-    render((message as StateMessage).model);
+    const stateMessage = message as StateMessage;
+    if (
+      stateMessage.acknowledgedRequestId !== undefined
+      && stateMessage.acknowledgedRequestId === pendingWriteRequestId
+    ) {
+      pendingWriteRequestId = undefined;
+    }
+    if (
+      stateMessage.acknowledgedRequestId !== undefined
+      && stateMessage.acknowledgedRequestId === pendingRepositoryRequestId
+      && stateMessage.model.currentRepositoryId !== pendingRepositoryId
+    ) {
+      pendingRepositoryId = undefined;
+      pendingRepositoryRequestId = undefined;
+    }
+    render(stateMessage.model, true);
   }
 });
 

@@ -83,14 +83,20 @@ interface ServiceDouble {
   readonly getViewModel: ReturnType<typeof vi.fn>;
   readonly getRepository: ReturnType<typeof vi.fn>;
   readonly commitAndPush: ReturnType<typeof vi.fn>;
+  readonly commit: ReturnType<typeof vi.fn>;
   readonly selectPushRemote: ReturnType<typeof vi.fn>;
+  readonly trash: ReturnType<typeof vi.fn>;
+  readonly reportFailure: ReturnType<typeof vi.fn>;
   readonly setRemoteUrl: ReturnType<typeof vi.fn>;
 }
 
 function createServiceDouble(initialModel = model()): ServiceDouble {
   const getViewModel = vi.fn().mockReturnValue(initialModel);
   const commitAndPush = vi.fn();
+  const commit = vi.fn();
   const selectPushRemote = vi.fn();
+  const trash = vi.fn();
+  const reportFailure = vi.fn().mockReturnValue(true);
   const setRemoteUrl = vi.fn();
   const getRepository = vi.fn().mockReturnValue({
     rootUri: uri('/workspace/repo'),
@@ -103,18 +109,18 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     getViewModel,
     getRepository,
     getFileChange: vi.fn(),
-    reportFailure: vi.fn().mockReturnValue(true),
+    reportFailure,
     reportPushFailure: vi.fn().mockReturnValue(true),
     refresh: vi.fn().mockResolvedValue(initialModel),
     selectRepository: vi.fn(),
     setFileSelected: vi.fn(),
     setGroup: vi.fn(),
     setCommitMessage: vi.fn(),
-    commit: vi.fn(),
+    commit,
     commitAndPush,
     selectPushRemote,
     retryPush: vi.fn(),
-    trash: vi.fn(),
+    trash,
     setRemoteUrl,
   } as unknown as RepositoryService;
   return {
@@ -122,7 +128,10 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     getViewModel,
     getRepository,
     commitAndPush,
+    commit,
     selectPushRemote,
+    trash,
+    reportFailure,
     setRemoteUrl,
   };
 }
@@ -130,10 +139,12 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
 interface ViewHarness {
   readonly view: vscode.WebviewView;
   readonly receive: (message: unknown) => void;
+  readonly postMessage: ReturnType<typeof vi.fn>;
 }
 
 function createViewHarness(): ViewHarness {
   let messageListener: ((message: unknown) => unknown) | undefined;
+  const postMessage = vi.fn().mockResolvedValue(true);
   const webview = {
     cspSource: 'vscode-webview://gitool',
     html: '',
@@ -143,7 +154,7 @@ function createViewHarness(): ViewHarness {
       messageListener = listener;
       return { dispose: vi.fn() };
     },
-    postMessage: vi.fn().mockResolvedValue(true),
+    postMessage,
   } as unknown as vscode.Webview;
   const view = {
     webview,
@@ -151,6 +162,7 @@ function createViewHarness(): ViewHarness {
   } as unknown as vscode.WebviewView;
   return {
     view,
+    postMessage,
     receive: (message) => {
       if (messageListener === undefined) {
         throw new Error('Webview 消息监听器尚未注册');
@@ -197,7 +209,13 @@ describe('GitoolViewProvider', () => {
     const harness = createViewHarness();
     provider.resolveWebviewView(harness.view);
 
-    harness.receive({ type: 'commitAndPush', version: 0 });
+    harness.receive({
+      type: 'commitAndPush',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      message: '提交',
+      requestId: 'request-1',
+    });
 
     await vi.waitFor(() => {
       expect(created.selectPushRemote).toHaveBeenCalledWith({
@@ -230,7 +248,12 @@ describe('GitoolViewProvider', () => {
     const harness = createViewHarness();
     provider.resolveWebviewView(harness.view);
 
-    harness.receive({ type: 'editRemoteUrl', version: 0 });
+    harness.receive({
+      type: 'editRemoteUrl',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      requestId: 'request-1',
+    });
 
     await vi.waitFor(() => {
       expect(vscodeMocks.showInputBox).toHaveBeenCalled();
@@ -255,5 +278,101 @@ describe('GitoolViewProvider', () => {
     expect(JSON.stringify(vscodeMocks.showInputBox.mock.calls))
       .not.toContain('user:secret');
     expect(created.setRemoteUrl).not.toHaveBeenCalled();
+  });
+
+  it('提交使用消息绑定的最终文案而不是旧模型文案', async () => {
+    const initialModel = model({ commitMessage: '旧文案' });
+    const created = createServiceDouble(initialModel);
+    created.commit.mockResolvedValue({
+      commitHash: 'abc123',
+      committedPaths: ['a.ts'],
+    });
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'commit',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      message: '新文案',
+      requestId: 'request-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.commit).toHaveBeenCalledWith(expect.objectContaining({
+        repositoryId: '/workspace/repo',
+        version: 0,
+        message: '新文案',
+      }));
+      expect(harness.postMessage).toHaveBeenCalledWith({
+        type: 'state',
+        model: initialModel,
+        acknowledgedRequestId: 'request-1',
+      });
+    });
+  });
+
+  it('拒绝把旧仓库界面的提交和舍弃请求应用到同版本新仓库', async () => {
+    const created = createServiceDouble(model({
+      currentRepositoryId: '/workspace/repo-b',
+      repositories: [{
+        id: '/workspace/repo-b',
+        label: 'repo-b',
+        rootPath: '/workspace/repo-b',
+      }],
+    }));
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'commit',
+      repositoryId: '/workspace/repo-a',
+      version: 0,
+      message: '仓库 A 的提交',
+      requestId: 'request-1',
+    });
+    harness.receive({
+      type: 'trash',
+      repositoryId: '/workspace/repo-a',
+      version: 0,
+      fileIds: ['a.ts'],
+      requestId: 'request-2',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.reportFailure).toHaveBeenCalledTimes(2);
+    });
+    expect(created.commit).not.toHaveBeenCalled();
+    expect(created.trash).not.toHaveBeenCalled();
+  });
+
+  it('重复写请求被锁拒绝时不覆盖仍在运行的状态', async () => {
+    const runningModel = model({
+      operation: { kind: 'running', action: 'commit' },
+    });
+    const created = createServiceDouble(runningModel);
+    created.commit.mockRejectedValue(new Error('仓库正在执行写操作'));
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'commit',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      message: '提交',
+      requestId: 'request-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.commit).toHaveBeenCalledTimes(1);
+    });
+    expect(created.reportFailure).not.toHaveBeenCalled();
+    expect(created.service.getViewModel().operation).toEqual({
+      kind: 'running',
+      action: 'commit',
+    });
   });
 });

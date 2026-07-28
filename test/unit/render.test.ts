@@ -95,5 +95,6 @@ describe('renderWebviewHtml', () => {
     expect(html).toContain('aria-label="刷新仓库状态"');
     expect(html).toContain('aria-label="提交所选文件"');
     expect(html).toContain('aria-label="提交并推送所选文件"');
+    expect(html).toContain('aria-label="重试推送当前提交"');
   });
 });

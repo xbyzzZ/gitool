@@ -1,33 +1,73 @@
 export type WebviewMessage =
   | { readonly type: 'ready' }
   | { readonly type: 'refresh' }
-  | { readonly type: 'selectRepository'; readonly repositoryId: string }
+  | {
+    readonly type: 'selectRepository';
+    readonly repositoryId: string;
+    readonly requestId: string;
+  }
   | {
     readonly type: 'toggleFile';
+    readonly repositoryId: string;
     readonly fileId: string;
     readonly selected: boolean;
   }
   | {
     readonly type: 'setGroup';
+    readonly repositoryId: string;
     readonly group: 'tracked' | 'untracked';
     readonly selected: boolean;
   }
-  | { readonly type: 'setCommitMessage'; readonly message: string }
-  | { readonly type: 'openDiff'; readonly fileId: string }
-  | { readonly type: 'commit'; readonly version: number }
-  | { readonly type: 'commitAndPush'; readonly version: number }
+  | {
+    readonly type: 'setCommitMessage';
+    readonly repositoryId: string;
+    readonly message: string;
+  }
+  | {
+    readonly type: 'openDiff';
+    readonly repositoryId: string;
+    readonly fileId: string;
+  }
+  | {
+    readonly type: 'commit';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly message: string;
+    readonly requestId: string;
+  }
+  | {
+    readonly type: 'commitAndPush';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly message: string;
+    readonly requestId: string;
+  }
   | {
     readonly type: 'selectPushRemote';
+    readonly repositoryId: string;
     readonly version: number;
     readonly remote: string;
+    readonly requestId: string;
   }
-  | { readonly type: 'retryPush'; readonly version: number }
+  | {
+    readonly type: 'retryPush';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly requestId: string;
+  }
   | {
     readonly type: 'trash';
+    readonly repositoryId: string;
     readonly version: number;
     readonly fileIds: readonly string[];
+    readonly requestId: string;
   }
-  | { readonly type: 'editRemoteUrl'; readonly version: number };
+  | {
+    readonly type: 'editRemoteUrl';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly requestId: string;
+  };
 
 type MessageRecord = Record<string, unknown>;
 
@@ -81,15 +121,66 @@ function requireExactKeys(
   }
 }
 
+function requireRepositoryId(input: MessageRecord): string {
+  if (!isNonEmptyString(input.repositoryId)) {
+    invalid('repositoryId');
+  }
+  return input.repositoryId;
+}
+
 function parseVersionMessage(
   input: MessageRecord,
-  type: 'commit' | 'commitAndPush' | 'retryPush' | 'editRemoteUrl',
+  type: 'retryPush' | 'editRemoteUrl',
 ): WebviewMessage {
-  requireExactKeys(input, ['type', 'version']);
+  requireExactKeys(input, [
+    'type',
+    'repositoryId',
+    'version',
+    'requestId',
+  ]);
+  const repositoryId = requireRepositoryId(input);
   if (!isNonNegativeInteger(input.version)) {
     invalid('version');
   }
-  return { type, version: input.version };
+  if (!isNonEmptyString(input.requestId)) {
+    invalid('requestId');
+  }
+  return {
+    type,
+    repositoryId,
+    version: input.version,
+    requestId: input.requestId,
+  };
+}
+
+function parseCommitMessage(
+  input: MessageRecord,
+  type: 'commit' | 'commitAndPush',
+): WebviewMessage {
+  requireExactKeys(input, [
+    'type',
+    'repositoryId',
+    'version',
+    'message',
+    'requestId',
+  ]);
+  const repositoryId = requireRepositoryId(input);
+  if (!isNonNegativeInteger(input.version)) {
+    invalid('version');
+  }
+  if (typeof input.message !== 'string') {
+    invalid('message');
+  }
+  if (!isNonEmptyString(input.requestId)) {
+    invalid('requestId');
+  }
+  return {
+    type,
+    repositoryId,
+    version: input.version,
+    message: input.message,
+    requestId: input.requestId,
+  };
 }
 
 export function parseWebviewMessage(input: unknown): WebviewMessage {
@@ -106,16 +197,27 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
       requireExactKeys(input, ['type']);
       return { type: input.type };
     case 'selectRepository':
-      requireExactKeys(input, ['type', 'repositoryId']);
+      requireExactKeys(input, ['type', 'repositoryId', 'requestId']);
       if (!isNonEmptyString(input.repositoryId)) {
         invalid('repositoryId');
+      }
+      if (!isNonEmptyString(input.requestId)) {
+        invalid('requestId');
       }
       return {
         type: input.type,
         repositoryId: input.repositoryId,
+        requestId: input.requestId,
       };
     case 'toggleFile':
-      requireExactKeys(input, ['type', 'fileId', 'selected']);
+      requireExactKeys(input, [
+        'type',
+        'repositoryId',
+        'fileId',
+        'selected',
+      ]);
+      {
+        const repositoryId = requireRepositoryId(input);
       if (!isNonEmptyString(input.fileId)) {
         invalid('fileId');
       }
@@ -124,11 +226,20 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
       }
       return {
         type: input.type,
+        repositoryId,
         fileId: input.fileId,
         selected: input.selected,
       };
+      }
     case 'setGroup':
-      requireExactKeys(input, ['type', 'group', 'selected']);
+      requireExactKeys(input, [
+        'type',
+        'repositoryId',
+        'group',
+        'selected',
+      ]);
+      {
+        const repositoryId = requireRepositoryId(input);
       if (input.group !== 'tracked' && input.group !== 'untracked') {
         invalid('group');
       }
@@ -137,47 +248,80 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
       }
       return {
         type: input.type,
+        repositoryId,
         group: input.group,
         selected: input.selected,
       };
+      }
     case 'setCommitMessage':
-      requireExactKeys(input, ['type', 'message']);
+      requireExactKeys(input, ['type', 'repositoryId', 'message']);
+      {
+        const repositoryId = requireRepositoryId(input);
       if (typeof input.message !== 'string') {
         invalid('message');
       }
       return {
         type: input.type,
+        repositoryId,
         message: input.message,
       };
+      }
     case 'openDiff':
-      requireExactKeys(input, ['type', 'fileId']);
+      requireExactKeys(input, ['type', 'repositoryId', 'fileId']);
+      {
+        const repositoryId = requireRepositoryId(input);
       if (!isNonEmptyString(input.fileId)) {
         invalid('fileId');
       }
       return {
         type: input.type,
+        repositoryId,
         fileId: input.fileId,
       };
+      }
     case 'commit':
     case 'commitAndPush':
+      return parseCommitMessage(input, input.type);
     case 'retryPush':
     case 'editRemoteUrl':
       return parseVersionMessage(input, input.type);
     case 'selectPushRemote':
-      requireExactKeys(input, ['type', 'version', 'remote']);
+      requireExactKeys(input, [
+        'type',
+        'repositoryId',
+        'version',
+        'remote',
+        'requestId',
+      ]);
+      {
+        const repositoryId = requireRepositoryId(input);
       if (!isNonNegativeInteger(input.version)) {
         invalid('version');
       }
       if (!isNonEmptyString(input.remote)) {
         invalid('remote');
       }
+      if (!isNonEmptyString(input.requestId)) {
+        invalid('requestId');
+      }
       return {
         type: input.type,
+        repositoryId,
         version: input.version,
         remote: input.remote,
+        requestId: input.requestId,
       };
+      }
     case 'trash':
-      requireExactKeys(input, ['type', 'version', 'fileIds']);
+      requireExactKeys(input, [
+        'type',
+        'repositoryId',
+        'version',
+        'fileIds',
+        'requestId',
+      ]);
+      {
+        const repositoryId = requireRepositoryId(input);
       if (!isNonNegativeInteger(input.version)) {
         invalid('version');
       }
@@ -188,11 +332,17 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
       ) {
         invalid('fileIds');
       }
+      if (!isNonEmptyString(input.requestId)) {
+        invalid('requestId');
+      }
       return {
         type: input.type,
+        repositoryId,
         version: input.version,
         fileIds: [...input.fileIds],
+        requestId: input.requestId,
       };
+      }
     default:
       invalid('type');
   }

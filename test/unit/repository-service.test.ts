@@ -649,6 +649,49 @@ describe('RepositoryService', () => {
     await expect(firstWrite).resolves.toMatchObject({ commitHash: 'abc123' });
   });
 
+  it('延迟提交期间重复提交只调用一次下游且运行态保持到完成', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    let finishCommit: ((value: {
+      readonly commitHash: string;
+      readonly committedPaths: readonly string[];
+    }) => void) | undefined;
+    const commit = vi.fn().mockReturnValue(new Promise((resolveCommit) => {
+      finishCommit = resolveCommit;
+    }));
+    const { service } = createService([repository], true, {
+      commitService: { commit },
+    });
+    const request = {
+      repositoryId: root,
+      version: 0,
+      message: '提交',
+      selectedIds: ['a.ts'],
+    } as const;
+
+    const first = service.commit(request);
+    await expect(service.commit(request))
+      .rejects.toThrow('仓库正在执行写操作');
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(service.getViewModel().operation).toEqual({
+      kind: 'running',
+      action: 'commit',
+    });
+    expect(service.getViewModel().commitMessage).toBe('提交');
+
+    finishCommit?.({
+      commitHash: 'abc123',
+      committedPaths: ['a.ts'],
+    });
+    await expect(first).resolves.toMatchObject({ commitHash: 'abc123' });
+    expect(service.getViewModel().operation).toEqual({
+      kind: 'commit-succeeded',
+      commitHash: 'abc123',
+    });
+  });
+
   it('提交失败时不推送', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {

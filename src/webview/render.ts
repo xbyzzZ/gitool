@@ -94,7 +94,7 @@ export function renderWebviewHtml(
       <p id="loading-status" class="loading-status" role="status">正在加载仓库状态…</p>
       <p id="operation-status" class="operation-status" aria-live="polite"></p>
       <p id="error-status" class="error-status" role="alert" hidden></p>
-      <button id="retry-push-button" class="secondary" type="button" hidden>重试推送</button>
+      <button id="retry-push-button" class="secondary" type="button" aria-label="重试推送当前提交" hidden>重试推送</button>
     </section>
 
     <section class="commit-panel" aria-labelledby="commit-heading">
