@@ -40,7 +40,7 @@ if (vscodeTestEntries.length > 0) {
     outbase: '.',
     outdir: 'dist',
     bundle: true,
-    external: ['vscode'],
+    external: ['vscode', 'mocha'],
     format: 'cjs',
     platform: 'node',
     sourcemap: false,

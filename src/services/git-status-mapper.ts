@@ -65,7 +65,7 @@ function toRawChange(
     path: relativeGitPath(repositoryRoot, change.uri),
     ...(originalPath === undefined ? {} : { originalPath }),
     kind,
-    layer,
+    layer: kind === 'untracked' ? 'untracked' : layer,
   };
 }
 

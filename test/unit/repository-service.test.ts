@@ -439,6 +439,24 @@ describe('RepositoryService', () => {
     });
   });
 
+  it('工作区变更列表中的状态 7 仍识别为未跟踪且默认不选中', () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'new.ts', 7)],
+    });
+    const { service } = createService([repository]);
+
+    expect(service.getViewModel()).toMatchObject({
+      selectedIds: [],
+      changes: [{
+        id: 'new.ts',
+        kind: 'untracked',
+        unstaged: false,
+        untracked: true,
+      }],
+    });
+  });
+
   it('关闭仓库和释放服务时注销对应监听器', () => {
     const repositoryA = new TestRepository('/workspace/repo-a');
     const repositoryB = new TestRepository('/workspace/repo-b');

@@ -9,7 +9,10 @@
     "vscode": "^1.125.0"
   },
   "categories": ["SCM Providers"],
-  "activationEvents": ["onView:gitool.commitView"],
+  "activationEvents": [
+    "onView:gitool.commitView",
+    "onCommand:gitool.refresh"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {

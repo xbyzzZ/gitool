@@ -1,7 +1,10 @@
 .git/**
+.gitignore
+.superpowers/**
 .vscode-test/**
 coverage/**
 docs/**
+dist/test/**
 src/**
 test/**
 node_modules/**
