@@ -70,13 +70,12 @@ describe('SelectionStore', () => {
     expect([...store.reconcile('repo', [tracked('a.ts')])]).toEqual(['a.ts']);
   });
 
-  it('刷新保留人工重新选择的文件', () => {
+  it('刷新保留人工选择的未跟踪文件', () => {
     const store = new SelectionStore();
-    store.reconcile('repo', [tracked('a.ts')]);
-    store.setSelected('repo', 'a.ts', false);
-    store.setSelected('repo', 'a.ts', true);
+    store.reconcile('repo', [untracked('new.txt')]);
+    store.setSelected('repo', 'new.txt', true);
 
-    expect([...store.reconcile('repo', [tracked('a.ts')])]).toEqual(['a.ts']);
+    expect([...store.reconcile('repo', [untracked('new.txt')])]).toEqual(['new.txt']);
   });
 
   it('批量设置同组文件的选择状态', () => {
