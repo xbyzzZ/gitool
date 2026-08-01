@@ -81,6 +81,8 @@ const actionLabels: Readonly<Record<
   push: '正在推送提交…',
   trash: '正在移入废纸篓…',
   remote: '正在修改远程 URL…',
+  fetch: '正在刷新远程状态…',
+  pull: '正在从远程拉取…',
 };
 
 function post(message: WebviewMessage): void {

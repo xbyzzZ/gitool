@@ -3,8 +3,11 @@ import type * as vscode from 'vscode';
 import type { FileChange } from '../domain/change-model.js';
 import { SelectionStore } from '../domain/selection-store.js';
 import type {
+  AiState,
+  HistoryState,
   OperationState,
   RepositoryViewModel,
+  SyncState,
 } from '../domain/view-model.js';
 import type {
   BuiltinGitApi,
@@ -23,6 +26,9 @@ export interface RepositoryContext {
   selectedIds: ReadonlySet<string>;
   commitMessage: string;
   operation: OperationState;
+  sync: SyncState;
+  history: HistoryState;
+  ai: AiState;
 }
 
 interface RepositoryHeadSnapshot {
@@ -158,9 +164,13 @@ export class RepositoryRegistry implements vscode.Disposable {
         : { upstream: `${upstream.remote}/${upstream.name}` }),
       detached: state !== undefined && head?.name === undefined,
       changes: state?.changes ?? [],
+      changeCount: state?.changes.length ?? 0,
       selectedIds: state === undefined ? [] : [...state.selectedIds],
       commitMessage: state?.commitMessage ?? '',
       operation: state?.operation ?? { kind: 'idle' },
+      sync: state?.sync ?? { kind: 'no-upstream' },
+      history: state?.history ?? { kind: 'idle', commits: [] },
+      ai: state?.ai ?? { kind: 'idle' },
     };
   }
 
@@ -236,6 +246,9 @@ export class RepositoryRegistry implements vscode.Disposable {
     }
     this.selectionStore.setSelected(state.id, fileId, selected);
     state.selectedIds = this.selectionStore.reconcile(state.id, state.changes);
+    if (state.ai.kind === 'generating') {
+      state.ai = { kind: 'idle' };
+    }
     const model = this.getViewModel(trusted);
     this.notifyChange();
     return model;
@@ -254,6 +267,9 @@ export class RepositoryRegistry implements vscode.Disposable {
       .map((change) => change.id);
     this.selectionStore.setGroup(state.id, ids, selected);
     state.selectedIds = this.selectionStore.reconcile(state.id, state.changes);
+    if (state.ai.kind === 'generating') {
+      state.ai = { kind: 'idle' };
+    }
     const model = this.getViewModel(trusted);
     this.notifyChange();
     return model;
@@ -338,17 +354,21 @@ export class RepositoryRegistry implements vscode.Disposable {
     }
 
     const lastVersion = this.lastVersions.get(id);
+    const snapshot = captureSnapshot(id, repository);
     const state: RepositoryContext = {
       id,
       rootPath: id,
       repository,
       changeListener: { dispose: () => undefined },
       version: lastVersion === undefined ? 0 : lastVersion + 1,
-      snapshot: captureSnapshot(id, repository),
+      snapshot,
       changes: [],
       selectedIds: new Set<string>(),
       commitMessage: '',
       operation: { kind: 'idle' },
+      sync: this.syncFromSnapshot(snapshot),
+      history: { kind: 'idle', commits: [] },
+      ai: { kind: 'idle' },
     };
     state.changeListener = repository.state.onDidChange(() => {
       this.synchronizeStateIfChanged(state, true);
@@ -414,7 +434,43 @@ export class RepositoryRegistry implements vscode.Disposable {
     );
     if (incrementVersion) {
       state.version += 1;
+      if (state.history.kind === 'loading') {
+        state.history = { kind: 'idle', commits: state.history.commits };
+      }
+      if (state.ai.kind === 'generating') {
+        state.ai = { kind: 'idle' };
+      }
     }
+    if (snapshot.head.name === undefined) {
+      state.sync = { kind: 'detached' };
+    } else if (snapshot.head.upstream === undefined) {
+      state.sync = { kind: 'no-upstream' };
+    } else if (state.sync.kind !== 'ready'
+      || state.sync.upstream !== `${snapshot.head.upstream.remote}/${snapshot.head.upstream.name}`) {
+      state.sync = {
+        kind: 'ready',
+        upstream: `${snapshot.head.upstream.remote}/${snapshot.head.upstream.name}`,
+        ahead: 0,
+        behind: 0,
+      };
+    }
+  }
+
+  private syncFromSnapshot(snapshot: RepositorySnapshot): SyncState {
+    if (snapshot.head.name === undefined) {
+      return snapshot.head.present
+        ? { kind: 'detached' }
+        : { kind: 'no-upstream' };
+    }
+    if (snapshot.head.upstream === undefined) {
+      return { kind: 'no-upstream' };
+    }
+    return {
+      kind: 'ready',
+      upstream: `${snapshot.head.upstream.remote}/${snapshot.head.upstream.name}`,
+      ahead: 0,
+      behind: 0,
+    };
   }
 
   private getCurrent(): RepositoryContext {

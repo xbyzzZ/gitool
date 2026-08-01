@@ -195,6 +195,178 @@ function createService(
 }
 
 describe('RepositoryService', () => {
+  it('默认提供变更数、同步、历史和 AI 状态', () => {
+    const { service } = createService([]);
+
+    expect(service.getViewModel()).toMatchObject({
+      changeCount: 0,
+      sync: { kind: 'no-upstream' },
+      history: { kind: 'idle', commits: [] },
+      ai: { kind: 'idle' },
+    });
+  });
+
+  it('刷新历史后同时更新提交和领先落后位置', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root);
+    repository.setHead({
+      name: 'main',
+      upstream: { remote: 'origin', name: 'main' },
+    });
+    const commits = [{
+      hash: '1'.repeat(40),
+      shortHash: '1111111',
+      parents: [],
+      author: '许博阳',
+      authoredAt: '2026-08-01T10:00:00.000Z',
+      subject: '功能：示例',
+      refs: [],
+      lane: 0,
+      parentLanes: [],
+    }];
+    const historyList = vi.fn().mockResolvedValue({ commits });
+    const aheadBehind = vi.fn().mockResolvedValue({
+      kind: 'ready',
+      upstream: 'origin/main',
+      ahead: 3,
+      behind: 1,
+    });
+    const { service } = createService([repository], true, {
+      historyService: {
+        list: historyList,
+        details: vi.fn(),
+        aheadBehind,
+      },
+    });
+
+    await service.refreshHistory({ repositoryId: root, version: 0 });
+
+    expect(service.getViewModel()).toMatchObject({
+      history: { kind: 'ready', commits },
+      sync: {
+        kind: 'ready',
+        upstream: 'origin/main',
+        ahead: 3,
+        behind: 1,
+      },
+    });
+  });
+
+  it('AI 完成前选择变化时丢弃生成结果', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts'), change(root, 'b.ts')],
+    });
+    let resolveGeneration: ((value: {
+      message: string;
+      excluded: never[];
+      modelId: string;
+    }) => void) | undefined;
+    const generate = vi.fn().mockImplementation(() => new Promise((resolve) => {
+      resolveGeneration = resolve;
+    }));
+    const { service } = createService([repository], true, {
+      aiService: { generate },
+    });
+    const request = service.generateCommitMessage({
+      repositoryId: root,
+      version: 0,
+      selectedIds: ['a.ts', 'b.ts'],
+      density: 'standard',
+    });
+    service.setFileSelected('b.ts', false);
+    resolveGeneration?.({
+      message: '功能：AI 生成',
+      excluded: [],
+      modelId: 'test-model',
+    });
+
+    await expect(request).rejects.toThrow(
+      '仓库状态已变化，本次生成结果已丢弃',
+    );
+    expect(service.getViewModel()).toMatchObject({
+      commitMessage: '',
+      ai: { kind: 'idle' },
+    });
+  });
+
+  it('历史读取期间仓库版本变化时不写回过期结果', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root);
+    let resolveList: ((value: { commits: readonly never[] }) => void)
+      | undefined;
+    const list = vi.fn().mockImplementation(() => new Promise((resolve) => {
+      resolveList = resolve;
+    }));
+    const { service } = createService([repository], true, {
+      historyService: {
+        list,
+        details: vi.fn(),
+        aheadBehind: vi.fn().mockResolvedValue({ kind: 'no-upstream' }),
+      },
+    });
+    const refresh = service.refreshHistory({
+      repositoryId: root,
+      version: 0,
+    });
+    repository.setChanges({ working: [change(root, 'new.ts')] });
+    repository.changed.fire(undefined);
+    resolveList?.({ commits: [] });
+
+    await refresh;
+
+    expect(service.getViewModel()).toMatchObject({
+      version: 1,
+      history: { kind: 'idle', commits: [] },
+    });
+  });
+
+  it('远程同步与提交共享同一仓库写锁', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'a.ts')],
+    });
+    repository.setHead({
+      name: 'main',
+      upstream: { remote: 'origin', name: 'main' },
+    });
+    let finishPull: (() => void) | undefined;
+    const pull = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
+      finishPull = resolve;
+    }));
+    const { service, commit } = createService([repository], true, {
+      syncService: {
+        fetch: vi.fn(),
+        pull,
+        pushAll: vi.fn(),
+      },
+      historyService: {
+        list: vi.fn().mockResolvedValue({ commits: [] }),
+        details: vi.fn(),
+        aheadBehind: vi.fn().mockResolvedValue({
+          kind: 'ready',
+          upstream: 'origin/main',
+          ahead: 0,
+          behind: 0,
+        }),
+      },
+    });
+    const pulling = service.pull({ repositoryId: root, version: 0 });
+    await vi.waitFor(() => {
+      expect(pull).toHaveBeenCalledTimes(1);
+    });
+
+    await expect(service.commit({
+      repositoryId: root,
+      version: 0,
+      message: '提交',
+      selectedIds: ['a.ts'],
+    })).rejects.toThrow('仓库正在执行写操作');
+    expect(commit).not.toHaveBeenCalled();
+
+    finishPull?.();
+    await pulling;
+  });
   it('普通提交写前同分支 HEAD 提交静默前移时拒绝旧请求', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {

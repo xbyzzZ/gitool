@@ -71,9 +71,13 @@ function model(
       conflicted: false,
       commitPaths: ['a.ts'],
     }],
+    changeCount: 1,
     selectedIds: ['a.ts'],
     commitMessage: '提交',
     operation: { kind: 'idle' },
+    sync: { kind: 'no-upstream' },
+    history: { kind: 'idle', commits: [] },
+    ai: { kind: 'idle' },
     ...overrides,
   };
 }
