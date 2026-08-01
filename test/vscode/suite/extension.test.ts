@@ -22,6 +22,21 @@ interface RepositoryState {
   }[];
   readonly changes: readonly FileState[];
   readonly selectedIds: readonly string[];
+  readonly changeCount: number;
+  readonly commitMessage: string;
+  readonly sync: {
+    readonly kind: string;
+    readonly upstream?: string;
+    readonly ahead?: number;
+    readonly behind?: number;
+  };
+  readonly history: {
+    readonly kind: string;
+    readonly commits: readonly {
+      readonly hash: string;
+      readonly refs: readonly { readonly name: string; readonly kind: string }[];
+    }[];
+  };
   readonly operation: {
     readonly kind: string;
     readonly commitHash?: string;
@@ -148,6 +163,11 @@ suite('Gitool 扩展', () => {
     assert.ok(
       !refreshed.selectedIds.includes(untracked.id),
       '刷新后未跟踪文件仍应保持未选中',
+    );
+    assert.equal(
+      refreshed.changeCount,
+      refreshed.changes.length,
+      '活动栏徽标计数来源应等于当前仓库全部变更文件数',
     );
   });
 
@@ -311,6 +331,58 @@ suite('Gitool 扩展', () => {
       await git(retryRemote, ['rev-parse', 'refs/heads/main']),
       failedCommit,
       '重试应把失败状态记录的精确提交推送到远程',
+    );
+
+    for (let index = 1; index <= 3; index += 1) {
+      await git(repositoryA.id, [
+        'commit',
+        '--allow-empty',
+        '-m',
+        `测试：本地领先 ${String(index)}`,
+      ]);
+    }
+    await vscode.commands.executeCommand('gitool.test.refresh');
+    state = await vscode.commands.executeCommand<RepositoryState>(
+      'gitool.test.refreshHistory',
+    );
+    assert.equal(state.history.kind, 'ready');
+    assert.equal(state.sync.kind, 'ready');
+    assert.equal(state.sync.upstream, 'origin/main');
+    assert.equal(state.sync.ahead, 3, '应识别本地 HEAD 领先远程三个提交');
+    assert.equal(state.sync.behind, 0);
+    assert.ok(
+      state.history.commits.some((commit) => commit.refs.some(
+        (ref) => ref.kind === 'head' && ref.name === 'main',
+      )),
+      '历史中应标出本地 HEAD 位置',
+    );
+    assert.ok(
+      state.history.commits.some((commit) => commit.refs.some(
+        (ref) => ref.kind === 'remote' && ref.name === 'origin/main',
+      )),
+      '历史中应标出远程引用位置',
+    );
+
+    await vscode.commands.executeCommand('gitool.test.pushAll');
+    assert.equal(
+      await git(retryRemote, ['rev-parse', 'refs/heads/main']),
+      await git(repositoryA.id, ['rev-parse', 'HEAD']),
+      '推送全部应一次同步三个本地领先提交',
+    );
+
+    await writeFile(
+      join(repositoryA.id, 'tracked.txt'),
+      '用于 AI 提交信息生成\n',
+      'utf8',
+    );
+    await vscode.commands.executeCommand('gitool.test.refresh');
+    state = await vscode.commands.executeCommand<RepositoryState>(
+      'gitool.test.generateCommitMessage',
+    );
+    assert.equal(
+      state.commitMessage,
+      '测试：由 VS Code AI 适配器生成',
+      '测试适配器应只在 Extension Host 测试模式生成提交信息',
     );
   });
 });

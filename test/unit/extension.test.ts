@@ -95,6 +95,7 @@ vi.mock('vscode', () => ({
     fs: { delete: mocks.deleteFile },
     isTrusted: true,
     onDidGrantWorkspaceTrust: mocks.onDidGrantWorkspaceTrust,
+    registerTextDocumentContentProvider: vi.fn(() => ({ dispose: vi.fn() })),
   },
 }));
 

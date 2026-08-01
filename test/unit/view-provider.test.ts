@@ -18,6 +18,12 @@ vi.mock('vscode', () => ({
   commands: { executeCommand: vscodeMocks.executeCommand },
   FileType: { Directory: 2 },
   Uri: {
+    from: (components: { readonly scheme: string; readonly path: string }) => ({
+      scheme: components.scheme,
+      path: components.path,
+      fsPath: components.path,
+      toString: () => `${components.scheme}:${components.path}`,
+    }),
     joinPath: (base: vscode.Uri, ...parts: readonly string[]) => uri(
       [base.path, ...parts].join('/').replaceAll('//', '/'),
     ),
@@ -226,6 +232,22 @@ beforeEach(() => {
 });
 
 describe('GitoolViewProvider', () => {
+  it('Webview 就绪时自动读取当前仓库提交历史', async () => {
+    const created = createServiceDouble();
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({ type: 'ready' });
+
+    await vi.waitFor(() => {
+      expect(created.refreshHistory).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+      });
+    });
+  });
+
   it('在活动栏徽标显示当前仓库改动文件数并在清空后移除', async () => {
     const created = createServiceDouble(model({ changeCount: 4 }));
     const provider = createProvider(created.service);
@@ -374,6 +396,36 @@ describe('GitoolViewProvider', () => {
         selectedIds: ['a.ts'],
         density: 'detailed',
       }, expect.any(AbortSignal));
+    });
+  });
+
+  it('历史新增文件使用空文档而不是把 Git 索引当作父版本', async () => {
+    const created = createServiceDouble();
+    created.loadCommitDetails.mockResolvedValue({
+      hash: 'a'.repeat(40),
+      parentHash: 'b'.repeat(40),
+      files: [{ status: 'A', path: 'src/new.ts' }],
+    });
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'openCommitDiff',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      hash: 'a'.repeat(40),
+      path: 'src/new.ts',
+      requestId: 'diff-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(vscodeMocks.executeCommand).toHaveBeenCalledWith(
+        'vscode.diff',
+        expect.objectContaining({ scheme: 'gitool-empty' }),
+        expect.not.objectContaining({ scheme: 'gitool-empty' }),
+        expect.stringContaining('历史提交'),
+      );
     });
   });
   it('选择远程后继续推送原提交且不再次提交', async () => {

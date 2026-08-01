@@ -193,7 +193,17 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     const service = this.dependencies.repositoryService;
     switch (message.type) {
       case 'ready':
-        await this.postState();
+        {
+          const model = service.getViewModel();
+          if (model.currentRepositoryId === undefined) {
+            await this.postState();
+          } else {
+            await service.refreshHistory({
+              repositoryId: model.currentRepositoryId,
+              version: model.version,
+            });
+          }
+        }
         return;
       case 'refresh':
         await service.refresh();
@@ -400,14 +410,23 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     const originalPath = file.originalPath ?? file.path;
     const leftFile = vscode.Uri.joinPath(repository.rootUri, originalPath);
     const rightFile = vscode.Uri.joinPath(repository.rootUri, file.path);
-    const leftRef = file.status.startsWith('A')
-      ? '~'
-      : (details.parentHash ?? '~');
-    const rightRef = file.status.startsWith('D') ? '~' : details.hash;
+    const emptyUri = vscode.Uri.from({
+      scheme: 'gitool-empty',
+      path: `/${details.hash}/${file.path}`,
+    });
+    const leftUri = file.status.startsWith('A')
+      ? emptyUri
+      : this.dependencies.gitApi.toGitUri(
+          leftFile,
+          details.parentHash ?? details.hash,
+        );
+    const rightUri = file.status.startsWith('D')
+      ? emptyUri
+      : this.dependencies.gitApi.toGitUri(rightFile, details.hash);
     await vscode.commands.executeCommand(
       'vscode.diff',
-      this.dependencies.gitApi.toGitUri(leftFile, leftRef),
-      this.dependencies.gitApi.toGitUri(rightFile, rightRef),
+      leftUri,
+      rightUri,
       `${file.originalPath === undefined ? file.path : `${file.originalPath} → ${file.path}`}（历史提交 ${details.hash.slice(0, 7)}）`,
     );
   }

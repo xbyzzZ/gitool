@@ -168,6 +168,24 @@ function createAiService(git: GitRunner): CommitMessageAiService {
   });
 }
 
+function createTestAiService(): CommitMessageAiService {
+  return new CommitMessageAiService({
+    selectModels: () => Promise.resolve([{
+      id: 'gitool-test-model',
+      maxInputTokens: 16_384,
+    }]),
+    readSelectedDiff: (request) => Promise.resolve({
+      files: request.selectedPaths.map((path) => ({
+        path,
+        status: '变更',
+        diff: `测试差异：${path}`,
+      })),
+      excluded: [],
+    }),
+    sendRequest: () => Promise.resolve('测试：由 VS Code AI 适配器生成'),
+  });
+}
+
 class Runtime implements GitoolRuntime {
   private disposed = false;
 
@@ -331,6 +349,10 @@ function registerErrorRuntime(
       GitoolViewProvider.viewType,
       provider,
     ));
+    disposables.push(vscode.workspace.registerTextDocumentContentProvider(
+      'gitool-empty',
+      { provideTextDocumentContent: () => '' },
+    ));
     disposables.push(vscode.commands.registerCommand(
       'gitool.refresh',
       async () => {
@@ -391,7 +413,9 @@ function registerReadyRuntime(
       operationLock: new RepositoryOperationLock(),
       historyService: new HistoryService(git),
       syncService: new SyncService(),
-      aiService: createAiService(git),
+      aiService: context.extensionMode === vscode.ExtensionMode.Test
+        ? createTestAiService()
+        : createAiService(git),
       isWorkspaceTrusted: () => vscode.workspace.isTrusted,
     });
     disposables.push(repositoryService);
@@ -510,6 +534,36 @@ function registerReadyRuntime(
           });
           await repositoryService.refresh();
           return result;
+        },
+      ));
+      disposables.push(vscode.commands.registerCommand(
+        'gitool.test.refreshHistory',
+        async (): Promise<RepositoryViewModel> => {
+          const scope = currentScope();
+          await repositoryService.refreshHistory(scope);
+          return repositoryService.getViewModel();
+        },
+      ));
+      disposables.push(vscode.commands.registerCommand(
+        'gitool.test.pushAll',
+        async (selectedRemote?: string) => {
+          const scope = currentScope();
+          return await repositoryService.pushAll({
+            repositoryId: scope.repositoryId,
+            version: scope.version,
+            ...(selectedRemote === undefined ? {} : { selectedRemote }),
+          });
+        },
+      ));
+      disposables.push(vscode.commands.registerCommand(
+        'gitool.test.generateCommitMessage',
+        async (): Promise<RepositoryViewModel> => {
+          const scope = currentScope();
+          await repositoryService.generateCommitMessage({
+            ...scope,
+            density: 'standard',
+          });
+          return repositoryService.getViewModel();
         },
       ));
     }

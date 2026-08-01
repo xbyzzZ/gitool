@@ -2,6 +2,7 @@
 .worktrees/**
 .gitignore
 .superpowers/**
+.serena/**
 .vscode-test/**
 coverage/**
 docs/**
