@@ -30,6 +30,8 @@ export interface BuiltinRepository {
     readonly onDidChange: vscode.Event<void>;
   };
   status(): Promise<void>;
+  fetch(): Promise<void>;
+  pull(): Promise<void>;
   push(
     remoteName?: string,
     branchName?: string,

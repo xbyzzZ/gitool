@@ -79,6 +79,14 @@ class TestRepository implements BuiltinRepository {
     return Promise.resolve();
   }
 
+  fetch(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  pull(): Promise<void> {
+    return Promise.resolve();
+  }
+
   push(): Promise<void> {
     return Promise.resolve();
   }
