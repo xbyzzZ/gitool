@@ -15,6 +15,7 @@ body {
 
 body {
   margin: 0;
+  padding: 0;
   overflow: hidden;
   color: var(--vscode-foreground);
   background: var(--vscode-sideBar-background);
@@ -70,7 +71,6 @@ input:disabled {
   min-height: 34px;
   flex: none;
   overflow: hidden;
-  border: 1px solid var(--vscode-sideBar-border, var(--vscode-widget-border, transparent));
   background: var(--vscode-sideBar-background);
 }
 
