@@ -89,8 +89,6 @@ export function renderWebviewHtml(
       <header class="pane-header">
         <h2 id="changes-heading">当前变更 <span id="selection-summary" class="pane-summary">已选择 0 个文件</span></h2>
         <div class="pane-actions">
-          <button id="pull-button" class="icon-button" type="button" aria-label="从远程拉取" title="从远程拉取">↓</button>
-          <button id="push-all-button" class="icon-button" type="button" aria-label="将全部本地提交推送到远程" title="推送全部">↑</button>
           <button id="fetch-history-button" class="icon-button" type="button" aria-label="刷新远程状态" title="刷新远程状态">↻</button>
           <button id="refresh-button" class="icon-button" type="button" aria-label="刷新仓库状态" title="刷新仓库状态">刷新</button>
           <button id="collapse-changes-button" class="icon-button" type="button" aria-label="折叠当前变更" title="折叠当前变更">⌃</button>
@@ -138,6 +136,8 @@ export function renderWebviewHtml(
       <header class="pane-header">
         <h2 id="history-heading">提交历史 <span id="sync-summary" class="pane-summary"></span></h2>
         <div class="pane-actions">
+          <button id="pull-button" class="icon-button" type="button" aria-label="从远程拉取" title="从远程拉取">↓</button>
+          <button id="push-all-button" class="icon-button" type="button" aria-label="将全部本地提交推送到远程" title="推送全部">↑</button>
           <button id="refresh-history-button" class="icon-button" type="button" aria-label="刷新提交历史" title="刷新提交历史">↻</button>
           <button id="collapse-history-button" class="icon-button" type="button" aria-label="折叠提交历史" title="折叠提交历史">⌃</button>
         </div>

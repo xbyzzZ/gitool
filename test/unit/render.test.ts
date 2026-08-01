@@ -80,6 +80,23 @@ describe('renderWebviewHtml', () => {
     expect(html).toContain('id="collapse-history-button"');
   });
 
+  it('把拉取和推送操作放在提交历史标题栏', () => {
+    const html = renderWebviewHtml(
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
+    );
+    const changesStart = html.indexOf('class="changes-panel workbench-pane"');
+    const historyStart = html.indexOf('class="history-panel workbench-pane"');
+    const pullButton = html.indexOf('id="pull-button"');
+    const pushButton = html.indexOf('id="push-all-button"');
+
+    expect(changesStart).toBeGreaterThan(-1);
+    expect(historyStart).toBeGreaterThan(changesStart);
+    expect(pullButton).toBeGreaterThan(historyStart);
+    expect(pushButton).toBeGreaterThan(historyStart);
+  });
+
   it('只生成固定壳，不包含动态仓库数据或敏感文本', () => {
     const html = renderWebviewHtml(
       createWebview(),
