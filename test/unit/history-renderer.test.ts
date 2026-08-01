@@ -31,18 +31,32 @@ describe('renderCommitRowMarkup', () => {
     expect(html).not.toContain('class="commit-files"');
   });
 
-  it('展开时把文件放入提交行下方且转义 Git 文本', () => {
+  it('展开时把文件名、目录、图标和状态放入连续文件行', () => {
     const html = renderCommitRowMarkup({
       ...commit,
       subject: '<script>危险</script>',
     }, {
       expanded: true,
-      files: [{ status: 'M', path: 'src/<client>.ts' }],
+      files: [
+        { status: 'M', path: 'src/webview/render.ts' },
+        { status: 'A', path: '.gitignore' },
+      ],
       now: new Date('2026-08-01T10:01:00.000Z'),
     });
 
     expect(html).toContain('class="commit-files"');
-    expect(html).toContain('src/&lt;client&gt;.ts');
+    expect(html.match(/class="commit-file-graph"/gu)).toHaveLength(2);
+    expect(html).toContain('class="commit-file-icon file-icon blue"');
+    expect(html).toContain('>TS</span>');
+    expect(html).toContain('class="commit-file-name">render.ts</span>');
+    expect(html).toContain(
+      'class="commit-file-directory">src/webview</span>',
+    );
+    expect(html).toContain('class="commit-file-icon file-icon yellow"');
+    expect(html).toContain('class="commit-file-name">.gitignore</span>');
+    expect(html).not.toContain('class="commit-file-directory"></span>');
+    expect(html).toContain('data-path="src/webview/render.ts"');
+    expect(html).toContain('class="commit-file-status">M</span>');
     expect(html).not.toContain('<script>');
   });
 });

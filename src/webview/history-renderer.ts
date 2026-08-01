@@ -2,6 +2,7 @@ import type {
   CommitFile,
   CommitGraphNode,
 } from '../domain/history-model.js';
+import { resolveFileIcon } from './file-icons.js';
 
 export interface CommitRowRenderOptions {
   readonly expanded?: boolean;
@@ -50,6 +51,17 @@ function refMarkup(commit: CommitGraphNode): string {
   }).join('');
 }
 
+function splitFilePath(path: string): {
+  readonly name: string;
+  readonly directory: string;
+} {
+  const segments = path.split('/');
+  return {
+    name: segments.pop() ?? path,
+    directory: segments.join('/'),
+  };
+}
+
 export function renderCommitRowMarkup(
   commit: CommitGraphNode,
   options: CommitRowRenderOptions = {},
@@ -61,12 +73,19 @@ export function renderCommitRowMarkup(
   )} · ${commit.shortHash}`;
   const title = `${commit.subject}\n${commit.author} · ${commit.authoredAt} · ${commit.hash}`;
   const files = expanded
-    ? `<div class="commit-files">${(options.files ?? []).map((file) => (
-      `<button class="commit-file" type="button" data-path="${escapeHtml(file.path)}">`
-      + `<span class="commit-file-status">${escapeHtml(file.status)}</span>`
-      + `<span class="commit-file-path">${escapeHtml(file.path)}</span>`
-      + '</button>'
-    )).join('')}</div>`
+    ? `<div class="commit-files">${(options.files ?? []).map((file) => {
+      const path = splitFilePath(file.path);
+      const icon = resolveFileIcon(file.path);
+      return `<button class="commit-file" type="button" data-path="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}">`
+        + '<span class="commit-file-graph" aria-hidden="true"></span>'
+        + `<span class="commit-file-icon file-icon ${icon.color}" aria-hidden="true">${escapeHtml(icon.glyph)}</span>`
+        + `<span class="commit-file-name">${escapeHtml(path.name)}</span>`
+        + (path.directory.length === 0
+          ? ''
+          : `<span class="commit-file-directory">${escapeHtml(path.directory)}</span>`)
+        + `<span class="commit-file-status">${escapeHtml(file.status)}</span>`
+        + '</button>';
+    }).join('')}</div>`
     : '';
   return `<article class="commit-entry${expanded ? ' expanded' : ''}" data-hash="${commit.hash}">`
     + `<button class="commit-row" type="button" role="treeitem" aria-expanded="${String(expanded)}" title="${escapeHtml(title)}">`
