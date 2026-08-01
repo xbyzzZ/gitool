@@ -98,6 +98,8 @@ interface ServiceDouble {
   readonly trash: ReturnType<typeof vi.fn>;
   readonly reportFailure: ReturnType<typeof vi.fn>;
   readonly setRemoteUrl: ReturnType<typeof vi.fn>;
+  readonly addRemote: ReturnType<typeof vi.fn>;
+  readonly refresh: ReturnType<typeof vi.fn>;
   readonly refreshHistory: ReturnType<typeof vi.fn>;
   readonly loadCommitDetails: ReturnType<typeof vi.fn>;
   readonly fetchHistory: ReturnType<typeof vi.fn>;
@@ -115,6 +117,8 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
   const trash = vi.fn();
   const reportFailure = vi.fn().mockReturnValue(true);
   const setRemoteUrl = vi.fn();
+  const addRemote = vi.fn();
+  const refresh = vi.fn().mockResolvedValue(initialModel);
   const refreshHistory = vi.fn().mockResolvedValue(undefined);
   const loadCommitDetails = vi.fn();
   const fetchHistory = vi.fn().mockResolvedValue(undefined);
@@ -138,7 +142,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     getFileChange: vi.fn(),
     reportFailure,
     reportPushFailure: vi.fn().mockReturnValue(true),
-    refresh: vi.fn().mockResolvedValue(initialModel),
+    refresh,
     selectRepository: vi.fn(),
     setFileSelected: vi.fn(),
     setGroup: vi.fn(),
@@ -149,6 +153,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     retryPush: vi.fn(),
     trash,
     setRemoteUrl,
+    addRemote,
     refreshHistory,
     loadCommitDetails,
     fetchHistory,
@@ -166,6 +171,8 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     trash,
     reportFailure,
     setRemoteUrl,
+    addRemote,
+    refresh,
     refreshHistory,
     loadCommitDetails,
     fetchHistory,
@@ -519,6 +526,128 @@ describe('GitoolViewProvider', () => {
     expect(JSON.stringify(vscodeMocks.showInputBox.mock.calls))
       .not.toContain('user:secret');
     expect(created.setRemoteUrl).not.toHaveBeenCalled();
+  });
+
+  it('无远程时收集 URL 并添加 origin', async () => {
+    const created = createServiceDouble();
+    created.addRemote.mockResolvedValue({
+      name: 'origin',
+      url: 'https://example.test/repo.git',
+    });
+    vscodeMocks.showInputBox.mockResolvedValue(
+      'https://example.test/repo.git',
+    );
+    vscodeMocks.showWarningMessage.mockResolvedValue('确认添加');
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'editRemoteUrl',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      requestId: 'add-remote-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.addRemote).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+        remote: 'origin',
+        url: 'https://example.test/repo.git',
+      });
+    });
+    expect(vscodeMocks.showInputBox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Gitool：添加远程 origin',
+        value: '',
+      }),
+    );
+    expect(vscodeMocks.showQuickPick).not.toHaveBeenCalled();
+    expect(created.refresh).toHaveBeenCalledOnce();
+    expect(created.reportFailure).not.toHaveBeenCalled();
+  });
+
+  it('无远程时取消输入不写入失败状态', async () => {
+    const created = createServiceDouble();
+    vscodeMocks.showInputBox.mockResolvedValue(undefined);
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'editRemoteUrl',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      requestId: 'add-remote-cancel-input',
+    });
+
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          acknowledgedRequestId: 'add-remote-cancel-input',
+        }),
+      );
+    });
+    expect(created.addRemote).not.toHaveBeenCalled();
+    expect(created.setRemoteUrl).not.toHaveBeenCalled();
+    expect(created.reportFailure).not.toHaveBeenCalled();
+  });
+
+  it('添加远程时遮蔽确认信息中的凭据但写入原始 URL', async () => {
+    const created = createServiceDouble();
+    const sensitiveUrl = 'https://user:secret@example.test/repo.git';
+    vscodeMocks.showInputBox.mockResolvedValue(sensitiveUrl);
+    vscodeMocks.showWarningMessage.mockResolvedValue('确认添加');
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'editRemoteUrl',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      requestId: 'add-remote-sensitive',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.addRemote).toHaveBeenCalledWith(
+        expect.objectContaining({ url: sensitiveUrl }),
+      );
+    });
+    expect(JSON.stringify(vscodeMocks.showWarningMessage.mock.calls))
+      .not.toContain('user:secret');
+    expect(JSON.stringify(vscodeMocks.showWarningMessage.mock.calls))
+      .toContain('https://***:***@example.test/repo.git');
+  });
+
+  it('无远程时取消确认不添加 origin', async () => {
+    const created = createServiceDouble();
+    vscodeMocks.showInputBox.mockResolvedValue(
+      'https://example.test/repo.git',
+    );
+    vscodeMocks.showWarningMessage.mockResolvedValue(undefined);
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'editRemoteUrl',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      requestId: 'add-remote-cancel-confirm',
+    });
+
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          acknowledgedRequestId: 'add-remote-cancel-confirm',
+        }),
+      );
+    });
+    expect(created.addRemote).not.toHaveBeenCalled();
+    expect(created.setRemoteUrl).not.toHaveBeenCalled();
+    expect(created.reportFailure).not.toHaveBeenCalled();
   });
 
   it('提交使用消息绑定的最终文案而不是旧模型文案', async () => {

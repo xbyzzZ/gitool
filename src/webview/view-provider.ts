@@ -621,7 +621,8 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       throw new Error('当前仓库不存在或已关闭');
     }
     if (repository.state.remotes.length === 0) {
-      throw new Error('当前仓库没有可修改的远程');
+      await this.addRemote(repositoryId, version);
+      return;
     }
 
     const remote = await vscode.window.showQuickPick<RemotePickItem>(
@@ -685,6 +686,44 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       url: normalizedUrl,
     });
     await service.refresh();
+  }
+
+  private async addRemote(
+    repositoryId: string,
+    version: number,
+  ): Promise<void> {
+    const url = await vscode.window.showInputBox({
+      title: 'Gitool：添加远程 origin',
+      prompt: '请输入完整的远程仓库 URL',
+      value: '',
+      ignoreFocusOut: true,
+      validateInput: (value) => value.trim().length === 0
+        ? '远程 URL 不能为空'
+        : undefined,
+    });
+    if (url === undefined) {
+      return;
+    }
+    const normalizedUrl = url.trim();
+    const confirmed = await vscode.window.showWarningMessage(
+      '确认添加远程 origin？',
+      {
+        modal: true,
+        detail: `远程 URL：${redactSensitiveText(normalizedUrl)}`,
+      },
+      '确认添加',
+    );
+    if (confirmed !== '确认添加') {
+      return;
+    }
+
+    await this.dependencies.repositoryService.addRemote({
+      repositoryId,
+      version,
+      remote: 'origin',
+      url: normalizedUrl,
+    });
+    await this.dependencies.repositoryService.refresh();
   }
 
   private async postState(
