@@ -13,6 +13,10 @@ function removeOutputLineEnding(output: string): string {
   return output.replace(/\r?\n$/u, '');
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function remoteUrlMatches(
   git: GitRunner,
   repositoryRoot: string,
@@ -62,6 +66,37 @@ export class RemoteService {
 
     await this.git.run(repositoryRoot, ['remote', 'set-url', '--', name, url]);
     if (!await remoteUrlMatches(this.git, repositoryRoot, name, url)) {
+      throw new Error(`远程 ${name} URL 写入后核对失败`);
+    }
+    return { name, url: redactSensitiveText(url) };
+  }
+
+  async add(
+    repositoryRoot: string,
+    name: string,
+    url: string,
+  ): Promise<RemoteInfo> {
+    if (name.trim().length === 0) {
+      throw new RangeError('远程名称不能为空');
+    }
+    if (url.trim().length === 0) {
+      throw new RangeError('远程 URL 不能为空');
+    }
+
+    const remotes = await this.getRemotes(repositoryRoot);
+    if (remotes.some((remote) => remote.name === name)) {
+      throw new Error(`远程 ${name} 已存在`);
+    }
+
+    await this.git.run(repositoryRoot, ['remote', 'add', '--', name, url]);
+    if (!await remoteUrlMatches(this.git, repositoryRoot, name, url)) {
+      try {
+        await this.git.run(repositoryRoot, ['remote', 'remove', '--', name]);
+      } catch (error) {
+        throw new Error(
+          `远程 ${name} URL 写入后核对失败；回滚失败：${errorMessage(error)}`,
+        );
+      }
       throw new Error(`远程 ${name} URL 写入后核对失败`);
     }
     return { name, url: redactSensitiveText(url) };

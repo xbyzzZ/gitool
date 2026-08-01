@@ -46,6 +46,44 @@ class MismatchedCredentialGitRunner extends GitRunner {
   }
 }
 
+class MismatchedAddedRemoteGitRunner extends GitRunner {
+  readonly calls: readonly string[][] = [];
+
+  constructor(private readonly failRemove = false) {
+    super();
+  }
+
+  override run(
+    _repositoryRoot: string,
+    args: readonly string[],
+  ): Promise<GitResult> {
+    (this.calls as string[][]).push([...args]);
+    if (args[0] === 'remote' && args.length === 1) {
+      return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 });
+    }
+    if (args[0] === 'remote' && args[1] === 'add') {
+      return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 });
+    }
+    if (args[0] === 'remote' && args[1] === 'remove') {
+      if (this.failRemove) {
+        return Promise.reject(new Error('模拟回滚失败'));
+      }
+      return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 });
+    }
+    return Promise.reject(new Error(`未预期的 Git 命令：${args.join(' ')}`));
+  }
+
+  override runForMachineParsing(
+    _repositoryRoot: string,
+    args: readonly string[],
+  ): Promise<GitMachineOutput> {
+    (this.calls as string[][]).push([...args]);
+    return Promise.resolve({
+      rawStdout: 'https://example.test/unexpected.git\n',
+    });
+  }
+}
+
 async function createRepository(): Promise<TestRepository> {
   const repository = await createTestRepository();
   repositories.push(repository);
@@ -80,6 +118,86 @@ describe('RemoteService', () => {
       name: 'origin',
       url: remote,
     }]);
+  });
+
+  it('添加 origin 后重新读取并核对 URL', async () => {
+    const repository = await createRepository();
+    const remote = await createBareRemote();
+    const service = new RemoteService(new GitRunner());
+
+    await expect(service.add(repository.root, 'origin', remote))
+      .resolves.toEqual({ name: 'origin', url: remote });
+    expect(await repository.git('remote', 'get-url', 'origin')).toBe(remote);
+  });
+
+  it('拒绝使用空白 URL 添加远程', async () => {
+    const repository = await createRepository();
+    const service = new RemoteService(new GitRunner());
+
+    await expect(service.add(repository.root, 'origin', '  '))
+      .rejects.toThrow('远程 URL 不能为空');
+    expect(await repository.git('remote')).toBe('');
+  });
+
+  it('拒绝使用空白名称添加远程', async () => {
+    const repository = await createRepository();
+    const service = new RemoteService(new GitRunner());
+
+    await expect(service.add(
+      repository.root,
+      '  ',
+      'https://example.test/repo.git',
+    )).rejects.toThrow('远程名称不能为空');
+    expect(await repository.git('remote')).toBe('');
+  });
+
+  it('拒绝覆盖同名远程', async () => {
+    const repository = await createRepository();
+    const remoteA = await createBareRemote();
+    const remoteB = await createBareRemote();
+    await repository.git('remote', 'add', 'origin', remoteA);
+    const service = new RemoteService(new GitRunner());
+
+    await expect(service.add(repository.root, 'origin', remoteB))
+      .rejects.toThrow('远程 origin 已存在');
+    expect(await repository.git('remote', 'get-url', 'origin')).toBe(remoteA);
+  });
+
+  it('新增远程写后核对失败时移除本次配置', async () => {
+    const git = new MismatchedAddedRemoteGitRunner();
+    const service = new RemoteService(git);
+
+    await expect(service.add(
+      '/test/repository',
+      'origin',
+      'https://example.test/expected.git',
+    )).rejects.toThrow('远程 origin URL 写入后核对失败');
+    expect(git.calls).toEqual([
+      ['remote'],
+      [
+        'remote',
+        'add',
+        '--',
+        'origin',
+        'https://example.test/expected.git',
+      ],
+      ['remote', 'get-url', '--', 'origin'],
+      ['remote', 'remove', '--', 'origin'],
+    ]);
+  });
+
+  it('新增远程核对和回滚都失败时保留两段错误原因', async () => {
+    const service = new RemoteService(
+      new MismatchedAddedRemoteGitRunner(true),
+    );
+
+    await expect(service.add(
+      '/test/repository',
+      'origin',
+      'https://example.test/expected.git',
+    )).rejects.toThrow(
+      '远程 origin URL 写入后核对失败；回滚失败：模拟回滚失败',
+    );
   });
 
   it('修改已有远程 URL 后重新读取结果', async () => {
