@@ -36,7 +36,7 @@ function compareText(left: string, right: string): number {
   return 0;
 }
 
-function directoryName(path: string): string {
+export function directoryPath(path: string): string {
   const separator = path.lastIndexOf('/');
   return separator <= 0 ? '.' : path.slice(0, separator);
 }
@@ -51,7 +51,7 @@ export function groupChanges(
 
   for (const change of changes) {
     const kind = sectionKind(change);
-    const directory = directoryName(change.path);
+    const directory = directoryPath(change.path);
     const directories = sections.get(kind) ?? new Map<string, FileChange[]>();
     const files = directories.get(directory) ?? [];
     files.push(change);
