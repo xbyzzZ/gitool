@@ -12,15 +12,33 @@ function readRule(selector: string): string {
       new RegExp(`(?:^|\\n)${escapedSelector}\\s*\\{([^}]*)\\}`, 'gu'),
     ),
   ];
-  const match = matches.at(-1);
 
-  expect(match, `未找到 ${selector} 样式规则`).not.toBeNull();
-  return match?.[1] ?? '';
+  expect(matches, `未找到 ${selector} 样式规则`).not.toHaveLength(0);
+  return matches.map((match) => match[1] ?? '').join('\n');
 }
 
 describe('工作台紧凑布局样式', () => {
   it('清除 Webview 默认内边距并避免功能区卡片式外框', () => {
     expect(readRule('body')).toMatch(/(?:^|;)\s*padding:\s*0\s*;/u);
     expect(readRule('.workbench-pane')).not.toMatch(/(?:^|;)\s*border\s*:/u);
+  });
+
+  it('历史展开使用连续轨道且文件区不形成独立卡片', () => {
+    expect(readRule('.commit-row')).toMatch(/min-height:\s*32px/u);
+    expect(stylesheet).not.toMatch(
+      /\.commit-files\s*\{[^}]*(?:margin-left|border-left|background)/su,
+    );
+    expect(readRule('.commit-file')).toMatch(/min-height:\s*28px/u);
+    expect(readRule('.commit-file')).toMatch(
+      /grid-template-columns:\s*28px 19px minmax\(60px, auto\) minmax\(0, 1fr\) 18px/u,
+    );
+    expect(readRule('.commit-file-graph::before')).toMatch(/width:\s*2px/u);
+    expect(readRule('.commit-file-directory')).toMatch(/min-width:\s*0/u);
+    expect(readRule('.commit-file-directory')).toMatch(/overflow:\s*hidden/u);
+    expect(readRule('.commit-file-directory')).toMatch(
+      /text-overflow:\s*ellipsis/u,
+    );
+    expect(readRule('.commit-file-status')).toMatch(/width:\s*18px/u);
+    expect(readRule('.commit-file-status')).toMatch(/grid-column:\s*5/u);
   });
 });

@@ -429,7 +429,7 @@ input:disabled {
 .commit-row {
   display: grid;
   width: 100%;
-  min-height: 36px;
+  min-height: 32px;
   grid-template-columns: 28px 12px minmax(70px, 1fr) auto auto;
   align-items: center;
   gap: 5px;
@@ -528,22 +528,18 @@ input:disabled {
   background: var(--vscode-editorWarning-background, transparent);
 }
 
-.commit-files {
-  margin-left: 28px;
-  border-left: 2px solid var(--vscode-charts-blue, var(--vscode-focusBorder));
-  background: var(--vscode-list-activeSelectionBackground);
-}
-
 .commit-file {
-  display: flex;
+  display: grid;
   width: 100%;
   min-height: 28px;
+  grid-template-columns: 28px 19px minmax(60px, auto) minmax(0, 1fr) 18px;
   align-items: center;
-  gap: 7px;
-  padding: 0 10px 0 18px;
+  gap: 5px;
+  padding: 0 8px 0 0;
+  overflow: hidden;
   border: 0;
   border-radius: 0;
-  color: var(--vscode-list-activeSelectionForeground);
+  color: var(--vscode-foreground);
   background: transparent;
   text-align: left;
 }
@@ -552,16 +548,45 @@ input:disabled {
   background: var(--vscode-list-hoverBackground);
 }
 
-.commit-file-status {
-  width: 18px;
-  color: var(--vscode-gitDecoration-modifiedResourceForeground);
-  font-weight: 700;
+.commit-file-graph {
+  position: relative;
+  align-self: stretch;
 }
 
-.commit-file-path {
+.commit-file-graph::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--vscode-charts-blue, var(--vscode-focusBorder));
+  content: "";
+}
+
+.commit-file-name,
+.commit-file-directory {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.commit-file-name {
+  color: var(--vscode-foreground);
+}
+
+.commit-file-directory {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.commit-file-status {
+  width: 18px;
+  grid-column: 5;
+  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+  font-weight: 700;
+  text-align: center;
 }
 
 .visually-hidden {
