@@ -186,6 +186,83 @@ describe('parseWebviewMessage', () => {
         requestId: 'request-1',
       },
     ],
+    ...(['refreshHistory', 'fetchHistory', 'pull', 'pushAll'] as const).map(
+      (type): [unknown, unknown] => [{
+        type,
+        repositoryId: '/repo/a',
+        version: 6,
+        requestId: 'request-2',
+      }, {
+        type,
+        repositoryId: '/repo/a',
+        version: 6,
+        requestId: 'request-2',
+      }],
+    ),
+    [
+      {
+        type: 'loadCommitDetails',
+        repositoryId: '/repo/a',
+        version: 7,
+        hash: 'a'.repeat(40),
+        requestId: 'request-3',
+      },
+      {
+        type: 'loadCommitDetails',
+        repositoryId: '/repo/a',
+        version: 7,
+        hash: 'a'.repeat(40),
+        requestId: 'request-3',
+      },
+    ],
+    [
+      {
+        type: 'openCommitDiff',
+        repositoryId: '/repo/a',
+        version: 8,
+        hash: 'b'.repeat(40),
+        path: 'src/client.ts',
+        requestId: 'request-4',
+      },
+      {
+        type: 'openCommitDiff',
+        repositoryId: '/repo/a',
+        version: 8,
+        hash: 'b'.repeat(40),
+        path: 'src/client.ts',
+        requestId: 'request-4',
+      },
+    ],
+    [
+      {
+        type: 'generateCommitMessage',
+        repositoryId: '/repo/a',
+        version: 9,
+        selectedIds: ['a.ts'],
+        density: 'standard',
+        requestId: 'request-5',
+      },
+      {
+        type: 'generateCommitMessage',
+        repositoryId: '/repo/a',
+        version: 9,
+        selectedIds: ['a.ts'],
+        density: 'standard',
+        requestId: 'request-5',
+      },
+    ],
+    [
+      {
+        type: 'cancelCommitMessageGeneration',
+        repositoryId: '/repo/a',
+        requestId: 'request-5',
+      },
+      {
+        type: 'cancelCommitMessageGeneration',
+        repositoryId: '/repo/a',
+        requestId: 'request-5',
+      },
+    ],
   ])('接受协议内消息 %#', (input, expected) => {
     expect(parseWebviewMessage(input)).toEqual(expected);
   });
@@ -284,6 +361,43 @@ describe('parseWebviewMessage', () => {
       repositoryId: '/repo/a',
       version: 0,
       fileIds: [''],
+      requestId: 'request-1',
+    },
+    {
+      type: 'refreshHistory',
+      repositoryId: '/repo/a',
+      version: -1,
+      requestId: 'request-1',
+    },
+    {
+      type: 'loadCommitDetails',
+      repositoryId: '/repo/a',
+      version: 0,
+      hash: 'abc123',
+      requestId: 'request-1',
+    },
+    {
+      type: 'openCommitDiff',
+      repositoryId: '/repo/a',
+      version: 0,
+      hash: 'a'.repeat(40),
+      path: '',
+      requestId: 'request-1',
+    },
+    {
+      type: 'generateCommitMessage',
+      repositoryId: '/repo/a',
+      version: 0,
+      selectedIds: ['a.ts'],
+      density: 'verbose',
+      requestId: 'request-1',
+    },
+    {
+      type: 'generateCommitMessage',
+      repositoryId: '/repo/a',
+      version: 0,
+      selectedIds: [],
+      density: 'compact',
       requestId: 'request-1',
     },
   ])('拒绝非法消息 %#', (input) => {

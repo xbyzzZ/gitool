@@ -67,6 +67,40 @@ export type WebviewMessage =
     readonly repositoryId: string;
     readonly version: number;
     readonly requestId: string;
+  }
+  | {
+    readonly type: 'refreshHistory' | 'fetchHistory' | 'pull' | 'pushAll';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly requestId: string;
+  }
+  | {
+    readonly type: 'loadCommitDetails';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly hash: string;
+    readonly requestId: string;
+  }
+  | {
+    readonly type: 'openCommitDiff';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly hash: string;
+    readonly path: string;
+    readonly requestId: string;
+  }
+  | {
+    readonly type: 'generateCommitMessage';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly selectedIds: readonly string[];
+    readonly density: 'compact' | 'standard' | 'detailed';
+    readonly requestId: string;
+  }
+  | {
+    readonly type: 'cancelCommitMessageGeneration';
+    readonly repositoryId: string;
+    readonly requestId: string;
   };
 
 type MessageRecord = Record<string, unknown>;
@@ -130,7 +164,8 @@ function requireRepositoryId(input: MessageRecord): string {
 
 function parseVersionMessage(
   input: MessageRecord,
-  type: 'retryPush' | 'editRemoteUrl',
+  type: 'retryPush' | 'editRemoteUrl' | 'refreshHistory'
+    | 'fetchHistory' | 'pull' | 'pushAll',
 ): WebviewMessage {
   requireExactKeys(input, [
     'type',
@@ -151,6 +186,27 @@ function parseVersionMessage(
     version: input.version,
     requestId: input.requestId,
   };
+}
+
+function requireVersion(input: MessageRecord): number {
+  if (!isNonNegativeInteger(input.version)) {
+    invalid('version');
+  }
+  return input.version;
+}
+
+function requireRequestId(input: MessageRecord): string {
+  if (!isNonEmptyString(input.requestId)) {
+    invalid('requestId');
+  }
+  return input.requestId;
+}
+
+function requireCommitHash(input: MessageRecord): string {
+  if (typeof input.hash !== 'string' || !/^[0-9a-f]{40}$/u.test(input.hash)) {
+    invalid('hash');
+  }
+  return input.hash;
 }
 
 function parseCommitMessage(
@@ -284,7 +340,71 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
       return parseCommitMessage(input, input.type);
     case 'retryPush':
     case 'editRemoteUrl':
+    case 'refreshHistory':
+    case 'fetchHistory':
+    case 'pull':
+    case 'pushAll':
       return parseVersionMessage(input, input.type);
+    case 'loadCommitDetails':
+      requireExactKeys(input, [
+        'type', 'repositoryId', 'version', 'hash', 'requestId',
+      ]);
+      return {
+        type: input.type,
+        repositoryId: requireRepositoryId(input),
+        version: requireVersion(input),
+        hash: requireCommitHash(input),
+        requestId: requireRequestId(input),
+      };
+    case 'openCommitDiff':
+      requireExactKeys(input, [
+        'type', 'repositoryId', 'version', 'hash', 'path', 'requestId',
+      ]);
+      if (!isNonEmptyString(input.path)) {
+        invalid('path');
+      }
+      return {
+        type: input.type,
+        repositoryId: requireRepositoryId(input),
+        version: requireVersion(input),
+        hash: requireCommitHash(input),
+        path: input.path,
+        requestId: requireRequestId(input),
+      };
+    case 'generateCommitMessage':
+      requireExactKeys(input, [
+        'type',
+        'repositoryId',
+        'version',
+        'selectedIds',
+        'density',
+        'requestId',
+      ]);
+      if (!Array.isArray(input.selectedIds)
+        || input.selectedIds.length === 0
+        || !input.selectedIds.every(isNonEmptyString)) {
+        invalid('selectedIds');
+      }
+      if (input.density !== 'compact'
+        && input.density !== 'standard'
+        && input.density !== 'detailed') {
+        invalid('density');
+      }
+      return {
+        type: input.type,
+        repositoryId: requireRepositoryId(input),
+        version: requireVersion(input),
+        selectedIds: [...input.selectedIds],
+        density: input.density,
+        requestId: requireRequestId(input),
+      };
+    case 'cancelCommitMessageGeneration':
+      requireExactKeys(input, ['type', 'repositoryId', 'requestId']);
+      return {
+        type: input.type,
+        repositoryId: requireRepositoryId(input),
+        requestId: requireRequestId(input),
+      };
     case 'selectPushRemote':
       requireExactKeys(input, [
         'type',

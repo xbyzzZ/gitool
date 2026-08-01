@@ -40,22 +40,25 @@ describe('renderWebviewHtml', () => {
     expect(html).not.toContain("'unsafe-eval'");
   });
 
-  it('包含固定顺序的仓库、变更、状态和提交控件', () => {
+  it('包含固定顺序的提交、当前变更和提交历史三分区', () => {
     const html = renderWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
     );
+    expect(html).toContain('class="commit-panel workbench-pane"');
+    expect(html).toContain('class="changes-panel workbench-pane"');
+    expect(html).toContain('class="history-panel workbench-pane"');
+    expect(html.match(/class="pane-resizer"/gu)).toHaveLength(2);
+
     const ids = [
-      'repository-select',
-      'repository-summary',
-      'selection-summary',
-      'tracked-group',
-      'untracked-group',
-      'operation-status',
       'commit-message',
       'commit-button',
       'commit-push-button',
+      'selection-summary',
+      'tracked-group',
+      'untracked-group',
+      'history-list',
     ];
 
     for (const id of ids) {
@@ -67,6 +70,8 @@ describe('renderWebviewHtml', () => {
       ));
     expect(html).toContain('已跟踪变更');
     expect(html).toContain('未跟踪文件');
+    expect(html).toContain('当前变更');
+    expect(html).toContain('提交历史');
     expect(html).toContain('提交并推送');
   });
 

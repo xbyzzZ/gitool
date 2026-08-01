@@ -55,6 +55,22 @@ function messageAction(message: WebviewMessage): string {
       return '舍弃未跟踪文件';
     case 'editRemoteUrl':
       return '修改远程 URL';
+    case 'refreshHistory':
+      return '刷新提交历史';
+    case 'fetchHistory':
+      return '刷新远程状态';
+    case 'pull':
+      return '从远程拉取';
+    case 'pushAll':
+      return '推送全部本地提交';
+    case 'loadCommitDetails':
+      return '读取提交详情';
+    case 'openCommitDiff':
+      return '打开历史改动';
+    case 'generateCommitMessage':
+      return '生成提交信息';
+    case 'cancelCommitMessageGeneration':
+      return '取消生成提交信息';
   }
 }
 
