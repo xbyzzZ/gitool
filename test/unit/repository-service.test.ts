@@ -159,6 +159,7 @@ function createService(
   readonly push: ReturnType<typeof vi.fn>;
   readonly trash: ReturnType<typeof vi.fn>;
   readonly remote: ReturnType<typeof vi.fn>;
+  readonly addRemote: ReturnType<typeof vi.fn>;
   readonly gitApi: TestGitApi;
 } {
   const commit = vi.fn().mockResolvedValue({
@@ -179,6 +180,10 @@ function createService(
     name: 'origin',
     url: 'https://example.test/repo.git',
   });
+  const addRemote = vi.fn().mockResolvedValue({
+    name: 'origin',
+    url: 'https://example.test/repo.git',
+  });
   const gitApi = new TestGitApi(repositories);
   const service = new RepositoryService({
     gitApi,
@@ -186,15 +191,36 @@ function createService(
     commitService: { commit },
     pushService: { push },
     trashService: { moveToTrash: trash },
-    remoteService: { setUrl: remote },
+    remoteService: { setUrl: remote, add: addRemote },
     operationLock: new RepositoryOperationLock(),
     isWorkspaceTrusted: () => trusted,
     ...overrides,
   });
-  return { service, commit, push, trash, remote, gitApi };
+  return { service, commit, push, trash, remote, addRemote, gitApi };
 }
 
 describe('RepositoryService', () => {
+  it('添加远程时通过受控写入链路调用远程服务', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root);
+    const { service, addRemote } = createService([repository]);
+
+    await expect(service.addRemote({
+      repositoryId: root,
+      version: 0,
+      remote: 'origin',
+      url: 'https://example.test/repo.git',
+    })).resolves.toEqual({
+      name: 'origin',
+      url: 'https://example.test/repo.git',
+    });
+    expect(addRemote).toHaveBeenCalledWith(
+      root,
+      'origin',
+      'https://example.test/repo.git',
+    );
+  });
+
   it('默认提供变更数、同步、历史和 AI 状态', () => {
     const { service } = createService([]);
 
@@ -838,7 +864,7 @@ describe('RepositoryService', () => {
     const repository = new TestRepository(root, {
       working: [change(root, 'a.ts')],
     });
-    const { service, commit } = createService([repository], false);
+    const { service, commit, addRemote } = createService([repository], false);
     const commitRequest = {
       repositoryId: root,
       version: 0,
@@ -870,7 +896,14 @@ describe('RepositoryService', () => {
       remote: 'origin',
       url: 'https://example.test/repo.git',
     })).rejects.toThrow('未信任的工作区不能执行写操作');
+    await expect(service.addRemote({
+      repositoryId: root,
+      version: 0,
+      remote: 'origin',
+      url: 'https://example.test/repo.git',
+    })).rejects.toThrow('未信任的工作区不能执行写操作');
     expect(commit).not.toHaveBeenCalled();
+    expect(addRemote).not.toHaveBeenCalled();
   });
 
   it('映射内置 Git 状态并把合并冲突纳入当前变更', () => {
@@ -1095,7 +1128,13 @@ describe('RepositoryService', () => {
     const repository = new TestRepository(root, {
       merge: [change(root, 'a.ts', 18)],
     });
-    const { service, commit, trash, remote } = createService([repository]);
+    const {
+      service,
+      commit,
+      trash,
+      remote,
+      addRemote,
+    } = createService([repository]);
 
     await expect(service.commit({
       repositoryId: root,
@@ -1114,9 +1153,16 @@ describe('RepositoryService', () => {
       remote: 'origin',
       url: 'https://example.test/repo.git',
     })).rejects.toThrow('存在冲突文件，不能执行写操作');
+    await expect(service.addRemote({
+      repositoryId: root,
+      version: 0,
+      remote: 'origin',
+      url: 'https://example.test/repo.git',
+    })).rejects.toThrow('存在冲突文件，不能执行写操作');
     expect(commit).not.toHaveBeenCalled();
     expect(trash).not.toHaveBeenCalled();
     expect(remote).not.toHaveBeenCalled();
+    expect(addRemote).not.toHaveBeenCalled();
   });
 
   it('未知仓库在进入提交服务前被拒绝', async () => {
@@ -1501,7 +1547,7 @@ describe('RepositoryService', () => {
     const repository = new TestRepository(root);
     const remote = vi.fn().mockRejectedValue(new Error('远程写入失败'));
     const { service } = createService([repository], true, {
-      remoteService: { setUrl: remote },
+      remoteService: { setUrl: remote, add: vi.fn() },
     });
 
     await expect(service.setRemoteUrl({
@@ -1514,6 +1560,27 @@ describe('RepositoryService', () => {
       kind: 'failed',
       action: 'remote',
       message: '远程写入失败',
+    });
+  });
+
+  it('远程添加失败后记录可观察的操作状态', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root);
+    const addRemote = vi.fn().mockRejectedValue(new Error('远程添加失败'));
+    const { service } = createService([repository], true, {
+      remoteService: { setUrl: vi.fn(), add: addRemote },
+    });
+
+    await expect(service.addRemote({
+      repositoryId: root,
+      version: 0,
+      remote: 'origin',
+      url: 'https://example.test/repo.git',
+    })).rejects.toThrow('远程添加失败');
+    expect(service.getViewModel().operation).toEqual({
+      kind: 'failed',
+      action: 'remote',
+      message: '远程添加失败',
     });
   });
 

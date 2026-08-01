@@ -40,6 +40,11 @@ interface TrashServicePort {
 }
 
 interface RemoteServicePort {
+  add(
+    repositoryRoot: string,
+    name: string,
+    url: string,
+  ): Promise<RemoteInfo>;
   setUrl(
     repositoryRoot: string,
     name: string,
@@ -78,6 +83,11 @@ export interface TrashRequest extends RepositoryVersionRequest {
 }
 
 export interface SetRemoteUrlRequest extends RepositoryVersionRequest {
+  readonly remote: string;
+  readonly url: string;
+}
+
+export interface AddRemoteRequest extends RepositoryVersionRequest {
   readonly remote: string;
   readonly url: string;
 }
@@ -230,6 +240,23 @@ export class RepositoryWriteCoordinator {
         context.state,
         'remote',
         async () => await this.dependencies.remoteService.setUrl(
+          context.state.rootPath,
+          request.remote,
+          request.url,
+        ),
+      ),
+    );
+  }
+
+  async addRemote(request: AddRemoteRequest): Promise<RemoteInfo> {
+    return await this.runValidatedWrite(
+      request.repositoryId,
+      request.version,
+      [],
+      async (context) => await this.runOperation(
+        context.state,
+        'remote',
+        async () => await this.dependencies.remoteService.add(
           context.state.rootPath,
           request.remote,
           request.url,

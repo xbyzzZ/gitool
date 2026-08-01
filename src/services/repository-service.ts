@@ -18,6 +18,7 @@ import type { TrashResult } from './trash-service.js';
 import type { SyncService } from './sync-service.js';
 import {
   RepositoryWriteCoordinator,
+  type AddRemoteRequest,
   type RepositoryCommitRequest,
   type RepositoryVersionRequest,
   type RepositoryWriteCoordinatorDependencies,
@@ -27,6 +28,7 @@ import {
 } from './repository-write-coordinator.js';
 
 export type {
+  AddRemoteRequest,
   RepositoryCommitRequest,
   RepositoryVersionRequest,
   SelectPushRemoteRequest,
@@ -346,6 +348,10 @@ export class RepositoryService {
 
   async setRemoteUrl(request: SetRemoteUrlRequest): Promise<RemoteInfo> {
     return await this.writeCoordinator.setRemoteUrl(request);
+  }
+
+  async addRemote(request: AddRemoteRequest): Promise<RemoteInfo> {
+    return await this.writeCoordinator.addRemote(request);
   }
 
   dispose(): void {
