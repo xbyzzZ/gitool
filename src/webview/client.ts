@@ -1,18 +1,47 @@
 import type { FileChange } from '../domain/change-model.js';
+import { groupChanges, type ChangeDirectoryGroup } from '../domain/change-groups.js';
+import type { CommitDetails } from '../domain/history-model.js';
 import type {
   OperationState,
   RepositoryViewModel,
 } from '../domain/view-model.js';
 import type { WebviewMessage } from './messages.js';
+import { resolveFileIcon } from './file-icons.js';
+import { renderHistory } from './history-renderer.js';
+import {
+  defaultLayoutState,
+  normalizeLayoutState,
+  resetLayout,
+  resizeLayout,
+  togglePane,
+  type PaneName,
+  type ResizeHandle,
+  type WorkbenchLayoutState,
+} from './layout-state.js';
+import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
+  getState(): unknown;
+  setState(state: unknown): void;
 }
 
 interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
   readonly acknowledgedRequestId?: string;
+}
+
+interface CommitDetailsMessage {
+  readonly type: 'commitDetails';
+  readonly repositoryId: string;
+  readonly version: number;
+  readonly details: CommitDetails;
+}
+
+interface PersistedClientState {
+  readonly layouts: Readonly<Record<string, WorkbenchLayoutState>>;
+  readonly densities: Readonly<Record<string, CommitMessageDensity>>;
 }
 
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -23,6 +52,14 @@ function element(id: string): HTMLElement {
   const value = document.getElementById(id);
   if (value === null) {
     throw new Error(`缺少 Webview 控件：${id}`);
+  }
+  return value;
+}
+
+function classElement(selector: string): HTMLElement {
+  const value = document.querySelector<HTMLElement>(selector);
+  if (value === null) {
+    throw new Error(`缺少 Webview 控件：${selector}`);
   }
   return value;
 }
@@ -45,6 +82,9 @@ const controls = {
   untrackedToggle: element('untracked-group-toggle') as HTMLInputElement,
   untrackedCount: element('untracked-count'),
   untrackedGroup: element('untracked-group') as HTMLDivElement,
+  conflictedSection: element('conflicted-section'),
+  conflictedCount: element('conflicted-count'),
+  conflictedGroup: element('conflicted-group') as HTMLDivElement,
   trashButton: element('trash-button') as HTMLButtonElement,
   loadingStatus: element('loading-status') as HTMLParagraphElement,
   operationStatus: element('operation-status') as HTMLParagraphElement,
@@ -53,6 +93,24 @@ const controls = {
   commitMessage: element('commit-message') as HTMLTextAreaElement,
   commitButton: element('commit-button') as HTMLButtonElement,
   commitPushButton: element('commit-push-button') as HTMLButtonElement,
+  aiGenerateButton: element('ai-generate-button') as HTMLButtonElement,
+  aiDensityButton: element('ai-density-button') as HTMLButtonElement,
+  aiDensityMenu: element('ai-density-menu'),
+  pullButton: element('pull-button') as HTMLButtonElement,
+  pushAllButton: element('push-all-button') as HTMLButtonElement,
+  fetchHistoryButton: element('fetch-history-button') as HTMLButtonElement,
+  refreshHistoryButton: element('refresh-history-button') as HTMLButtonElement,
+  syncSummary: element('sync-summary'),
+  historyStatus: element('history-status'),
+  historyList: element('history-list'),
+  commitPane: classElement('.commit-panel'),
+  changesPane: classElement('.changes-panel'),
+  historyPane: classElement('.history-panel'),
+  collapseCommitButton: element('collapse-commit-button') as HTMLButtonElement,
+  collapseChangesButton: element('collapse-changes-button') as HTMLButtonElement,
+  collapseHistoryButton: element('collapse-history-button') as HTMLButtonElement,
+  commitChangesResizer: element('commit-changes-resizer'),
+  changesHistoryResizer: element('changes-history-resizer'),
 };
 
 let currentModel: RepositoryViewModel | undefined;
@@ -62,6 +120,13 @@ let pendingWriteRequestId: string | undefined;
 let pendingRepositoryId: string | undefined;
 let pendingRepositoryRequestId: string | undefined;
 let writeRequestSequence = 0;
+let persistedState = readPersistedState(vscode.getState());
+let activeLayout = defaultLayoutState;
+let activeDensity: CommitMessageDensity = 'standard';
+let activeRepositoryForLayout: string | undefined;
+const collapsedDirectories = new Set<string>();
+const expandedCommits = new Set<string>();
+const commitDetails = new Map<string, readonly CommitDetails['files'][number][]>();
 
 const changeLabels: Readonly<Record<FileChange['kind'], string>> = {
   modified: 'M',
@@ -91,6 +156,41 @@ function post(message: WebviewMessage): void {
 
 function setText(node: HTMLElement, value: string): void {
   node.textContent = value;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readPersistedState(value: unknown): PersistedClientState {
+  if (!isObject(value) || !isObject(value.layouts)
+    || !isObject(value.densities)) {
+    return { layouts: {}, densities: {} };
+  }
+  const densities: Record<string, CommitMessageDensity> = {};
+  for (const [repositoryId, density] of Object.entries(value.densities)) {
+    if (density === 'compact' || density === 'standard'
+      || density === 'detailed') {
+      densities[repositoryId] = density;
+    }
+  }
+  return {
+    layouts: value.layouts as Readonly<Record<string, WorkbenchLayoutState>>,
+    densities,
+  };
+}
+
+function saveClientState(): void {
+  vscode.setState(persistedState);
+}
+
+function densityLabel(density: CommitMessageDensity): string {
+  const labels: Readonly<Record<CommitMessageDensity, string>> = {
+    compact: '精简',
+    standard: '标准',
+    detailed: '详细',
+  };
+  return labels[density];
 }
 
 function selectedSet(model: RepositoryViewModel): ReadonlySet<string> {
@@ -144,6 +244,12 @@ function renderFile(
   status.setAttribute('aria-hidden', 'true');
   setText(status, changeLabels[change.kind]);
 
+  const iconPresentation = resolveFileIcon(change.path);
+  const icon = document.createElement('span');
+  icon.className = `file-icon ${iconPresentation.color}`;
+  icon.setAttribute('aria-hidden', 'true');
+  setText(icon, iconPresentation.glyph);
+
   const path = document.createElement('button');
   path.className = 'file-path';
   path.type = 'button';
@@ -151,7 +257,7 @@ function renderFile(
     ? change.path
     : `${change.originalPath} → ${change.path}`;
   path.setAttribute('aria-label', `打开 ${path.title} 的变更`);
-  setText(path, path.title);
+  setText(path, change.path.split('/').at(-1) ?? change.path);
   path.addEventListener('click', () => {
     post({ type: 'openDiff', repositoryId, fileId: change.id });
   });
@@ -160,13 +266,13 @@ function renderFile(
   layer.className = 'layer-badge';
   setText(layer, layerLabel(change));
 
-  row.append(checkbox, status, path, layer);
+  row.append(checkbox, icon, path, layer, status);
   return row;
 }
 
-function replaceChildren(
+function renderDirectoryGroups(
   container: HTMLElement,
-  changes: readonly FileChange[],
+  directories: readonly ChangeDirectoryGroup[],
   repositoryId: string | undefined,
   selected: ReadonlySet<string>,
   selectionDisabled: boolean,
@@ -176,13 +282,42 @@ function replaceChildren(
     container.replaceChildren(fragment);
     return;
   }
-  for (const change of changes) {
-    fragment.append(renderFile(
-      change,
-      repositoryId,
-      selected.has(change.id),
-      selectionDisabled,
+  for (const directory of directories) {
+    const key = `${repositoryId}:${container.id}:${directory.path}`;
+    const group = document.createElement('div');
+    group.className = 'directory-group';
+    const directoryButton = document.createElement('button');
+    directoryButton.type = 'button';
+    directoryButton.className = 'directory-heading';
+    directoryButton.setAttribute('aria-expanded', String(
+      !collapsedDirectories.has(key),
     ));
+    setText(
+      directoryButton,
+      `${collapsedDirectories.has(key) ? '›' : '⌄'} ${directory.path === '.' ? '根目录' : directory.path}`,
+    );
+    directoryButton.addEventListener('click', () => {
+      if (collapsedDirectories.has(key)) {
+        collapsedDirectories.delete(key);
+      } else {
+        collapsedDirectories.add(key);
+      }
+      if (currentModel !== undefined) {
+        render(currentModel, false);
+      }
+    });
+    group.append(directoryButton);
+    if (!collapsedDirectories.has(key)) {
+      for (const change of directory.files) {
+        group.append(renderFile(
+          change,
+          repositoryId,
+          selected.has(change.id),
+          selectionDisabled,
+        ));
+      }
+    }
+    fragment.append(group);
   }
   container.replaceChildren(fragment);
 }
@@ -235,6 +370,132 @@ function operationFeedback(operation: OperationState): {
   }
 }
 
+function persistLayout(repositoryId: string): void {
+  persistedState = {
+    ...persistedState,
+    layouts: {
+      ...persistedState.layouts,
+      [repositoryId]: activeLayout,
+    },
+  };
+  saveClientState();
+}
+
+function applyLayout(): void {
+  const panes: Readonly<Record<PaneName, HTMLElement>> = {
+    commit: controls.commitPane,
+    changes: controls.changesPane,
+    history: controls.historyPane,
+  };
+  const collapseButtons: Readonly<Record<PaneName, HTMLButtonElement>> = {
+    commit: controls.collapseCommitButton,
+    changes: controls.collapseChangesButton,
+    history: controls.collapseHistoryButton,
+  };
+  for (const pane of ['commit', 'changes', 'history'] as const) {
+    const collapsed = activeLayout.collapsed[pane];
+    panes[pane].classList.toggle('collapsed', collapsed);
+    panes[pane].style.height = collapsed
+      ? '34px'
+      : `${String(activeLayout.heights[pane])}px`;
+    collapseButtons[pane].textContent = collapsed ? '⌄' : '⌃';
+    collapseButtons[pane].setAttribute(
+      'aria-label',
+      `${collapsed ? '展开' : '折叠'}${pane === 'commit' ? '提交信息' : pane === 'changes' ? '当前变更' : '提交历史'}`,
+    );
+  }
+}
+
+function activateRepositoryLayout(repositoryId: string | undefined): void {
+  if (activeRepositoryForLayout === repositoryId) {
+    return;
+  }
+  activeRepositoryForLayout = repositoryId;
+  expandedCommits.clear();
+  commitDetails.clear();
+  const stored = repositoryId === undefined
+    ? undefined
+    : persistedState.layouts[repositoryId];
+  activeLayout = normalizeLayoutState(
+    stored ?? defaultLayoutState,
+    window.innerHeight - 8,
+  );
+  activeDensity = repositoryId === undefined
+    ? 'standard'
+    : (persistedState.densities[repositoryId] ?? 'standard');
+  applyLayout();
+}
+
+function updateSync(model: RepositoryViewModel): void {
+  switch (model.sync.kind) {
+    case 'detached':
+      setText(controls.syncSummary, '游离 HEAD');
+      break;
+    case 'no-upstream':
+      setText(controls.syncSummary, '未设置上游');
+      break;
+    case 'ready':
+      setText(
+        controls.syncSummary,
+        `${model.sync.upstream} · ↑${String(model.sync.ahead)} ↓${String(model.sync.behind)}`,
+      );
+      break;
+  }
+  const historyMessage = model.history.kind === 'loading'
+    ? '正在读取提交历史…'
+    : model.history.kind === 'failed'
+      ? model.history.message
+      : model.history.commits.length === 0
+        ? '暂无提交记录'
+        : '';
+  setText(controls.historyStatus, historyMessage);
+  controls.historyStatus.classList.toggle(
+    'error-status',
+    model.history.kind === 'failed',
+  );
+  renderHistory(
+    controls.historyList,
+    model.history.commits,
+    expandedCommits,
+    commitDetails,
+    {
+      toggleCommit: (hash, expanded) => {
+        if (expanded) {
+          expandedCommits.add(hash);
+          if (!commitDetails.has(hash)
+            && model.currentRepositoryId !== undefined) {
+            writeRequestSequence += 1;
+            post({
+              type: 'loadCommitDetails',
+              repositoryId: model.currentRepositoryId,
+              version: model.version,
+              hash,
+              requestId: `details-${String(writeRequestSequence)}`,
+            });
+          }
+        } else {
+          expandedCommits.delete(hash);
+        }
+        render(model, false);
+      },
+      openCommitDiff: (hash, path) => {
+        if (model.currentRepositoryId === undefined) {
+          return;
+        }
+        writeRequestSequence += 1;
+        post({
+          type: 'openCommitDiff',
+          repositoryId: model.currentRepositoryId,
+          version: model.version,
+          hash,
+          path,
+          requestId: `history-diff-${String(writeRequestSequence)}`,
+        });
+      },
+    },
+  );
+}
+
 function updateRepository(model: RepositoryViewModel): void {
   const select = controls.repositorySelect;
   const options = document.createDocumentFragment();
@@ -257,6 +518,7 @@ function updateRepository(model: RepositoryViewModel): void {
     }
   }
   select.replaceChildren(options);
+  select.hidden = model.repositories.length < 2;
 
   const branch = model.detached
     ? '游离 HEAD'
@@ -283,6 +545,7 @@ function render(
     }
   }
   currentModel = model;
+  activateRepositoryLayout(model.currentRepositoryId);
   layout.setAttribute('aria-busy', model.operation.kind === 'running'
     ? 'true'
     : 'false');
@@ -290,8 +553,13 @@ function render(
 
   updateRepository(model);
   const selected = selectedSet(model);
-  const tracked = model.changes.filter((change) => !change.untracked);
-  const untracked = model.changes.filter((change) => change.untracked);
+  const sections = groupChanges(model.changes);
+  const trackedSection = sections.find((section) => section.kind === 'tracked');
+  const untrackedSection = sections.find((section) => section.kind === 'untracked');
+  const conflictedSection = sections.find((section) => section.kind === 'conflicted');
+  const tracked = trackedSection?.directories.flatMap((group) => group.files) ?? [];
+  const untracked = untrackedSection?.directories.flatMap((group) => group.files) ?? [];
+  const conflicted = conflictedSection?.directories.flatMap((group) => group.files) ?? [];
   const running = model.operation.kind === 'running';
   const noRepository = model.currentRepositoryId === undefined;
   const waitingForRepository = pendingRepositoryId !== undefined;
@@ -305,19 +573,28 @@ function render(
   );
   setText(controls.trackedCount, String(tracked.length));
   setText(controls.untrackedCount, String(untracked.length));
-  replaceChildren(
+  setText(controls.conflictedCount, String(conflicted.length));
+  controls.conflictedSection.hidden = conflicted.length === 0;
+  renderDirectoryGroups(
     controls.trackedGroup,
-    tracked,
+    trackedSection?.directories ?? [],
     model.currentRepositoryId,
     selected,
     selectionDisabled,
   );
-  replaceChildren(
+  renderDirectoryGroups(
     controls.untrackedGroup,
-    untracked,
+    untrackedSection?.directories ?? [],
     model.currentRepositoryId,
     selected,
     selectionDisabled,
+  );
+  renderDirectoryGroups(
+    controls.conflictedGroup,
+    conflictedSection?.directories ?? [],
+    model.currentRepositoryId,
+    selected,
+    true,
   );
   updateGroupToggle(
     controls.trackedToggle,
@@ -362,6 +639,21 @@ function render(
   controls.commitMessage.disabled = !canWrite;
   controls.commitButton.disabled = !canCommit;
   controls.commitPushButton.disabled = !canCommit || model.detached;
+  controls.aiGenerateButton.disabled = !canWrite || selected.size === 0;
+  controls.aiDensityButton.disabled = !canWrite || selected.size === 0;
+  controls.pullButton.disabled = !canWrite || model.sync.kind !== 'ready';
+  controls.pushAllButton.disabled = !canWrite
+    || model.sync.kind === 'detached'
+    || (model.sync.kind === 'ready' && model.sync.ahead === 0);
+  controls.fetchHistoryButton.disabled = !canWrite;
+  controls.refreshHistoryButton.disabled = running || noRepository;
+  setText(
+    controls.aiGenerateButton,
+    model.ai.kind === 'generating'
+      ? '取消 AI 生成'
+      : `AI 生成 · ${densityLabel(activeDensity)}`,
+  );
+  updateSync(model);
 
   const feedback = operationFeedback(model.operation);
   setText(
@@ -440,6 +732,44 @@ controls.repositorySelect.addEventListener('change', () => {
 });
 controls.refreshButton.addEventListener('click', () => {
   post({ type: 'refresh' });
+});
+controls.refreshHistoryButton.addEventListener('click', () => {
+  withModel((model) => {
+    if (model.currentRepositoryId === undefined) {
+      return;
+    }
+    writeRequestSequence += 1;
+    post({
+      type: 'refreshHistory',
+      repositoryId: model.currentRepositoryId,
+      version: model.version,
+      requestId: `history-${String(writeRequestSequence)}`,
+    });
+  });
+});
+controls.fetchHistoryButton.addEventListener('click', () => {
+  withModel((model) => {
+    const scope = beginWrite(model);
+    if (scope !== undefined) {
+      post({ type: 'fetchHistory', ...scope });
+    }
+  });
+});
+controls.pullButton.addEventListener('click', () => {
+  withModel((model) => {
+    const scope = beginWrite(model);
+    if (scope !== undefined) {
+      post({ type: 'pull', ...scope });
+    }
+  });
+});
+controls.pushAllButton.addEventListener('click', () => {
+  withModel((model) => {
+    const scope = beginWrite(model);
+    if (scope !== undefined) {
+      post({ type: 'pushAll', ...scope });
+    }
+  });
 });
 controls.editRemoteButton.addEventListener('click', () => {
   withModel((model) => {
@@ -549,8 +879,158 @@ controls.retryPushButton.addEventListener('click', () => {
   });
 });
 
+for (const density of ['compact', 'standard', 'detailed'] as const) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.setAttribute('role', 'menuitem');
+  button.dataset.density = density;
+  setText(button, densityLabel(density));
+  button.addEventListener('click', () => {
+    activeDensity = density;
+    controls.aiDensityMenu.hidden = true;
+    if (activeRepositoryForLayout !== undefined) {
+      persistedState = {
+        ...persistedState,
+        densities: {
+          ...persistedState.densities,
+          [activeRepositoryForLayout]: density,
+        },
+      };
+      saveClientState();
+    }
+    if (currentModel !== undefined) {
+      render(currentModel, false);
+    }
+  });
+  controls.aiDensityMenu.append(button);
+}
+
+controls.aiDensityButton.addEventListener('click', () => {
+  controls.aiDensityMenu.hidden = !controls.aiDensityMenu.hidden;
+});
+controls.aiGenerateButton.addEventListener('click', () => {
+  withModel((model) => {
+    if (model.currentRepositoryId === undefined) {
+      return;
+    }
+    if (model.ai.kind === 'generating') {
+      post({
+        type: 'cancelCommitMessageGeneration',
+        repositoryId: model.currentRepositoryId,
+        requestId: pendingWriteRequestId ?? 'ai-current',
+      });
+      return;
+    }
+    const scope = beginWrite(model);
+    if (scope !== undefined) {
+      post({
+        type: 'generateCommitMessage',
+        ...scope,
+        selectedIds: model.selectedIds,
+        density: activeDensity,
+      });
+    }
+  });
+});
+
+function installCollapse(button: HTMLButtonElement, pane: PaneName): void {
+  button.addEventListener('click', () => {
+    activeLayout = togglePane(activeLayout, pane);
+    applyLayout();
+    if (activeRepositoryForLayout !== undefined) {
+      persistLayout(activeRepositoryForLayout);
+    }
+  });
+}
+
+installCollapse(controls.collapseCommitButton, 'commit');
+installCollapse(controls.collapseChangesButton, 'changes');
+installCollapse(controls.collapseHistoryButton, 'history');
+
+function installResizer(elementValue: HTMLElement, handle: ResizeHandle): void {
+  let lastY: number | undefined;
+  elementValue.addEventListener('pointerdown', (event) => {
+    lastY = event.clientY;
+    elementValue.setPointerCapture(event.pointerId);
+    elementValue.classList.add('dragging');
+  });
+  elementValue.addEventListener('pointermove', (event) => {
+    if (lastY === undefined) {
+      return;
+    }
+    const delta = event.clientY - lastY;
+    lastY = event.clientY;
+    activeLayout = resizeLayout(
+      activeLayout,
+      handle,
+      delta,
+      window.innerHeight - 8,
+    );
+    applyLayout();
+  });
+  const finish = (): void => {
+    if (lastY === undefined) {
+      return;
+    }
+    lastY = undefined;
+    elementValue.classList.remove('dragging');
+    if (activeRepositoryForLayout !== undefined) {
+      persistLayout(activeRepositoryForLayout);
+    }
+  };
+  elementValue.addEventListener('pointerup', finish);
+  elementValue.addEventListener('pointercancel', finish);
+  elementValue.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+      return;
+    }
+    event.preventDefault();
+    activeLayout = resizeLayout(
+      activeLayout,
+      handle,
+      event.key === 'ArrowUp' ? -8 : 8,
+      window.innerHeight - 8,
+    );
+    applyLayout();
+    if (activeRepositoryForLayout !== undefined) {
+      persistLayout(activeRepositoryForLayout);
+    }
+  });
+  elementValue.addEventListener('dblclick', () => {
+    activeLayout = resetLayout(activeLayout, window.innerHeight - 8);
+    applyLayout();
+    if (activeRepositoryForLayout !== undefined) {
+      persistLayout(activeRepositoryForLayout);
+    }
+  });
+}
+
+installResizer(controls.commitChangesResizer, 'commit-changes');
+installResizer(controls.changesHistoryResizer, 'changes-history');
+window.addEventListener('resize', () => {
+  activeLayout = normalizeLayoutState(activeLayout, window.innerHeight - 8);
+  applyLayout();
+});
+
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
   const message = event.data;
+  if (
+    typeof message === 'object'
+    && message !== null
+    && 'type' in message
+    && message.type === 'commitDetails'
+  ) {
+    const detailsMessage = message as CommitDetailsMessage;
+    if (currentModel?.currentRepositoryId === detailsMessage.repositoryId
+      && currentModel.version === detailsMessage.version) {
+      commitDetails.set(
+        detailsMessage.details.hash,
+        detailsMessage.details.files,
+      );
+      render(currentModel, false);
+    }
+    return;
+  }
   if (
     typeof message === 'object'
     && message !== null

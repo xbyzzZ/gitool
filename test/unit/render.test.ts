@@ -73,6 +73,11 @@ describe('renderWebviewHtml', () => {
     expect(html).toContain('当前变更');
     expect(html).toContain('提交历史');
     expect(html).toContain('提交并推送');
+    expect(html).toContain('id="ai-generate-button"');
+    expect(html).toContain('id="pull-button"');
+    expect(html).toContain('id="push-all-button"');
+    expect(html).toContain('id="refresh-history-button"');
+    expect(html).toContain('id="collapse-history-button"');
   });
 
   it('只生成固定壳，不包含动态仓库数据或敏感文本', () => {

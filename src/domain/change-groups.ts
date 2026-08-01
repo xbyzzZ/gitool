@@ -1,4 +1,3 @@
-import { posix } from 'node:path';
 import type { FileChange } from './change-model.js';
 
 export type ChangeSectionKind = 'tracked' | 'untracked' | 'conflicted';
@@ -37,6 +36,11 @@ function compareText(left: string, right: string): number {
   return 0;
 }
 
+function directoryName(path: string): string {
+  const separator = path.lastIndexOf('/');
+  return separator <= 0 ? '.' : path.slice(0, separator);
+}
+
 export function groupChanges(
   changes: readonly FileChange[],
 ): ChangeSection[] {
@@ -47,7 +51,7 @@ export function groupChanges(
 
   for (const change of changes) {
     const kind = sectionKind(change);
-    const directory = posix.dirname(change.path);
+    const directory = directoryName(change.path);
     const directories = sections.get(kind) ?? new Map<string, FileChange[]>();
     const files = directories.get(directory) ?? [];
     files.push(change);

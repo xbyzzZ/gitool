@@ -121,6 +121,14 @@ export function renderWebviewHtml(
           </div>
           <div id="untracked-group" class="file-list" role="list"></div>
         </section>
+
+        <section id="conflicted-section" class="change-group conflicted-group" aria-labelledby="conflicted-heading" hidden>
+          <div class="group-heading">
+            <span id="conflicted-heading">冲突文件</span>
+            <span id="conflicted-count" class="count">0</span>
+          </div>
+          <div id="conflicted-group" class="file-list" role="list"></div>
+        </section>
       </div>
     </section>
 
