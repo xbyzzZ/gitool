@@ -8,7 +8,7 @@ export interface WorkbenchLayoutState {
 
 const paneNames: readonly PaneName[] = ['commit', 'changes', 'history'];
 const minimumHeights: Readonly<Record<PaneName, number>> = {
-  commit: 116,
+  commit: 150,
   changes: 96,
   history: 100,
 };

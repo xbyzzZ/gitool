@@ -20,9 +20,20 @@ describe('工作台布局状态', () => {
       heights: { commit: 20, changes: 20, history: 20 },
       collapsed: { commit: false, changes: false, history: false },
     }, 600)).toEqual({
-      heights: { commit: 116, changes: 96, history: 100 },
+      heights: { commit: 150, changes: 96, history: 100 },
       collapsed: { commit: false, changes: false, history: false },
     });
+  });
+
+  it('拖动第一条分隔线时不裁掉提交区按钮', () => {
+    const result = resizeLayout(
+      defaultLayoutState,
+      'commit-changes',
+      -10_000,
+      720,
+    );
+
+    expect(result.heights.commit).toBe(150);
   });
 
   it('折叠和展开区域时保留用户设置的展开高度', () => {
