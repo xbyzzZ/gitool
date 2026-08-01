@@ -21,6 +21,13 @@ interface StateMessage {
   readonly acknowledgedRequestId?: string;
 }
 
+interface CommitDetailsMessage {
+  readonly type: 'commitDetails';
+  readonly repositoryId: string;
+  readonly version: number;
+  readonly details: Awaited<ReturnType<RepositoryService['loadCommitDetails']>>;
+}
+
 interface RemotePickItem extends vscode.QuickPickItem {
   readonly remoteName: string;
 }
@@ -102,12 +109,15 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   private readonly disposables: vscode.Disposable[] = [];
   private viewDisposables: vscode.Disposable[] = [];
   private webview: vscode.Webview | undefined;
+  private view: vscode.WebviewView | undefined;
+  private aiController: AbortController | undefined;
   private disposed = false;
 
   constructor(private readonly dependencies: GitoolViewProviderDependencies) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.disposeView();
+    this.view = webviewView;
     this.webview = webviewView.webview;
     this.webview.options = {
       enableScripts: true,
@@ -120,12 +130,14 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       this.dependencies.extensionUri,
       randomBytes(16).toString('hex'),
     );
+    this.updateBadge();
 
     this.viewDisposables = [
       this.webview.onDidReceiveMessage((input: unknown) => {
         void this.handleInput(input);
       }),
       this.dependencies.repositoryService.onDidChange(() => {
+        this.updateBadge();
         void this.postState();
       }),
       webviewView.onDidDispose(() => {
@@ -146,6 +158,12 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   }
 
   private disposeView(): void {
+    this.aiController?.abort();
+    this.aiController = undefined;
+    if (this.view !== undefined) {
+      this.view.badge = undefined;
+    }
+    this.view = undefined;
     this.webview = undefined;
     for (const disposable of this.viewDisposables.splice(0)) {
       disposable.dispose();
@@ -181,6 +199,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         await service.refresh();
         return;
       case 'selectRepository':
+        this.aiController?.abort();
         service.selectRepository(message.repositoryId);
         return;
       case 'toggleFile':
@@ -233,7 +252,164 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       case 'editRemoteUrl':
         await this.editRemoteUrl(message.repositoryId, message.version);
         return;
+      case 'refreshHistory':
+        this.requireScope(message.repositoryId, message.version);
+        await service.refreshHistory({
+          repositoryId: message.repositoryId,
+          version: message.version,
+        });
+        return;
+      case 'fetchHistory':
+        this.requireScope(message.repositoryId, message.version);
+        await service.fetchHistory({
+          repositoryId: message.repositoryId,
+          version: message.version,
+        });
+        return;
+      case 'pull':
+        this.requireScope(message.repositoryId, message.version);
+        await service.pull({
+          repositoryId: message.repositoryId,
+          version: message.version,
+        });
+        return;
+      case 'pushAll':
+        await this.pushAll(message.repositoryId, message.version);
+        return;
+      case 'loadCommitDetails':
+        await this.loadCommitDetails(message);
+        return;
+      case 'openCommitDiff':
+        await this.openCommitDiff(message);
+        return;
+      case 'generateCommitMessage':
+        await this.generateCommitMessage(message);
+        return;
+      case 'cancelCommitMessageGeneration':
+        this.requireRepository(message.repositoryId);
+        this.aiController?.abort();
+        this.aiController = undefined;
+        return;
     }
+  }
+
+  private updateBadge(): void {
+    const view = this.view;
+    if (view === undefined) {
+      return;
+    }
+    const count = this.dependencies.repositoryService.getViewModel()
+      .changeCount;
+    view.badge = count === 0
+      ? undefined
+      : {
+          value: count,
+          tooltip: `Gitool：${String(count)} 个变更文件`,
+        };
+  }
+
+  private async loadCommitDetails(
+    message: Extract<WebviewMessage, { readonly type: 'loadCommitDetails' }>,
+  ): Promise<void> {
+    this.requireScope(message.repositoryId, message.version);
+    const details = await this.dependencies.repositoryService
+      .loadCommitDetails({
+        repositoryId: message.repositoryId,
+        version: message.version,
+        hash: message.hash,
+      });
+    const webview = this.webview;
+    if (webview === undefined) {
+      return;
+    }
+    const response: CommitDetailsMessage = {
+      type: 'commitDetails',
+      repositoryId: message.repositoryId,
+      version: message.version,
+      details,
+    };
+    await webview.postMessage(response);
+  }
+
+  private async pushAll(repositoryId: string, version: number): Promise<void> {
+    const service = this.dependencies.repositoryService;
+    this.requireScope(repositoryId, version);
+    const result = await service.pushAll({ repositoryId, version });
+    if (result.kind !== 'needs-remote') {
+      return;
+    }
+    const selected = await vscode.window.showQuickPick(
+      result.remotes.map((remote) => ({ label: remote, remote })),
+      {
+        placeHolder: '选择用于推送全部本地提交并建立上游的远程',
+        title: 'Gitool：推送全部本地提交',
+      },
+    );
+    if (selected === undefined) {
+      return;
+    }
+    const latest = this.requireRepository(repositoryId);
+    await service.pushAll({
+      repositoryId,
+      version: latest.version,
+      selectedRemote: selected.remote,
+    });
+  }
+
+  private async generateCommitMessage(
+    message: Extract<WebviewMessage, {
+      readonly type: 'generateCommitMessage';
+    }>,
+  ): Promise<void> {
+    this.requireScope(message.repositoryId, message.version);
+    this.aiController?.abort();
+    const controller = new AbortController();
+    this.aiController = controller;
+    try {
+      await this.dependencies.repositoryService.generateCommitMessage({
+        repositoryId: message.repositoryId,
+        version: message.version,
+        selectedIds: message.selectedIds,
+        density: message.density,
+      }, controller.signal);
+    } finally {
+      if (this.aiController === controller) {
+        this.aiController = undefined;
+      }
+    }
+  }
+
+  private async openCommitDiff(
+    message: Extract<WebviewMessage, { readonly type: 'openCommitDiff' }>,
+  ): Promise<void> {
+    this.requireScope(message.repositoryId, message.version);
+    const service = this.dependencies.repositoryService;
+    const repository = service.getRepository(message.repositoryId);
+    if (repository === undefined) {
+      throw new Error('当前仓库不存在或已关闭');
+    }
+    const details = await service.loadCommitDetails({
+      repositoryId: message.repositoryId,
+      version: message.version,
+      hash: message.hash,
+    });
+    const file = details.files.find((item) => item.path === message.path);
+    if (file === undefined) {
+      throw new Error('文件不属于所选历史提交');
+    }
+    const originalPath = file.originalPath ?? file.path;
+    const leftFile = vscode.Uri.joinPath(repository.rootUri, originalPath);
+    const rightFile = vscode.Uri.joinPath(repository.rootUri, file.path);
+    const leftRef = file.status.startsWith('A')
+      ? '~'
+      : (details.parentHash ?? '~');
+    const rightRef = file.status.startsWith('D') ? '~' : details.hash;
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      this.dependencies.gitApi.toGitUri(leftFile, leftRef),
+      this.dependencies.gitApi.toGitUri(rightFile, rightRef),
+      `${file.originalPath === undefined ? file.path : `${file.originalPath} → ${file.path}`}（历史提交 ${details.hash.slice(0, 7)}）`,
+    );
   }
 
   private requireRepository(repositoryId: string): RepositoryViewModel {
@@ -511,6 +687,9 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
 
   private reportError(action: string, error: unknown): void {
     const message = errorMessage(error);
+    if (action === '生成提交信息' && message.includes('已取消')) {
+      return;
+    }
     if (
       this.dependencies.repositoryService.getViewModel().operation.kind
         === 'running'

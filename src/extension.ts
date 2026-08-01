@@ -2,10 +2,17 @@ import * as vscode from 'vscode';
 import type { BuiltinGitApi } from './git/builtin-git-api.js';
 import { GitRunner, redactSensitiveText } from './git/git-runner.js';
 import { CommitService } from './services/commit-service.js';
+import {
+  CommitMessageAiService,
+  type AiLanguageModel,
+  type AiSelectedChangeContext,
+} from './services/commit-message-ai-service.js';
+import { HistoryService } from './services/history-service.js';
 import { RepositoryOperationLock } from './services/operation-lock.js';
 import { PushService } from './services/push-service.js';
 import { RemoteService } from './services/remote-service.js';
 import { RepositoryService } from './services/repository-service.js';
+import { SyncService } from './services/sync-service.js';
 import {
   TrashService,
   type TrashConfirmationRequest,
@@ -25,6 +32,141 @@ const gitUnavailableMessage =
   'VS Code 内置 Git 扩展不可用或已禁用。请启用内置 Git 扩展并重新加载窗口。';
 
 let activeRuntime: GitoolRuntime | undefined;
+
+function cancellationFor(signal?: AbortSignal): {
+  readonly source: vscode.CancellationTokenSource;
+  readonly dispose: () => void;
+} {
+  const source = new vscode.CancellationTokenSource();
+  const abort = (): void => {
+    source.cancel();
+  };
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted === true) {
+    source.cancel();
+  }
+  return {
+    source,
+    dispose: () => {
+      signal?.removeEventListener('abort', abort);
+      source.dispose();
+    },
+  };
+}
+
+async function readAiSelectedChanges(
+  git: GitRunner,
+  repositoryRoot: string,
+  selectedPaths: readonly string[],
+): Promise<AiSelectedChangeContext> {
+  const files: AiSelectedChangeContext['files'][number][] = [];
+  const excluded: AiSelectedChangeContext['excluded'][number][] = [];
+  let remaining = 256 * 1024;
+  for (const path of selectedPaths) {
+    if (remaining <= 0) {
+      excluded.push({ path, reason: '已达到 AI 上下文总大小限制' });
+      continue;
+    }
+    const [working, staged] = await Promise.all([
+      git.run(repositoryRoot, [
+        'diff', '--no-ext-diff', '--binary', '--', path,
+      ], { allowFailure: true }),
+      git.run(repositoryRoot, [
+        'diff', '--cached', '--no-ext-diff', '--binary', '--', path,
+      ], { allowFailure: true }),
+    ]);
+    let diff = [staged.stdout, working.stdout].filter(
+      (value) => value.length > 0,
+    ).join('\n');
+    if (diff.length === 0) {
+      try {
+        const content = await vscode.workspace.fs.readFile(
+          vscode.Uri.joinPath(vscode.Uri.file(repositoryRoot), path),
+        );
+        if (content.includes(0)) {
+          excluded.push({ path, reason: '二进制文件不发送内容' });
+          files.push({ path, status: '变更' });
+          continue;
+        }
+        diff = new TextDecoder().decode(content);
+      } catch {
+        diff = '';
+      }
+    }
+    if (diff.includes('GIT binary patch') || diff.includes('Binary files ')) {
+      excluded.push({ path, reason: '二进制文件不发送差异内容' });
+      files.push({ path, status: '变更' });
+      continue;
+    }
+    const allowed = Math.min(64 * 1024, remaining);
+    const truncated = diff.length > allowed;
+    const effectiveDiff = truncated
+      ? `${diff.slice(0, allowed)}\n[单文件差异已截断]`
+      : diff;
+    remaining -= Math.min(diff.length, allowed);
+    files.push({
+      path,
+      status: '变更',
+      ...(effectiveDiff.length === 0 ? {} : { diff: effectiveDiff }),
+    });
+    if (truncated) {
+      excluded.push({ path, reason: '单文件差异超过 64 KiB，已截断' });
+    }
+  }
+  return { files, excluded };
+}
+
+function createAiService(git: GitRunner): CommitMessageAiService {
+  const selectedModels = new Map<string, vscode.LanguageModelChat>();
+  return new CommitMessageAiService({
+    selectModels: async (): Promise<readonly AiLanguageModel[]> => {
+      let models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+      if (models.length === 0) {
+        models = await vscode.lm.selectChatModels();
+      }
+      selectedModels.clear();
+      return models.map((model) => {
+        selectedModels.set(model.id, model);
+        return {
+          id: model.id,
+          maxInputTokens: model.maxInputTokens,
+          countTokens: async (text, signal) => {
+            const cancellation = cancellationFor(signal);
+            try {
+              return await model.countTokens(text, cancellation.source.token);
+            } finally {
+              cancellation.dispose();
+            }
+          },
+        };
+      });
+    },
+    readSelectedDiff: async (request) => await readAiSelectedChanges(
+      git,
+      request.repositoryRoot,
+      request.selectedPaths,
+    ),
+    sendRequest: async (model, prompt, signal) => {
+      const selected = selectedModels.get(model.id);
+      if (selected === undefined) {
+        throw new Error('所选 VS Code AI 模型已不可用，请重新生成');
+      }
+      const cancellation = cancellationFor(signal);
+      try {
+        const response = await selected.sendRequest([
+          vscode.LanguageModelChatMessage.User(prompt),
+        ], {}, cancellation.source.token);
+        let text = '';
+        for await (const fragment of response.text) {
+          text += fragment;
+        }
+        return text;
+      } finally {
+        cancellation.dispose();
+      }
+    },
+  });
+}
 
 class Runtime implements GitoolRuntime {
   private disposed = false;
@@ -247,6 +389,9 @@ function registerReadyRuntime(
         },
       }),
       operationLock: new RepositoryOperationLock(),
+      historyService: new HistoryService(git),
+      syncService: new SyncService(),
+      aiService: createAiService(git),
       isWorkspaceTrusted: () => vscode.workspace.isTrusted,
     });
     disposables.push(repositoryService);

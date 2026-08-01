@@ -92,6 +92,13 @@ interface ServiceDouble {
   readonly trash: ReturnType<typeof vi.fn>;
   readonly reportFailure: ReturnType<typeof vi.fn>;
   readonly setRemoteUrl: ReturnType<typeof vi.fn>;
+  readonly refreshHistory: ReturnType<typeof vi.fn>;
+  readonly loadCommitDetails: ReturnType<typeof vi.fn>;
+  readonly fetchHistory: ReturnType<typeof vi.fn>;
+  readonly pull: ReturnType<typeof vi.fn>;
+  readonly pushAll: ReturnType<typeof vi.fn>;
+  readonly generateCommitMessage: ReturnType<typeof vi.fn>;
+  readonly fireChange: () => void;
 }
 
 function createServiceDouble(initialModel = model()): ServiceDouble {
@@ -102,6 +109,13 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
   const trash = vi.fn();
   const reportFailure = vi.fn().mockReturnValue(true);
   const setRemoteUrl = vi.fn();
+  const refreshHistory = vi.fn().mockResolvedValue(undefined);
+  const loadCommitDetails = vi.fn();
+  const fetchHistory = vi.fn().mockResolvedValue(undefined);
+  const pull = vi.fn().mockResolvedValue(undefined);
+  const pushAll = vi.fn();
+  const generateCommitMessage = vi.fn();
+  const changeListeners = new Set<() => unknown>();
   const getRepository = vi.fn().mockReturnValue({
     rootUri: uri('/workspace/repo'),
     state: {
@@ -109,7 +123,10 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     },
   });
   const service = {
-    onDidChange: () => ({ dispose: vi.fn() }),
+    onDidChange: (listener: () => unknown) => {
+      changeListeners.add(listener);
+      return { dispose: () => changeListeners.delete(listener) };
+    },
     getViewModel,
     getRepository,
     getFileChange: vi.fn(),
@@ -126,6 +143,12 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     retryPush: vi.fn(),
     trash,
     setRemoteUrl,
+    refreshHistory,
+    loadCommitDetails,
+    fetchHistory,
+    pull,
+    pushAll,
+    generateCommitMessage,
   } as unknown as RepositoryService;
   return {
     service,
@@ -137,6 +160,17 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     trash,
     reportFailure,
     setRemoteUrl,
+    refreshHistory,
+    loadCommitDetails,
+    fetchHistory,
+    pull,
+    pushAll,
+    generateCommitMessage,
+    fireChange: () => {
+      for (const listener of changeListeners) {
+        listener();
+      }
+    },
   };
 }
 
@@ -192,6 +226,156 @@ beforeEach(() => {
 });
 
 describe('GitoolViewProvider', () => {
+  it('在活动栏徽标显示当前仓库改动文件数并在清空后移除', async () => {
+    const created = createServiceDouble(model({ changeCount: 4 }));
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+
+    provider.resolveWebviewView(harness.view);
+
+    expect(harness.view.badge).toEqual({
+      value: 4,
+      tooltip: 'Gitool：4 个变更文件',
+    });
+
+    created.getViewModel.mockReturnValue(model({
+      changes: [],
+      selectedIds: [],
+      changeCount: 0,
+    }));
+    created.fireChange();
+    await vi.waitFor(() => {
+      expect(harness.view.badge).toBeUndefined();
+    });
+  });
+
+  it('读取提交详情后向 Webview 返回文件列表', async () => {
+    const created = createServiceDouble();
+    const details = {
+      hash: 'a'.repeat(40),
+      parentHash: 'b'.repeat(40),
+      files: [{ status: 'M', path: 'src/client.ts' }],
+    };
+    created.loadCommitDetails.mockResolvedValue(details);
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'loadCommitDetails',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      hash: details.hash,
+      requestId: 'details-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith({
+        type: 'commitDetails',
+        repositoryId: '/workspace/repo',
+        version: 0,
+        details,
+      });
+    });
+  });
+
+  it('路由远程刷新、拉取和推送全部消息', async () => {
+    const created = createServiceDouble();
+    created.pushAll.mockResolvedValue({
+      kind: 'pushed',
+      remote: 'origin',
+      branch: 'main',
+    });
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    for (const type of ['fetchHistory', 'pull', 'pushAll'] as const) {
+      harness.receive({
+        type,
+        repositoryId: '/workspace/repo',
+        version: 0,
+        requestId: `request-${type}`,
+      });
+    }
+
+    await vi.waitFor(() => {
+      expect(created.fetchHistory).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+      });
+      expect(created.pull).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+      });
+      expect(created.pushAll).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+      });
+    });
+  });
+
+  it('推送全部在无上游时选择远程并继续建立上游', async () => {
+    const created = createServiceDouble();
+    created.pushAll
+      .mockResolvedValueOnce({ kind: 'needs-remote', remotes: ['origin'] })
+      .mockResolvedValueOnce({
+        kind: 'pushed',
+        remote: 'origin',
+        branch: 'main',
+      });
+    vscodeMocks.showQuickPick.mockImplementation(
+      (items: readonly unknown[]) => Promise.resolve(items[0]),
+    );
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'pushAll',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      requestId: 'push-all-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.pushAll).toHaveBeenNthCalledWith(2, {
+        repositoryId: '/workspace/repo',
+        version: 0,
+        selectedRemote: 'origin',
+      });
+    });
+  });
+
+  it('把 AI 密度和所选文件交给仓库服务', async () => {
+    const created = createServiceDouble();
+    created.generateCommitMessage.mockResolvedValue({
+      message: '功能：生成信息',
+      excluded: [],
+      modelId: 'copilot-test',
+    });
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'generateCommitMessage',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      selectedIds: ['a.ts'],
+      density: 'detailed',
+      requestId: 'ai-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.generateCommitMessage).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+        selectedIds: ['a.ts'],
+        density: 'detailed',
+      }, expect.any(AbortSignal));
+    });
+  });
   it('选择远程后继续推送原提交且不再次提交', async () => {
     const created = createServiceDouble();
     created.commitAndPush.mockResolvedValue({
@@ -204,6 +388,7 @@ describe('GitoolViewProvider', () => {
       branch: 'main',
     });
     created.getViewModel
+      .mockReturnValueOnce(model())
       .mockReturnValueOnce(model())
       .mockReturnValue(model({ version: 1 }));
     vscodeMocks.showQuickPick.mockImplementation(

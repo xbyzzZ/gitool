@@ -280,6 +280,11 @@ export class RepositoryService {
       this.registry.notifyChange();
       return result;
     } catch (error) {
+      if (signal?.aborted === true && this.matches(state, request.version)) {
+        state.ai = { kind: 'idle' };
+        this.registry.notifyChange();
+        throw error;
+      }
       if (this.matches(state, request.version)
         && this.sameIds(state.selectedIds, request.selectedIds)) {
         state.ai = { kind: 'failed', message: this.errorMessage(error) };

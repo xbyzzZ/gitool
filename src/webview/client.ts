@@ -639,7 +639,9 @@ function render(
   controls.commitMessage.disabled = !canWrite;
   controls.commitButton.disabled = !canCommit;
   controls.commitPushButton.disabled = !canCommit || model.detached;
-  controls.aiGenerateButton.disabled = !canWrite || selected.size === 0;
+  controls.aiGenerateButton.disabled = model.ai.kind === 'generating'
+    ? false
+    : !canWrite || selected.size === 0;
   controls.aiDensityButton.disabled = !canWrite || selected.size === 0;
   controls.pullButton.disabled = !canWrite || model.sync.kind !== 'ready';
   controls.pushAllButton.disabled = !canWrite

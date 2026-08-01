@@ -19,6 +19,10 @@ export interface AiSelectedChangeContext {
 export interface AiLanguageModel {
   readonly id: string;
   readonly maxInputTokens: number;
+  readonly countTokens?: (
+    text: string,
+    signal?: AbortSignal,
+  ) => Promise<number>;
 }
 
 export interface GenerateCommitMessageRequest {
@@ -88,6 +92,61 @@ function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
+function languageModelError(error: unknown): Error {
+  const record = typeof error === 'object' && error !== null
+    ? error as { readonly code?: unknown; readonly name?: unknown }
+    : {};
+  const code = typeof record.code === 'string'
+    ? record.code
+    : typeof record.name === 'string'
+      ? record.name
+      : '';
+  if (code.includes('NoPermissions')) {
+    return new Error('未授权 Gitool 使用 VS Code AI 模型，请在授权提示中允许后重试');
+  }
+  if (code.includes('Blocked')) {
+    return new Error('VS Code AI 模型当前不可用或已达到使用限制，请稍后重试');
+  }
+  if (code.includes('NotFound')) {
+    return new Error('所选 VS Code AI 模型已不可用，请重新生成');
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+async function fitPromptToModel(
+  density: CommitMessageDensity,
+  context: AiSelectedChangeContext,
+  model: AiLanguageModel,
+  signal?: AbortSignal,
+): Promise<string> {
+  let maximumDiffLength = 64 * 1024;
+  let prompt = buildCommitMessagePrompt(density, context);
+  if (model.countTokens === undefined) {
+    return prompt;
+  }
+  const tokenLimit = Math.max(256, Math.floor(model.maxInputTokens * 0.8));
+  while (await model.countTokens(prompt, signal) > tokenLimit
+    && maximumDiffLength > 1024) {
+    throwIfAborted(signal);
+    maximumDiffLength = Math.floor(maximumDiffLength / 2);
+    prompt = buildCommitMessagePrompt(density, {
+      ...context,
+      files: context.files.map((file) => file.diff === undefined
+        ? file
+        : {
+            ...file,
+            diff: file.diff.length <= maximumDiffLength
+              ? file.diff
+              : `${file.diff.slice(0, maximumDiffLength)}\n[差异已按模型上下文限制截断]`,
+          }),
+    });
+  }
+  if (await model.countTokens(prompt, signal) > tokenLimit) {
+    throw new Error('所选变更超过当前 VS Code AI 模型的上下文限制，请减少文件后重试');
+  }
+  return prompt;
+}
+
 export class CommitMessageAiService {
   constructor(private readonly dependencies: CommitMessageAiDependencies) {}
 
@@ -108,8 +167,18 @@ export class CommitMessageAiService {
       repositoryRoot: request.repositoryRoot,
       selectedPaths: request.selectedPaths,
     });
-    const prompt = buildCommitMessagePrompt(request.density, context);
-    const response = await this.dependencies.sendRequest(model, prompt, signal);
+    const prompt = await fitPromptToModel(
+      request.density,
+      context,
+      model,
+      signal,
+    );
+    let response: string;
+    try {
+      response = await this.dependencies.sendRequest(model, prompt, signal);
+    } catch (error) {
+      throw languageModelError(error);
+    }
     throwIfAborted(signal);
     return {
       message: normalizeGeneratedMessage(response),
