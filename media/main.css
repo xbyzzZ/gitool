@@ -463,7 +463,8 @@ input:disabled {
 }
 
 .history-list {
-  height: calc(100% - 33px);
+  min-height: 0;
+  flex: 1;
   overflow: auto;
 }
 
@@ -683,12 +684,14 @@ input:disabled {
   min-height: 0;
 }
 
-.commit-layout .commit-panel,
-.history-layout .history-panel {
+.commit-layout .commit-panel {
   min-height: 0;
   height: auto !important;
 }
 
-.compatibility-controls {
-  display: none !important;
+.history-layout .history-panel {
+  display: flex;
+  height: 100vh !important;
+  min-height: 0;
+  flex-direction: column;
 }
