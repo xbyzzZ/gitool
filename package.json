@@ -5,6 +5,14 @@
   "version": "0.2.0",
   "publisher": "xbyzzz",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xbyzzZ/gitool.git"
+  },
+  "homepage": "https://github.com/xbyzzZ/gitool#readme",
+  "bugs": {
+    "url": "https://github.com/xbyzzZ/gitool/issues"
+  },
   "engines": {
     "vscode": "^1.125.0"
   },
