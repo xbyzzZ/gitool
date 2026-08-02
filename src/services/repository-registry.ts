@@ -343,13 +343,6 @@ export class RepositoryRegistry implements vscode.Disposable {
         errors.push(error);
       }
     }
-    for (const state of [...this.repositories.values()].reverse()) {
-      try {
-        state.changeListener.dispose();
-      } catch (error) {
-        errors.push(error);
-      }
-    }
     this.lifecycleListeners.length = 0;
     this.repositories.clear();
     this.currentRepositoryId = undefined;
@@ -369,7 +362,7 @@ export class RepositoryRegistry implements vscode.Disposable {
       if (existing.repository === repository) {
         return;
       }
-      existing.changeListener.dispose();
+      this.disposeLifecycleListener(existing.changeListener);
       this.lastVersions.set(id, existing.version);
       this.repositories.delete(id);
     }
@@ -395,6 +388,7 @@ export class RepositoryRegistry implements vscode.Disposable {
       this.synchronizeStateIfChanged(state, true);
       this.notifyChange();
     });
+    this.lifecycleListeners.push(state.changeListener);
     this.repositories.set(id, state);
     this.applySnapshot(state, state.snapshot, false);
     this.currentRepositoryId ??= id;
@@ -407,13 +401,21 @@ export class RepositoryRegistry implements vscode.Disposable {
     if (state === undefined) {
       return;
     }
-    state.changeListener.dispose();
+    this.disposeLifecycleListener(state.changeListener);
     this.lastVersions.set(id, state.version);
     this.repositories.delete(id);
     if (this.currentRepositoryId === id) {
       this.currentRepositoryId = this.repositories.keys().next().value;
     }
     this.notifyChange();
+  }
+
+  private disposeLifecycleListener(listener: vscode.Disposable): void {
+    const index = this.lifecycleListeners.lastIndexOf(listener);
+    if (index >= 0) {
+      this.lifecycleListeners.splice(index, 1);
+    }
+    listener.dispose();
   }
 
   private synchronizeStateIfChanged(

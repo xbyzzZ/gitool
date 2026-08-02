@@ -1095,6 +1095,35 @@ describe('RepositoryService', () => {
     expect(gitApi.closed.listenerCount()).toBe(0);
   });
 
+  it('动态打开仓库后按全部监听的真实创建顺序逆序释放', () => {
+    const trace: string[] = [];
+    const repositoryA = new TestRepository('/workspace/repo-a', {}, {
+      onDispose: () => trace.push('仓库 A 监听'),
+    });
+    const repositoryB = new TestRepository('/workspace/repo-b', {}, {
+      onDispose: () => trace.push('仓库 B 监听'),
+    });
+    const gitApi = new TestGitApi([repositoryA], {
+      opened: { onDispose: () => trace.push('打开监听') },
+      closed: { onDispose: () => trace.push('关闭监听') },
+    });
+    const registry = new RepositoryRegistry(gitApi);
+
+    gitApi.opened.fire(repositoryB);
+    registry.dispose();
+
+    expect(trace).toEqual([
+      '仓库 B 监听',
+      '关闭监听',
+      '打开监听',
+      '仓库 A 监听',
+    ]);
+    expect(repositoryA.changed.listenerCount()).toBe(0);
+    expect(repositoryB.changed.listenerCount()).toBe(0);
+    expect(gitApi.opened.listenerCount()).toBe(0);
+    expect(gitApi.closed.listenerCount()).toBe(0);
+  });
+
   it('同路径仓库关闭重开后拒绝旧版本提交请求', async () => {
     const root = '/workspace/repo-a';
     const oldRepository = new TestRepository(root, {
