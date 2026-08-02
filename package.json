@@ -40,7 +40,6 @@
           "name": "当前变更"
         },
         {
-          "type": "webview",
           "id": "gitool.historyView",
           "name": "提交历史"
         }
@@ -69,6 +68,10 @@
       {
         "command": "gitool.openChange",
         "title": "Gitool：打开文件变更"
+      },
+      {
+        "command": "gitool.openHistoryChange",
+        "title": "Gitool：打开历史文件改动"
       },
       {
         "command": "gitool.pull",

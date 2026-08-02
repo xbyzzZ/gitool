@@ -38,8 +38,15 @@ describe('扩展贡献点', () => {
     expect(manifest.contributes.views.gitool).toEqual([
       { type: 'webview', id: 'gitool.commitView', name: '提交信息' },
       { id: 'gitool.changesView', name: '当前变更' },
-      { type: 'webview', id: 'gitool.historyView', name: '提交历史' },
+      { id: 'gitool.historyView', name: '提交历史' },
     ]);
+  });
+
+  it('声明打开历史文件改动命令', () => {
+    expect(manifest.contributes.commands).toContainEqual({
+      command: 'gitool.openHistoryChange',
+      title: 'Gitool：打开历史文件改动',
+    });
   });
 
   it('标题栏命令位于对应视图', () => {
