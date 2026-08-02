@@ -81,17 +81,25 @@ function change(path: string): FileChange {
   };
 }
 
-function viewModel(): RepositoryViewModel {
+function viewModel(
+  repositoryId = 'repo',
+  changes: readonly FileChange[] = [change('src/webview/render.ts')],
+  selectedIds: readonly string[] = changes.map((item) => item.id),
+): RepositoryViewModel {
   return {
     version: 1,
     trusted: true,
-    currentRepositoryId: 'repo',
-    repositories: [{ id: 'repo', label: 'repo', rootPath: '/workspace/repo' }],
+    currentRepositoryId: repositoryId,
+    repositories: [{
+      id: repositoryId,
+      label: repositoryId,
+      rootPath: `/workspace/${repositoryId}`,
+    }],
     branch: 'main',
     detached: false,
-    changes: [change('src/webview/render.ts')],
-    changeCount: 1,
-    selectedIds: ['src/webview/render.ts'],
+    changes,
+    changeCount: changes.length,
+    selectedIds,
     commitMessage: '',
     operation: { kind: 'idle' },
     sync: { kind: 'no-upstream' },
@@ -105,28 +113,39 @@ interface ServiceDouble {
   readonly setFileSelected: ReturnType<typeof vi.fn>;
   readonly setGroup: ReturnType<typeof vi.fn>;
   readonly fireChange: () => void;
+  readonly setViewModel: (model: RepositoryViewModel) => void;
 }
 
-function createService(): ServiceDouble {
+function createService(initialModel = viewModel()): ServiceDouble {
   const setFileSelected = vi.fn();
   const setGroup = vi.fn();
   const changeListeners = new Set<() => void>();
+  let model = initialModel;
   const service = {
     onDidChange: (listener: () => void) => {
       changeListeners.add(listener);
       return { dispose: () => changeListeners.delete(listener) };
     },
-    getViewModel: () => viewModel(),
-    getRepository: () => ({
-      rootUri: { fsPath: '/workspace/repo' } as vscode.Uri,
-    }),
+    getViewModel: () => model,
+    getRepository: (repositoryId: string) => {
+      const repository = model.repositories.find((item) => item.id === repositoryId);
+      return repository === undefined
+        ? undefined
+        : { rootUri: { fsPath: repository.rootPath } as vscode.Uri };
+    },
     setFileSelected,
     setGroup,
+    setViewModel: (nextModel: RepositoryViewModel) => {
+      model = nextModel;
+    },
   } as unknown as RepositoryService;
   return {
     service,
     setFileSelected,
     setGroup,
+    setViewModel: (nextModel: RepositoryViewModel) => {
+      model = nextModel;
+    },
     fireChange: () => {
       for (const listener of changeListeners) {
         listener();
@@ -227,7 +246,11 @@ describe('当前变更树', () => {
     const created = createService();
     createChangeTreeView({ service: created.service });
     const section = createdTreeProvider().getChildren()[0];
-    expect(section).toEqual({ kind: 'section', section: 'tracked' });
+    expect(section).toEqual({
+      kind: 'section',
+      repositoryId: 'repo',
+      section: 'tracked',
+    });
     if (section === undefined) {
       throw new Error('待提交分区不存在');
     }
@@ -239,6 +262,49 @@ describe('当前变更树', () => {
     });
 
     expect(created.setGroup).toHaveBeenCalledWith('tracked', false);
+  });
+
+  it('切换仓库后忽略旧仓库文件节点的复选框事件', () => {
+    const created = createService(viewModel(
+      'repo-a',
+      [change('a.ts')],
+      ['a.ts'],
+    ));
+    createChangeTreeView({ service: created.service });
+    const oldFile = currentFileNode(createdTreeProvider());
+
+    created.setViewModel(viewModel('repo-b', [change('b.ts')], ['b.ts']));
+    created.fireChange();
+    vscodeMocks.checkboxListeners.forEach((listener) => {
+      listener({
+        items: [[oldFile, vscode.TreeItemCheckboxState.Unchecked]],
+      });
+    });
+
+    expect(created.setFileSelected).not.toHaveBeenCalled();
+  });
+
+  it('切换仓库后忽略旧仓库分区节点的复选框事件', () => {
+    const created = createService(viewModel(
+      'repo-a',
+      [change('a.ts')],
+      ['a.ts'],
+    ));
+    createChangeTreeView({ service: created.service });
+    const oldSection = createdTreeProvider().getChildren()[0];
+    if (oldSection?.kind !== 'section') {
+      throw new Error('待提交分区不存在');
+    }
+
+    created.setViewModel(viewModel('repo-b', [change('b.ts')], ['b.ts']));
+    created.fireChange();
+    vscodeMocks.checkboxListeners.forEach((listener) => {
+      listener({
+        items: [[oldSection, vscode.TreeItemCheckboxState.Unchecked]],
+      });
+    });
+
+    expect(created.setGroup).not.toHaveBeenCalled();
   });
 
   it('冲突文件不提供复选框', () => {

@@ -263,7 +263,7 @@ export class RepositoryRegistry implements vscode.Disposable {
     const ids = state.changes
       .filter((change) => group === 'untracked'
         ? change.untracked
-        : !change.untracked)
+        : !change.untracked && !change.conflicted)
       .map((change) => change.id);
     this.selectionStore.setGroup(state.id, ids, selected);
     state.selectedIds = this.selectionStore.reconcile(state.id, state.changes);

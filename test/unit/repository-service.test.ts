@@ -811,6 +811,20 @@ describe('RepositoryService', () => {
     });
   });
 
+  it('切换已跟踪分组时保持冲突文件未选中', () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root, {
+      working: [change(root, 'normal.ts')],
+      merge: [change(root, 'conflict.ts', 18)],
+    });
+    const { service } = createService([repository]);
+
+    service.setGroup('tracked', false);
+    service.setGroup('tracked', true);
+
+    expect(service.getViewModel().selectedIds).toEqual(['normal.ts']);
+  });
+
   it('旧版本提交请求在进入提交服务前被拒绝', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {

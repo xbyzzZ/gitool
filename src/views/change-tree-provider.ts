@@ -9,11 +9,13 @@ import type { RepositoryService } from '../services/repository-service.js';
 
 export interface ChangeSectionNode {
   readonly kind: 'section';
+  readonly repositoryId: string;
   readonly section: ChangeSectionKind;
 }
 
 export interface ChangeDirectoryNode {
   readonly kind: 'directory';
+  readonly repositoryId: string;
   readonly section: ChangeSectionKind;
   readonly path: string;
 }
@@ -100,6 +102,7 @@ export class ChangeTreeProvider
     if (node === undefined) {
       return sections.map((section) => this.createNode({
         kind: 'section',
+        repositoryId,
         section: section.kind,
       }));
     }
@@ -108,6 +111,7 @@ export class ChangeTreeProvider
       const section = sections.find((item) => item.kind === node.section);
       return section?.directories.map((directory) => this.createNode({
         kind: 'directory',
+        repositoryId,
         section: node.section,
         path: directory.path,
       })) ?? [];
@@ -126,8 +130,8 @@ export class ChangeTreeProvider
     return [];
   }
 
-  isCurrentNode(node: ChangeTreeNode): boolean {
-    return this.nodes.has(node);
+  isCurrentNode(node: ChangeTreeNode, repositoryId: string): boolean {
+    return this.nodes.has(node) && node.repositoryId === repositoryId;
   }
 
   dispose(): void {
@@ -232,8 +236,12 @@ function bindCheckboxes(
   service: RepositoryService,
 ): vscode.Disposable {
   return treeView.onDidChangeCheckboxState(({ items }) => {
+    const currentRepositoryId = service.getViewModel().currentRepositoryId;
+    if (currentRepositoryId === undefined) {
+      return;
+    }
     for (const [node, checkboxState] of items) {
-      if (!provider.isCurrentNode(node)) {
+      if (!provider.isCurrentNode(node, currentRepositoryId)) {
         continue;
       }
       const selected = checkboxState === vscode.TreeItemCheckboxState.Checked;
