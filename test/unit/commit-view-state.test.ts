@@ -1,5 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { operationFeedback } from '../../src/webview/commit-view-state.js';
+import type { RepositoryViewModel } from '../../src/domain/view-model.js';
+import {
+  commitControlState,
+  operationFeedback,
+} from '../../src/webview/commit-view-state.js';
+
+function model(hasRemote: boolean): RepositoryViewModel {
+  return {
+    version: 1,
+    trusted: true,
+    currentRepositoryId: '/workspace/repo',
+    repositories: [{
+      id: '/workspace/repo',
+      label: 'repo',
+      rootPath: '/workspace/repo',
+    }],
+    branch: 'main',
+    detached: false,
+    hasRemote,
+    hasHeadCommit: true,
+    changes: [{
+      id: 'src/client.ts',
+      path: 'src/client.ts',
+      kind: 'modified',
+      staged: false,
+      unstaged: true,
+      untracked: false,
+      conflicted: false,
+      commitPaths: ['src/client.ts'],
+    }],
+    changeCount: 1,
+    selectedIds: ['src/client.ts'],
+    commitMessage: '功能：测试推送状态',
+    operation: { kind: 'idle' },
+    sync: { kind: 'no-upstream' },
+    history: { kind: 'idle', commits: [] },
+    ai: { kind: 'idle' },
+  };
+}
 
 describe('提交信息展示状态', () => {
   it('完整提交成功不显示成功文字', () => {
@@ -18,6 +56,26 @@ describe('提交信息展示状态', () => {
       message: '提交已创建：4672c1a',
       error: '远程拒绝推送',
       retry: true,
+    });
+  });
+
+  it('没有远程时只允许本地提交', () => {
+    expect(commitControlState(model(false), {
+      locallyBusy: false,
+      message: '功能：测试推送状态',
+    })).toMatchObject({
+      canCommit: true,
+      canCommitAndPush: false,
+    });
+  });
+
+  it('配置远程后允许提交并推送', () => {
+    expect(commitControlState(model(true), {
+      locallyBusy: false,
+      message: '功能：测试推送状态',
+    })).toMatchObject({
+      canCommit: true,
+      canCommitAndPush: true,
     });
   });
 });

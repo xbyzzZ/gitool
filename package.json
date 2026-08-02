@@ -81,7 +81,8 @@
       {
         "command": "gitool.pushAll",
         "title": "Gitool：推送全部本地提交",
-        "icon": "$(cloud-upload)"
+        "icon": "$(cloud-upload)",
+        "enablement": "gitool.canPushAll"
       },
       {
         "command": "gitool.refreshHistory",

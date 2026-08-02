@@ -96,6 +96,8 @@ function model(changes: readonly FileChange[]): RepositoryViewModel {
     }],
     branch: 'main',
     detached: false,
+    hasRemote: false,
+    hasHeadCommit: false,
     changes,
     changeCount: changes.length,
     selectedIds: changes.filter((item) => !item.untracked).map((item) => item.id),

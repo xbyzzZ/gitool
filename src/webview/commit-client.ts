@@ -1,6 +1,9 @@
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
-import { operationFeedback } from './commit-view-state.js';
+import {
+  commitControlState,
+  operationFeedback,
+} from './commit-view-state.js';
 import type { WebviewMessage } from './messages.js';
 import {
   beginScopedRequest,
@@ -134,13 +137,16 @@ function render(model: RepositoryViewModel): void {
   }
 
   const running = model.operation.kind === 'running';
-  const noRepository = model.currentRepositoryId === undefined;
   const hasConflict = model.changes.some((change) => change.conflicted);
   const locallyBusy = pendingRequestId !== undefined;
-  const canWrite = model.trusted && !noRepository && !running
-    && !locallyBusy && !hasConflict;
-  const canCommit = canWrite && model.selectedIds.length > 0
-    && controls.commitMessage.value.trim().length > 0;
+  const {
+    canWrite,
+    canCommit,
+    canCommitAndPush,
+  } = commitControlState(model, {
+    locallyBusy,
+    message: controls.commitMessage.value,
+  });
   const aiGenerating = model.ai.kind === 'generating'
     || pendingPresentation === 'ai-button';
 
@@ -148,7 +154,7 @@ function render(model: RepositoryViewModel): void {
     || model.repositories.length < 2;
   controls.commitMessage.disabled = !canWrite;
   controls.commitButton.disabled = !canCommit;
-  controls.commitPushButton.disabled = !canCommit || model.detached;
+  controls.commitPushButton.disabled = !canCommitAndPush;
   controls.aiGenerateButton.disabled = aiGenerating
     ? false
     : !canWrite || model.selectedIds.length === 0;

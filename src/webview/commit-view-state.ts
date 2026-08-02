@@ -1,9 +1,23 @@
-import type { OperationState } from '../domain/view-model.js';
+import type {
+  OperationState,
+  RepositoryViewModel,
+} from '../domain/view-model.js';
 
 export interface OperationFeedback {
   readonly message: string;
   readonly error: string;
   readonly retry: boolean;
+}
+
+export interface CommitControlInput {
+  readonly locallyBusy: boolean;
+  readonly message: string;
+}
+
+export interface CommitControlState {
+  readonly canWrite: boolean;
+  readonly canCommit: boolean;
+  readonly canCommitAndPush: boolean;
 }
 
 const actionLabels: Readonly<Record<
@@ -36,4 +50,25 @@ export function operationFeedback(
     case 'failed':
       return { message: '', error: operation.message, retry: false };
   }
+}
+
+export function commitControlState(
+  model: RepositoryViewModel,
+  input: CommitControlInput,
+): CommitControlState {
+  const running = model.operation.kind === 'running';
+  const hasConflict = model.changes.some((change) => change.conflicted);
+  const canWrite = model.trusted
+    && model.currentRepositoryId !== undefined
+    && !running
+    && !input.locallyBusy
+    && !hasConflict;
+  const canCommit = canWrite
+    && model.selectedIds.length > 0
+    && input.message.trim().length > 0;
+  return {
+    canWrite,
+    canCommit,
+    canCommitAndPush: canCommit && model.hasRemote && !model.detached,
+  };
 }

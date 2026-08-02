@@ -6,6 +6,7 @@ interface ManifestCommand {
   readonly command: string;
   readonly title: string;
   readonly icon?: string;
+  readonly enablement?: string;
 }
 
 interface ManifestMenuItem {
@@ -48,6 +49,15 @@ describe('扩展贡献点', () => {
     expect(manifest.contributes.commands).toContainEqual({
       command: 'gitool.openHistoryChange',
       title: 'Gitool：打开历史文件改动',
+    });
+  });
+
+  it('历史区推送命令由仓库可推送状态控制', () => {
+    expect(manifest.contributes.commands).toContainEqual({
+      command: 'gitool.pushAll',
+      title: 'Gitool：推送全部本地提交',
+      icon: '$(cloud-upload)',
+      enablement: 'gitool.canPushAll',
     });
   });
 

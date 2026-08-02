@@ -122,6 +122,8 @@ function model(
     history: { kind: 'ready', commits },
     ai: { kind: 'idle' },
     ...overrides,
+    hasRemote: overrides.hasRemote ?? true,
+    hasHeadCommit: overrides.hasHeadCommit ?? true,
   };
 }
 

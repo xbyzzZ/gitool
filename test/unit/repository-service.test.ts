@@ -232,6 +232,29 @@ describe('RepositoryService', () => {
     });
   });
 
+  it('视图模型反映当前仓库是否配置远程', () => {
+    const repository = new TestRepository('/workspace/repo-a');
+    const { service } = createService([repository]);
+
+    expect(service.getViewModel().hasRemote).toBe(true);
+
+    repository.setRemotes([]);
+
+    expect(service.getViewModel().hasRemote).toBe(false);
+  });
+
+  it('视图模型区分空分支和已有本地提交', async () => {
+    const repository = new TestRepository('/workspace/repo-a');
+    const { service } = createService([repository]);
+
+    expect(service.getViewModel().hasHeadCommit).toBe(false);
+
+    repository.setHead({ name: 'main', commit: 'a'.repeat(40) });
+    await service.refresh();
+
+    expect(service.getViewModel().hasHeadCommit).toBe(true);
+  });
+
   it('服务启动后才打开的首个仓库会自动读取文件状态和提交历史', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root);
