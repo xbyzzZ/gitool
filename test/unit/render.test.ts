@@ -1,9 +1,8 @@
 import type * as vscode from 'vscode';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  renderCommitWebviewHtml,
-  renderHistoryWebviewHtml,
-} from '../../src/webview/render.js';
+import * as renderModule from '../../src/webview/render.js';
+
+const { renderCommitWebviewHtml } = renderModule;
 
 function createWebview(): vscode.Webview {
   return {
@@ -59,18 +58,8 @@ describe('独立 Webview 壳页面', () => {
     expect(html).not.toContain('class="pane-resizer"');
   });
 
-  it('历史页面保留现有拓扑内容且没有内部标题栏', () => {
-    const html = renderHistoryWebviewHtml(
-      createWebview(),
-      createExtensionUri(),
-      'nonce-123',
-    );
-    expect(html).toContain('id="history-list"');
-    expect(html).toContain('class="history-list"');
-    expect(html).toContain('id="sync-summary"');
-    expect(html).not.toContain('id="commit-message"');
-    expect(html).not.toContain('id="collapse-history-button"');
-    expect(html).not.toContain('id="changes-history-resizer"');
+  it('渲染模块不再提供历史 Webview 页面', () => {
+    expect('renderHistoryWebviewHtml' in renderModule).toBe(false);
   });
 
   it('不再生成由原生视图标题栏承载的内部工具栏', () => {

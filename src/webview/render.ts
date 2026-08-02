@@ -99,27 +99,3 @@ export function renderCommitWebviewHtml(
   </main>`,
   );
 }
-
-export function renderHistoryWebviewHtml(
-  webview: vscode.Webview,
-  extensionUri: vscode.Uri,
-  nonce: string,
-): string {
-  return documentShell(
-    webview,
-    extensionUri,
-    nonce,
-    'Gitool 提交历史',
-    'history.js',
-    `<main class="layout history-layout" aria-busy="true">
-    <section class="history-panel workbench-pane">
-      <span id="sync-summary" class="visually-hidden"></span>
-      <div id="history-status" class="history-status" aria-live="polite"></div>
-      <div id="history-list" class="history-list" role="tree" aria-label="提交历史记录"></div>
-    </section>
-  </main>`,
-  );
-}
-
-/** @deprecated 仅供迁移期间的旧测试入口使用。 */
-export const renderWebviewHtml = renderCommitWebviewHtml;

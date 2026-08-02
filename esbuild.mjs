@@ -23,21 +23,16 @@ if (existsSync('src/extension.ts')) {
   }));
 }
 
-for (const [entryPoint, outfile] of [
-  ['src/webview/commit-client.ts', 'media/commit.js'],
-  ['src/webview/history-client.ts', 'media/history.js'],
-]) {
-  if (existsSync(entryPoint)) {
-    builds.push(build({
-      entryPoints: [entryPoint],
-      outfile,
-      bundle: true,
-      format: 'iife',
-      platform: 'browser',
-      sourcemap: false,
-      target: 'es2022',
-    }));
-  }
+if (existsSync('src/webview/commit-client.ts')) {
+  builds.push(build({
+    entryPoints: ['src/webview/commit-client.ts'],
+    outfile: 'media/commit.js',
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    sourcemap: false,
+    target: 'es2022',
+  }));
 }
 
 const vscodeTestEntries = [

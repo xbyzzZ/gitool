@@ -7,10 +7,7 @@ import type { RepositoryService } from '../services/repository-service.js';
 import type { PushResult } from '../services/push-service.js';
 import { GitoolViewActions } from '../views/view-actions.js';
 import { parseWebviewMessage, type WebviewMessage } from './messages.js';
-import {
-  renderCommitWebviewHtml,
-  renderHistoryWebviewHtml,
-} from './render.js';
+import { renderCommitWebviewHtml } from './render.js';
 
 export interface GitoolViewProviderDependencies {
   readonly extensionUri: vscode.Uri;
@@ -22,13 +19,6 @@ interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
   readonly acknowledgedRequestId?: string;
-}
-
-interface CommitDetailsMessage {
-  readonly type: 'commitDetails';
-  readonly repositoryId: string;
-  readonly version: number;
-  readonly details: Awaited<ReturnType<RepositoryService['loadCommitDetails']>>;
 }
 
 function errorMessage(error: unknown): string {
@@ -113,10 +103,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   private readonly viewActions: GitoolViewActions;
   private disposed = false;
 
-  constructor(
-    private readonly dependencies: GitoolViewProviderDependencies,
-    private readonly viewKind: 'commit' | 'history' = 'commit',
-  ) {
+  constructor(private readonly dependencies: GitoolViewProviderDependencies) {
     this.viewActions = new GitoolViewActions({
       service: dependencies.repositoryService,
       gitApi: dependencies.gitApi,
@@ -145,11 +132,11 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.disposeView();
       }),
     ];
-    const render = this.viewKind === 'commit'
-      ? renderCommitWebviewHtml
-      : renderHistoryWebviewHtml;
-    this.webview.html = render(this.webview, this.dependencies.extensionUri,
-      randomBytes(16).toString('hex'));
+    this.webview.html = renderCommitWebviewHtml(
+      this.webview,
+      this.dependencies.extensionUri,
+      randomBytes(16).toString('hex'),
+    );
     this.updateViewMetadata();
   }
 
@@ -299,11 +286,8 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         await this.viewActions.pushAll();
         return;
       case 'loadCommitDetails':
-        await this.loadCommitDetails(message);
-        return;
       case 'openCommitDiff':
-        await this.openCommitDiff(message);
-        return;
+        throw new Error('提交信息视图不支持历史操作');
       case 'generateCommitMessage':
         await this.generateCommitMessage(message);
         return;
@@ -321,10 +305,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     const model = this.dependencies.repositoryService.getViewModel();
-    if (this.viewKind === 'history') {
-      view.description = this.syncDescription(model);
-      return;
-    }
     const count = model.changeCount;
     view.badge = count === 0
       ? undefined
@@ -332,40 +312,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
           value: count,
           tooltip: `Gitool：${String(count)} 个变更文件`,
         };
-  }
-
-  private syncDescription(model: RepositoryViewModel): string {
-    switch (model.sync.kind) {
-      case 'detached':
-        return '游离 HEAD';
-      case 'no-upstream':
-        return '未设置上游';
-      case 'ready':
-        return `${model.sync.upstream} · ↑${String(model.sync.ahead)} ↓${String(model.sync.behind)}`;
-    }
-  }
-
-  private async loadCommitDetails(
-    message: Extract<WebviewMessage, { readonly type: 'loadCommitDetails' }>,
-  ): Promise<void> {
-    this.requireScope(message.repositoryId, message.version);
-    const details = await this.dependencies.repositoryService
-      .loadCommitDetails({
-        repositoryId: message.repositoryId,
-        version: message.version,
-        hash: message.hash,
-      });
-    const webview = this.webview;
-    if (webview === undefined) {
-      return;
-    }
-    const response: CommitDetailsMessage = {
-      type: 'commitDetails',
-      repositoryId: message.repositoryId,
-      version: message.version,
-      details,
-    };
-    await webview.postMessage(response);
   }
 
   private async generateCommitMessage(
@@ -389,48 +335,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.aiController = undefined;
       }
     }
-  }
-
-  private async openCommitDiff(
-    message: Extract<WebviewMessage, { readonly type: 'openCommitDiff' }>,
-  ): Promise<void> {
-    this.requireScope(message.repositoryId, message.version);
-    const service = this.dependencies.repositoryService;
-    const repository = service.getRepository(message.repositoryId);
-    if (repository === undefined) {
-      throw new Error('当前仓库不存在或已关闭');
-    }
-    const details = await service.loadCommitDetails({
-      repositoryId: message.repositoryId,
-      version: message.version,
-      hash: message.hash,
-    });
-    const file = details.files.find((item) => item.path === message.path);
-    if (file === undefined) {
-      throw new Error('文件不属于所选历史提交');
-    }
-    const originalPath = file.originalPath ?? file.path;
-    const leftFile = vscode.Uri.joinPath(repository.rootUri, originalPath);
-    const rightFile = vscode.Uri.joinPath(repository.rootUri, file.path);
-    const emptyUri = vscode.Uri.from({
-      scheme: 'gitool-empty',
-      path: `/${details.hash}/${file.path}`,
-    });
-    const leftUri = file.status.startsWith('A')
-      ? emptyUri
-      : this.dependencies.gitApi.toGitUri(
-          leftFile,
-          details.parentHash ?? details.hash,
-        );
-    const rightUri = file.status.startsWith('D')
-      ? emptyUri
-      : this.dependencies.gitApi.toGitUri(rightFile, details.hash);
-    await vscode.commands.executeCommand(
-      'vscode.diff',
-      leftUri,
-      rightUri,
-      `${file.originalPath === undefined ? file.path : `${file.originalPath} → ${file.path}`}（历史提交 ${details.hash.slice(0, 7)}）`,
-    );
   }
 
   private requireRepository(repositoryId: string): RepositoryViewModel {
@@ -569,13 +473,5 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     if (!this.dependencies.repositoryService.reportFailure(action, message)) {
       void vscode.window.showErrorMessage(`Gitool：${message}`);
     }
-  }
-}
-
-export class GitoolHistoryViewProvider extends GitoolViewProvider {
-  static override readonly viewType = 'gitool.historyView';
-
-  constructor(dependencies: GitoolViewProviderDependencies) {
-    super(dependencies, 'history');
   }
 }

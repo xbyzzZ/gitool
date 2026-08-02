@@ -17,10 +17,7 @@ import {
   TrashService,
   type TrashConfirmationRequest,
 } from './services/trash-service.js';
-import {
-  GitoolHistoryViewProvider,
-  GitoolViewProvider,
-} from './webview/view-provider.js';
+import { GitoolViewProvider } from './webview/view-provider.js';
 import type { RepositoryViewModel } from './domain/view-model.js';
 import {
   ChangeTreeProvider,
@@ -30,6 +27,10 @@ import {
   GitoolViewActions,
   registerViewCommands,
 } from './views/view-actions.js';
+import {
+  HistoryTreeProvider,
+  type HistoryTreeNode,
+} from './views/history-tree-provider.js';
 
 interface BuiltinGitExtensionExports {
   getAPI(version: 1): unknown;
@@ -436,11 +437,7 @@ function registerReadyRuntime(
       repositoryService,
     });
     disposables.push(provider);
-    const historyProvider = new GitoolHistoryViewProvider({
-      extensionUri: context.extensionUri,
-      gitApi,
-      repositoryService,
-    });
+    const historyProvider = new HistoryTreeProvider(repositoryService);
     disposables.push(historyProvider);
     const changeProvider = new ChangeTreeProvider(repositoryService);
     disposables.push(changeProvider);
@@ -458,10 +455,15 @@ function registerReadyRuntime(
     );
     disposables.push(changeTree);
     disposables.push(changeProvider.bindCheckboxes(changeTree));
-    disposables.push(vscode.window.registerWebviewViewProvider(
-      GitoolHistoryViewProvider.viewType,
-      historyProvider,
-    ));
+    const historyTree = vscode.window.createTreeView<HistoryTreeNode>(
+      'gitool.historyView',
+      {
+        treeDataProvider: historyProvider,
+        showCollapseAll: true,
+      },
+    );
+    disposables.push(historyTree);
+    disposables.push(historyProvider.bindView(historyTree));
     const viewActions = new GitoolViewActions({
       service: repositoryService,
       gitApi,

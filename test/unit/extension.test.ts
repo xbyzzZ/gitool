@@ -8,6 +8,7 @@ interface RegistrationState {
   readonly commandDisposals: string[];
   readonly viewDisposals: string[];
   readonly registeredProviders: vscode.WebviewViewProvider[];
+  readonly registeredWebviewIds: string[];
   readonly gitOpenListeners: Set<(value: unknown) => unknown>;
   readonly gitCloseListeners: Set<(value: unknown) => unknown>;
   trustRegistrationError: Error | undefined;
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => {
     commandDisposals: [],
     viewDisposals: [],
     registeredProviders: [],
+    registeredWebviewIds: [],
     gitOpenListeners: new Set(),
     gitCloseListeners: new Set(),
     trustRegistrationError: undefined,
@@ -61,6 +63,7 @@ const mocks = vi.hoisted(() => {
       provider: vscode.WebviewViewProvider,
     ) => {
       state.registeredProviders.push(provider);
+      state.registeredWebviewIds.push(id);
       return register(state.activeViews, state.viewDisposals, id);
     }),
     createTreeView: vi.fn((id: string) => {
@@ -195,6 +198,7 @@ beforeEach(() => {
   mocks.state.commandDisposals.length = 0;
   mocks.state.viewDisposals.length = 0;
   mocks.state.registeredProviders.length = 0;
+  mocks.state.registeredWebviewIds.length = 0;
   mocks.state.gitOpenListeners.clear();
   mocks.state.gitCloseListeners.clear();
   mocks.state.trustRegistrationError = undefined;
@@ -203,6 +207,28 @@ beforeEach(() => {
 });
 
 describe('扩展激活', () => {
+  it('正常激活只注册提交信息 Webview 和两个原生树', async () => {
+    mocks.state.gitExtension = gitExtension(() => ({
+      getAPI: () => gitApi(),
+    }));
+
+    const runtime = await activate(context());
+
+    expect(runtime.mode).toBe('ready');
+    expect([...mocks.state.activeViews.keys()]).toEqual([
+      'gitool.commitView',
+      'gitool.changesView',
+      'gitool.historyView',
+    ]);
+    expect(mocks.state.registeredWebviewIds).toEqual([
+      'gitool.commitView',
+    ]);
+    expect(mocks.createTreeView.mock.calls.map(([id]) => id)).toEqual([
+      'gitool.changesView',
+      'gitool.historyView',
+    ]);
+  });
+
   it('内置 Git 缺失时进入 Git 不可用模式', async () => {
     const runtime = await activate(context());
 
@@ -264,6 +290,7 @@ describe('扩展激活', () => {
       'gitool.refreshHistory',
       'gitool.pushAll',
       'gitool.pull',
+      'gitool.openHistoryChange',
       'gitool.openChange',
       'gitool.trashUntracked',
       'gitool.refreshChanges',
@@ -284,6 +311,6 @@ describe('扩展激活', () => {
     const nextRuntime: GitoolRuntime = await activate(context());
     expect(nextRuntime.mode).toBe('ready');
     expect(mocks.state.activeViews.size).toBe(3);
-    expect(mocks.state.activeCommands.size).toBe(8);
+    expect(mocks.state.activeCommands.size).toBe(9);
   });
 });

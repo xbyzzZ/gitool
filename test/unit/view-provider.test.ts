@@ -300,36 +300,6 @@ describe('GitoolViewProvider', () => {
     });
   });
 
-  it('读取提交详情后向 Webview 返回文件列表', async () => {
-    const created = createServiceDouble();
-    const details = {
-      hash: 'a'.repeat(40),
-      parentHash: 'b'.repeat(40),
-      files: [{ status: 'M', path: 'src/client.ts' }],
-    };
-    created.loadCommitDetails.mockResolvedValue(details);
-    const provider = createProvider(created.service);
-    const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
-
-    harness.receive({
-      type: 'loadCommitDetails',
-      repositoryId: '/workspace/repo',
-      version: 0,
-      hash: details.hash,
-      requestId: 'details-1',
-    });
-
-    await vi.waitFor(() => {
-      expect(harness.postMessage).toHaveBeenCalledWith({
-        type: 'commitDetails',
-        repositoryId: '/workspace/repo',
-        version: 0,
-        details,
-      });
-    });
-  });
-
   it('路由远程刷新、拉取和推送全部消息', async () => {
     const created = createServiceDouble();
     created.pushAll.mockResolvedValue({
@@ -428,35 +398,6 @@ describe('GitoolViewProvider', () => {
     });
   });
 
-  it('历史新增文件使用空文档而不是把 Git 索引当作父版本', async () => {
-    const created = createServiceDouble();
-    created.loadCommitDetails.mockResolvedValue({
-      hash: 'a'.repeat(40),
-      parentHash: 'b'.repeat(40),
-      files: [{ status: 'A', path: 'src/new.ts' }],
-    });
-    const provider = createProvider(created.service);
-    const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
-
-    harness.receive({
-      type: 'openCommitDiff',
-      repositoryId: '/workspace/repo',
-      version: 0,
-      hash: 'a'.repeat(40),
-      path: 'src/new.ts',
-      requestId: 'diff-1',
-    });
-
-    await vi.waitFor(() => {
-      expect(vscodeMocks.executeCommand).toHaveBeenCalledWith(
-        'vscode.diff',
-        expect.objectContaining({ scheme: 'gitool-empty' }),
-        expect.not.objectContaining({ scheme: 'gitool-empty' }),
-        expect.stringContaining('历史提交'),
-      );
-    });
-  });
   it('选择远程后继续推送原提交且不再次提交', async () => {
     const created = createServiceDouble();
     created.commitAndPush.mockResolvedValue({
