@@ -178,9 +178,34 @@ input:disabled {
 }
 
 .ai-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border-radius: 2px 0 0 2px;
   color: var(--vscode-button-secondaryForeground);
   background: var(--vscode-button-secondaryBackground);
+}
+
+.ai-button.loading::before {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ai-button-spin 700ms linear infinite;
+  content: "";
+}
+
+@keyframes ai-button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-button.loading::before {
+    animation-duration: 1400ms;
+  }
 }
 
 .ai-menu-button {

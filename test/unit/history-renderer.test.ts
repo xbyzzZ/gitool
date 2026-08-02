@@ -46,13 +46,16 @@ describe('renderCommitRowMarkup', () => {
 
     expect(html).toContain('class="commit-files"');
     expect(html.match(/class="commit-file-graph"/gu)).toHaveLength(2);
-    expect(html).toContain('class="commit-file-icon file-icon blue"');
-    expect(html).toContain('>TS</span>');
+    expect(html).toContain(
+      'class="commit-file-icon file-icon codicon codicon-file-code blue"',
+    );
     expect(html).toContain('class="commit-file-name">render.ts</span>');
     expect(html).toContain(
       'class="commit-file-directory">src/webview</span>',
     );
-    expect(html).toContain('class="commit-file-icon file-icon yellow"');
+    expect(html).toContain(
+      'class="commit-file-icon file-icon codicon codicon-git-commit yellow"',
+    );
     expect(html).toContain('class="commit-file-name">.gitignore</span>');
     expect(html).not.toContain('class="commit-file-directory"></span>');
     expect(html).toContain('data-path="src/webview/render.ts"');

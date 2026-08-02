@@ -8,7 +8,9 @@
   "engines": {
     "vscode": "^1.125.0"
   },
-  "categories": ["SCM Providers"],
+  "categories": [
+    "SCM Providers"
+  ],
   "activationEvents": [
     "onView:gitool.commitView",
     "onCommand:gitool.refresh"
@@ -58,6 +60,7 @@
     "@types/mocha": "10.0.10",
     "@types/node": "26.1.1",
     "@types/vscode": "1.125.0",
+    "@vscode/codicons": "^0.0.43",
     "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "3.9.2",
     "esbuild": "0.28.1",

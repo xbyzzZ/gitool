@@ -78,7 +78,7 @@ export function renderCommitRowMarkup(
       const icon = resolveFileIcon(file.path);
       return `<button class="commit-file" type="button" data-path="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}">`
         + '<span class="commit-file-graph" aria-hidden="true"></span>'
-        + `<span class="commit-file-icon file-icon ${icon.color}" aria-hidden="true">${escapeHtml(icon.glyph)}</span>`
+        + `<span class="commit-file-icon file-icon codicon codicon-${icon.codicon} ${icon.color}" aria-hidden="true"></span>`
         + `<span class="commit-file-name">${escapeHtml(path.name)}</span>`
         + (path.directory.length === 0
           ? ''

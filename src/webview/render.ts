@@ -47,6 +47,11 @@ export function renderWebviewHtml(
     extensionUri,
     'main.css',
   ));
+  const codiconStyleUri = escapeAttribute(mediaUri(
+    webview,
+    extensionUri,
+    'codicon.css',
+  ));
   const scriptUri = escapeAttribute(mediaUri(
     webview,
     extensionUri,
@@ -60,7 +65,8 @@ export function renderWebviewHtml(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${safeCspSource}; script-src 'nonce-${safeNonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${safeCspSource}; font-src ${safeCspSource}; script-src 'nonce-${safeNonce}';">
+  <link rel="stylesheet" href="${codiconStyleUri}">
   <link rel="stylesheet" href="${styleUri}">
   <title>Gitool 文件提交</title>
 </head>

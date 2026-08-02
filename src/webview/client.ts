@@ -19,7 +19,10 @@ import {
   type WorkbenchLayoutState,
 } from './layout-state.js';
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
-import { beginScopedRequest } from './request-state.js';
+import {
+  beginScopedRequest,
+  type PendingRequestPresentation,
+} from './request-state.js';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
@@ -118,6 +121,7 @@ let currentModel: RepositoryViewModel | undefined;
 let commitMessageTimer: number | undefined;
 let pendingCommitMessage: string | undefined;
 let pendingWriteRequestId: string | undefined;
+let pendingRequestPresentation: PendingRequestPresentation | undefined;
 let pendingRepositoryId: string | undefined;
 let pendingRepositoryRequestId: string | undefined;
 let writeRequestSequence = 0;
@@ -247,9 +251,8 @@ function renderFile(
 
   const iconPresentation = resolveFileIcon(change.path);
   const icon = document.createElement('span');
-  icon.className = `file-icon ${iconPresentation.color}`;
+  icon.className = `file-icon codicon codicon-${iconPresentation.codicon} ${iconPresentation.color}`;
   icon.setAttribute('aria-hidden', 'true');
-  setText(icon, iconPresentation.glyph);
 
   const path = document.createElement('button');
   path.className = 'file-path';
@@ -640,7 +643,9 @@ function render(
   controls.commitMessage.disabled = !canWrite;
   controls.commitButton.disabled = !canCommit;
   controls.commitPushButton.disabled = !canCommit || model.detached;
-  controls.aiGenerateButton.disabled = model.ai.kind === 'generating'
+  const aiGenerating = model.ai.kind === 'generating'
+    || pendingRequestPresentation === 'ai-button';
+  controls.aiGenerateButton.disabled = aiGenerating
     ? false
     : !canWrite || selected.size === 0;
   controls.aiDensityButton.disabled = !canWrite || selected.size === 0;
@@ -652,16 +657,18 @@ function render(
   controls.refreshHistoryButton.disabled = running || noRepository;
   setText(
     controls.aiGenerateButton,
-    model.ai.kind === 'generating'
+    aiGenerating
       ? '取消 AI 生成'
       : `AI 生成 · ${densityLabel(activeDensity)}`,
   );
+  controls.aiGenerateButton.classList.toggle('loading', aiGenerating);
   updateSync(model);
 
   const feedback = operationFeedback(model.operation);
   setText(
     controls.operationStatus,
-    feedback.message.length === 0 && pendingWriteRequestId !== undefined
+    feedback.message.length === 0
+      && pendingRequestPresentation === 'global-status'
       ? '正在处理请求…'
       : feedback.message,
   );
@@ -694,6 +701,7 @@ function cancelCommitMessageTimer(): void {
 
 function beginWrite(
   model: RepositoryViewModel,
+  mode: 'write' | 'ai' = 'write',
 ): {
   readonly repositoryId: string;
   readonly version: number;
@@ -712,9 +720,10 @@ function beginWrite(
     repositoryId: model.currentRepositoryId,
     version: model.version,
     sequence: writeRequestSequence,
-    mode: 'write',
+    mode,
   });
   pendingWriteRequestId = request.pendingRequestId;
+  pendingRequestPresentation = request.pendingPresentation;
   render(model, false);
   return request.scope;
 }
@@ -846,6 +855,7 @@ controls.trashButton.addEventListener('click', () => {
       post({ type: 'trash', ...scope, fileIds });
     } else {
       pendingWriteRequestId = undefined;
+      pendingRequestPresentation = undefined;
       render(model, false);
     }
   });
@@ -942,7 +952,8 @@ controls.aiGenerateButton.addEventListener('click', () => {
     if (model.currentRepositoryId === undefined) {
       return;
     }
-    if (model.ai.kind === 'generating') {
+    if (model.ai.kind === 'generating'
+      || pendingRequestPresentation === 'ai-button') {
       post({
         type: 'cancelCommitMessageGeneration',
         repositoryId: model.currentRepositoryId,
@@ -950,7 +961,7 @@ controls.aiGenerateButton.addEventListener('click', () => {
       });
       return;
     }
-    const scope = beginWrite(model);
+    const scope = beginWrite(model, 'ai');
     if (scope !== undefined) {
       post({
         type: 'generateCommitMessage',
@@ -1075,6 +1086,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
       && stateMessage.acknowledgedRequestId === pendingWriteRequestId
     ) {
       pendingWriteRequestId = undefined;
+      pendingRequestPresentation = undefined;
     }
     if (
       stateMessage.acknowledgedRequestId !== undefined

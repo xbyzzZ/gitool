@@ -35,6 +35,8 @@ describe('renderWebviewHtml', () => {
     expect(html).toContain("default-src 'none'");
     expect(html).toContain("script-src 'nonce-nonce-123'");
     expect(html).toContain("style-src vscode-webview://gitool");
+    expect(html).toContain("font-src vscode-webview://gitool");
+    expect(html).toContain('/media/codicon.css');
     expect(html).toContain('<script nonce="nonce-123"');
     expect(html).not.toContain("'unsafe-inline'");
     expect(html).not.toContain("'unsafe-eval'");

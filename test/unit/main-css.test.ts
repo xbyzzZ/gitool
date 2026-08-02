@@ -46,4 +46,10 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.history-panel')).toMatch(/min-height:\s*66px/u);
     expect(readRule('.history-panel')).toMatch(/flex:\s*none/u);
   });
+
+  it('AI 生成状态由按钮自身显示加载动画', () => {
+    expect(readRule('.ai-button.loading::before')).toMatch(
+      /animation:\s*ai-button-spin/u,
+    );
+  });
 });
