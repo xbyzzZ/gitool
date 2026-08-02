@@ -16,6 +16,7 @@ interface ManifestMenuItem {
 }
 
 interface Manifest {
+  readonly icon?: string;
   readonly activationEvents: readonly string[];
   readonly contributes: {
     readonly views: Readonly<Record<string, readonly Record<string, unknown>[]>>;
@@ -37,6 +38,10 @@ function titleCommands(viewId: string): readonly string[] {
 }
 
 describe('扩展贡献点', () => {
+  it('声明 Marketplace 使用的 PNG Logo', () => {
+    expect(manifest.icon).toBe('media/logo.png');
+  });
+
   it('贡献提交信息、当前变更和提交历史三个独立视图', () => {
     expect(manifest.contributes.views.gitool).toEqual([
       { type: 'webview', id: 'gitool.commitView', name: '提交信息' },
