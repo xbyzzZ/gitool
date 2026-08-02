@@ -373,14 +373,14 @@ function registerErrorRuntime(
       treeDataProvider: treeProvider,
       manageCheckboxStateManually: true,
     });
-    changesTree.message = content.message;
     disposables.push(changesTree);
+    changesTree.message = content.message;
     const historyTree = vscode.window.createTreeView('gitool.historyView', {
       treeDataProvider: treeProvider,
       showCollapseAll: true,
     });
-    historyTree.message = content.message;
     disposables.push(historyTree);
+    historyTree.message = content.message;
     disposables.push(vscode.workspace.registerTextDocumentContentProvider(
       'gitool-empty',
       { provideTextDocumentContent: () => '' },

@@ -33,6 +33,7 @@ interface RegistrationState {
     readonly error: Error;
   } | undefined;
   treeRegistrationErrorAtId: string | undefined;
+  treeMessageErrorAtId: string | undefined;
   repositoryOnDidChangeErrorAtCall: number | undefined;
   eventEmitterConstructionErrorAt: number | undefined;
   eventEmitterConstructionCount: number;
@@ -55,6 +56,7 @@ const mocks = vi.hoisted(() => {
     gitCloseListeners: new Set(),
     commandRegistrationError: undefined,
     treeRegistrationErrorAtId: undefined,
+    treeMessageErrorAtId: undefined,
     repositoryOnDidChangeErrorAtCall: undefined,
     eventEmitterConstructionErrorAt: undefined,
     eventEmitterConstructionCount: 0,
@@ -173,11 +175,21 @@ const mocks = vi.hoisted(() => {
       const checkboxListeners = new Set<(
         event: vscode.TreeCheckboxChangeEvent<unknown>,
       ) => unknown>();
+      let message: string | undefined;
       const tree = {
         id,
         badge: undefined,
         description: undefined,
-        message: undefined,
+        get message(): string | undefined {
+          return message;
+        },
+        set message(value: string | undefined) {
+          if (state.treeMessageErrorAtId === id) {
+            state.treeMessageErrorAtId = undefined;
+            throw new Error(`TreeView 消息设置失败：${id}`);
+          }
+          message = value;
+        },
         onDidChangeCheckboxState: (
           listener: (
             event: vscode.TreeCheckboxChangeEvent<unknown>,
@@ -493,6 +505,7 @@ beforeEach(() => {
   mocks.state.gitCloseListeners.clear();
   mocks.state.commandRegistrationError = undefined;
   mocks.state.treeRegistrationErrorAtId = undefined;
+  mocks.state.treeMessageErrorAtId = undefined;
   mocks.state.repositoryOnDidChangeErrorAtCall = undefined;
   mocks.state.eventEmitterConstructionErrorAt = undefined;
   mocks.state.eventEmitterConstructionCount = 0;
@@ -521,6 +534,19 @@ beforeEach(() => {
 });
 
 describe('扩展激活', () => {
+  it.each([
+    'gitool.changesView',
+    'gitool.historyView',
+  ])('错误视图 %s 的消息设置失败时释放已创建的 TreeView', async (viewId) => {
+    mocks.state.treeMessageErrorAtId = viewId;
+
+    await expect(activate(context())).rejects.toThrow(
+      `TreeView 消息设置失败：${viewId}`,
+    );
+
+    expect(mocks.state.activeViews.size).toBe(0);
+  });
+
   it('内置 Git 缺失时进入 Git 不可用模式', async () => {
     const runtime = await activate(context());
 

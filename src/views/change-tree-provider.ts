@@ -10,12 +10,14 @@ import type { RepositoryService } from '../services/repository-service.js';
 export interface ChangeSectionNode {
   readonly kind: 'section';
   readonly repositoryId: string;
+  readonly version: number;
   readonly section: ChangeSectionKind;
 }
 
 export interface ChangeDirectoryNode {
   readonly kind: 'directory';
   readonly repositoryId: string;
+  readonly version: number;
   readonly section: ChangeSectionKind;
   readonly path: string;
 }
@@ -23,6 +25,7 @@ export interface ChangeDirectoryNode {
 export interface ChangeFileNode {
   readonly kind: 'file';
   readonly repositoryId: string;
+  readonly version: number;
   readonly change: FileChange;
 }
 
@@ -103,8 +106,13 @@ export class ChangeTreeProvider
       return sections.map((section) => this.createNode({
         kind: 'section',
         repositoryId,
+        version: model.version,
         section: section.kind,
       }));
+    }
+
+    if (node.repositoryId !== repositoryId || node.version !== model.version) {
+      return [];
     }
 
     if (node.kind === 'section') {
@@ -112,6 +120,7 @@ export class ChangeTreeProvider
       return section?.directories.map((directory) => this.createNode({
         kind: 'directory',
         repositoryId,
+        version: model.version,
         section: node.section,
         path: directory.path,
       })) ?? [];
@@ -123,6 +132,7 @@ export class ChangeTreeProvider
       return directory?.files.map((change) => this.createNode({
         kind: 'file',
         repositoryId,
+        version: model.version,
         change,
       })) ?? [];
     }
@@ -130,8 +140,14 @@ export class ChangeTreeProvider
     return [];
   }
 
-  isCurrentNode(node: ChangeTreeNode, repositoryId: string): boolean {
-    return this.nodes.has(node) && node.repositoryId === repositoryId;
+  isCurrentNode(
+    node: ChangeTreeNode,
+    repositoryId: string,
+    version: number,
+  ): boolean {
+    return this.nodes.has(node)
+      && node.repositoryId === repositoryId
+      && node.version === version;
   }
 
   dispose(): void {
@@ -240,12 +256,13 @@ export function bindChangeTreeCheckboxes(
   service: RepositoryService,
 ): vscode.Disposable {
   return treeView.onDidChangeCheckboxState(({ items }) => {
-    const currentRepositoryId = service.getViewModel().currentRepositoryId;
+    const model = service.getViewModel();
+    const currentRepositoryId = model.currentRepositoryId;
     if (currentRepositoryId === undefined) {
       return;
     }
     for (const [node, checkboxState] of items) {
-      if (!provider.isCurrentNode(node, currentRepositoryId)) {
+      if (!provider.isCurrentNode(node, currentRepositoryId, model.version)) {
         continue;
       }
       const selected = checkboxState === vscode.TreeItemCheckboxState.Checked;

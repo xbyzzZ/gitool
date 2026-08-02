@@ -346,7 +346,15 @@ describe('GitoolViewProvider', () => {
     await vi.waitFor(() => {
       expect(signal.aborted).toBe(true);
     });
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalled();
+    });
+    const postCountBeforeRejection = harness.postMessage.mock.calls.length;
     rejectGeneration(new Error('已取消'));
+    await vi.waitFor(() => {
+      expect(harness.postMessage.mock.calls.length)
+        .toBeGreaterThan(postCountBeforeRejection);
+    });
     expect(created.reportFailure).not.toHaveBeenCalled();
   });
 

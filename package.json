@@ -87,23 +87,28 @@
       "view/title": [
         {
           "command": "gitool.editRemote",
-          "when": "view == gitool.commitView"
+          "when": "view == gitool.commitView",
+          "group": "navigation@1"
         },
         {
           "command": "gitool.refreshChanges",
-          "when": "view == gitool.changesView"
+          "when": "view == gitool.changesView",
+          "group": "navigation@1"
         },
         {
           "command": "gitool.pull",
-          "when": "view == gitool.historyView"
+          "when": "view == gitool.historyView",
+          "group": "navigation@1"
         },
         {
           "command": "gitool.pushAll",
-          "when": "view == gitool.historyView"
+          "when": "view == gitool.historyView",
+          "group": "navigation@2"
         },
         {
           "command": "gitool.refreshHistory",
-          "when": "view == gitool.historyView"
+          "when": "view == gitool.historyView",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [

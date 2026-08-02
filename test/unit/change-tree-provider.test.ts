@@ -158,6 +158,7 @@ function fileNode(path: string): ChangeTreeNode {
   return {
     kind: 'file',
     repositoryId: 'repo',
+    version: 1,
     change: change(path),
   };
 }
@@ -249,6 +250,7 @@ describe('当前变更树', () => {
     expect(section).toEqual({
       kind: 'section',
       repositoryId: 'repo',
+      version: 1,
       section: 'tracked',
     });
     if (section === undefined) {
@@ -307,11 +309,61 @@ describe('当前变更树', () => {
     expect(created.setGroup).not.toHaveBeenCalled();
   });
 
+  it('同一仓库刷新后忽略旧文件节点的复选框事件', () => {
+    const created = createService(viewModel(
+      'repo',
+      [change('old.ts')],
+      ['old.ts'],
+    ));
+    createChangeTreeView({ service: created.service });
+    const oldFile = currentFileNode(createdTreeProvider());
+
+    created.setViewModel({
+      ...viewModel('repo', [change('new.ts')], ['new.ts']),
+      version: 2,
+    });
+    created.fireChange();
+    vscodeMocks.checkboxListeners.forEach((listener) => {
+      listener({
+        items: [[oldFile, vscode.TreeItemCheckboxState.Unchecked]],
+      });
+    });
+
+    expect(created.setFileSelected).not.toHaveBeenCalled();
+  });
+
+  it('同一仓库刷新后忽略旧分区节点的复选框事件', () => {
+    const created = createService(viewModel(
+      'repo',
+      [change('old.ts')],
+      ['old.ts'],
+    ));
+    createChangeTreeView({ service: created.service });
+    const oldSection = createdTreeProvider().getChildren()[0];
+    if (oldSection?.kind !== 'section') {
+      throw new Error('待提交分区不存在');
+    }
+
+    created.setViewModel({
+      ...viewModel('repo', [change('new.ts')], ['new.ts']),
+      version: 2,
+    });
+    created.fireChange();
+    vscodeMocks.checkboxListeners.forEach((listener) => {
+      listener({
+        items: [[oldSection, vscode.TreeItemCheckboxState.Unchecked]],
+      });
+    });
+
+    expect(created.setGroup).not.toHaveBeenCalled();
+  });
+
   it('冲突文件不提供复选框', () => {
     const provider = new ChangeTreeProvider({ service: createService().service });
     const conflictedNode: ChangeTreeNode = {
       kind: 'file',
       repositoryId: 'repo',
+      version: 1,
       change: {
         ...change('conflict.ts'),
         kind: 'conflicted',

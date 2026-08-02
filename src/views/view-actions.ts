@@ -16,10 +16,37 @@ interface CurrentScope {
   readonly repositoryId: string;
   readonly version: number;
   readonly model: RepositoryViewModel;
+  readonly repository: ReturnType<RepositoryService['getRepository']>;
+  readonly repositoryIdentity: string | undefined;
 }
 
 interface RemotePickItem extends vscode.QuickPickItem {
   readonly remoteName: string;
+}
+
+function repositoryInteractionIdentity(
+  repository: ReturnType<RepositoryService['getRepository']>,
+): string | undefined {
+  if (repository === undefined) {
+    return undefined;
+  }
+  const head = repository.state.HEAD;
+  return JSON.stringify({
+    head: head === undefined
+      ? undefined
+      : {
+          name: head.name,
+          commit: head.commit,
+          upstream: head.upstream,
+        },
+    remotes: repository.state.remotes
+      .map((remote) => ({
+        name: remote.name,
+        fetchUrl: remote.fetchUrl,
+        pushUrl: remote.pushUrl,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  });
 }
 
 function isChangeFileNodeArray(
@@ -151,6 +178,7 @@ export class GitoolViewActions {
       if (remote === undefined) {
         return;
       }
+      this.assertScopeCurrent(scope, '修改远程');
 
       const selectedRemote = repository.state.remotes.find(
         (item) => item.name === remote.remoteName,
@@ -176,6 +204,7 @@ export class GitoolViewActions {
       if (url === undefined) {
         return;
       }
+      this.assertScopeCurrent(scope, '修改远程');
       const normalizedUrl = url.trim();
       const confirmed = await vscode.window.showWarningMessage(
         `确认修改远程 ${selectedRemote.name} 的 URL？`,
@@ -188,6 +217,7 @@ export class GitoolViewActions {
       if (confirmed !== '确认修改') {
         return;
       }
+      this.assertScopeCurrent(scope, '修改远程');
 
       await service.setRemoteUrl({
         repositoryId: scope.repositoryId,
@@ -218,6 +248,7 @@ export class GitoolViewActions {
       if (result.kind !== 'needs-remote') {
         return;
       }
+      this.assertScopeCurrent(scope, '推送');
       const selected = await vscode.window.showQuickPick(
         result.remotes.map((remote) => ({ label: remote, remote })),
         {
@@ -228,13 +259,10 @@ export class GitoolViewActions {
       if (selected === undefined) {
         return;
       }
-      const latest = this.currentScope();
-      if (latest.repositoryId !== scope.repositoryId) {
-        throw new Error('推送期间当前仓库已变化');
-      }
+      this.assertScopeCurrent(scope, '推送');
       await service.pushAll({
-        repositoryId: latest.repositoryId,
-        version: latest.version,
+        repositoryId: scope.repositoryId,
+        version: scope.version,
         selectedRemote: selected.remote,
       });
     });
@@ -320,6 +348,7 @@ export class GitoolViewActions {
     if (url === undefined) {
       return;
     }
+    this.assertScopeCurrent(scope, '添加远程');
     const normalizedUrl = url.trim();
     const confirmed = await vscode.window.showWarningMessage(
       '确认添加远程 origin？',
@@ -332,6 +361,7 @@ export class GitoolViewActions {
     if (confirmed !== '确认添加') {
       return;
     }
+    this.assertScopeCurrent(scope, '添加远程');
 
     await this.dependencies.repositoryService.addRemote({
       repositoryId: scope.repositoryId,
@@ -369,11 +399,34 @@ export class GitoolViewActions {
     if (model.currentRepositoryId === undefined) {
       throw new Error('当前没有打开的 Git 仓库');
     }
+    const repository = this.dependencies.repositoryService.getRepository(
+      model.currentRepositoryId,
+    );
     return {
       repositoryId: model.currentRepositoryId,
       version: model.version,
       model,
+      repository,
+      repositoryIdentity: repositoryInteractionIdentity(repository),
     };
+  }
+
+  private assertScopeCurrent(scope: CurrentScope, action: string): void {
+    const service = this.dependencies.repositoryService;
+    const model = service.getViewModel();
+    const repository = model.currentRepositoryId === undefined
+      ? undefined
+      : service.getRepository(model.currentRepositoryId);
+    if (
+      model.currentRepositoryId !== scope.repositoryId
+      || model.version !== scope.version
+      || model.branch !== scope.model.branch
+      || model.detached !== scope.model.detached
+      || repository !== scope.repository
+      || repositoryInteractionIdentity(repository) !== scope.repositoryIdentity
+    ) {
+      throw new Error(`${action}期间仓库状态已变化，请重试`);
+    }
   }
 
   private async runAction(

@@ -10,6 +10,7 @@ interface CommandContribution {
 interface ViewTitleMenuContribution {
   readonly command: string;
   readonly when?: string;
+  readonly group?: string;
 }
 
 interface ViewItemContextMenuContribution {
@@ -56,6 +57,11 @@ function viewTitleCommands(viewId: string): string[] {
     .map((contribution) => contribution.command);
 }
 
+function viewTitleMenu(viewId: string): readonly ViewTitleMenuContribution[] {
+  return manifest.contributes.menus['view/title']
+    .filter((contribution) => contribution.when === `view == ${viewId}`);
+}
+
 function viewItemContextCommand(id: string): ViewItemContextMenuContribution {
   const contribution = manifest.contributes.menus['view/item/context'].find(
     (candidate) => candidate.command === id,
@@ -95,6 +101,29 @@ describe('扩展清单贡献点', () => {
     expect(viewTitleCommands('gitool.historyView')).toEqual([
       'gitool.pull', 'gitool.pushAll', 'gitool.refreshHistory',
     ]);
+    expect(viewTitleMenu('gitool.commitView')).toEqual([{
+      command: 'gitool.editRemote',
+      when: 'view == gitool.commitView',
+      group: 'navigation@1',
+    }]);
+    expect(viewTitleMenu('gitool.changesView')).toEqual([{
+      command: 'gitool.refreshChanges',
+      when: 'view == gitool.changesView',
+      group: 'navigation@1',
+    }]);
+    expect(viewTitleMenu('gitool.historyView')).toEqual([{
+      command: 'gitool.pull',
+      when: 'view == gitool.historyView',
+      group: 'navigation@1',
+    }, {
+      command: 'gitool.pushAll',
+      when: 'view == gitool.historyView',
+      group: 'navigation@2',
+    }, {
+      command: 'gitool.refreshHistory',
+      when: 'view == gitool.historyView',
+      group: 'navigation@3',
+    }]);
     expect(viewItemContextCommand('gitool.trashUntracked').when).toBe(
       'view == gitool.changesView && viewItem == gitool.untrackedFile',
     );

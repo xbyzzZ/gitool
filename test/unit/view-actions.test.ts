@@ -115,7 +115,10 @@ function createActions(initialModel = model()) {
   const getViewModel = vi.fn().mockReturnValue(initialModel);
   const getRepository = vi.fn().mockReturnValue({
     rootUri: uri('/workspace/repo'),
-    state: { remotes: [] },
+    state: {
+      HEAD: { name: 'main', commit: 'head-1' },
+      remotes: [],
+    },
   });
   const getFileChange = vi.fn((repositoryId: string, fileId: string) =>
     repositoryId === initialModel.currentRepositoryId
@@ -205,6 +208,7 @@ describe('GitoolViewActions', () => {
     const node: ChangeFileNode = {
       kind: 'file',
       repositoryId: '/workspace/other',
+      version: 7,
       change: changeAt(currentModel, 0),
     };
 
@@ -230,6 +234,7 @@ describe('GitoolViewActions', () => {
     await actions.trashUntracked([{
       kind: 'file',
       repositoryId: '/workspace/repo',
+      version: 7,
       change: first,
     }]);
 
@@ -247,6 +252,7 @@ describe('GitoolViewActions', () => {
     const node: ChangeFileNode = {
       kind: 'file',
       repositoryId: '/workspace/repo',
+      version: 7,
       change: staleChange,
     };
 
@@ -262,6 +268,7 @@ describe('GitoolViewActions', () => {
     const node: ChangeFileNode = {
       kind: 'file',
       repositoryId: '/workspace/repo',
+      version: 7,
       change: changeAt(currentModel, 1),
     };
 
@@ -337,15 +344,59 @@ describe('GitoolViewActions', () => {
       .toContain('https://***:***@example.test/repo.git');
   });
 
-  it('推送全部在无上游时选择远程并以最新同仓库版本继续', async () => {
+  it('添加远程输入期间切换仓库后拒绝写入', async () => {
+    const created = createActions();
+    vscodeMocks.showInputBox.mockImplementation(() => {
+      created.getViewModel.mockReturnValue(model({
+        currentRepositoryId: '/workspace/other',
+      }));
+      return Promise.resolve('https://example.test/repo.git');
+    });
+
+    await expect(created.actions.editRemote())
+      .rejects.toThrow('添加远程期间仓库状态已变化，请重试');
+
+    expect(vscodeMocks.showWarningMessage).not.toHaveBeenCalled();
+    expect(created.addRemote).not.toHaveBeenCalled();
+  });
+
+  it('修改远程输入期间远程身份变化后拒绝写入', async () => {
+    const created = createActions();
+    const repository = {
+      rootUri: uri('/workspace/repo'),
+      state: {
+        HEAD: { name: 'main', commit: 'head-1' },
+        remotes: [{
+          name: 'origin',
+          fetchUrl: 'https://example.test/old.git',
+          pushUrl: 'https://example.test/old.git',
+        }],
+      },
+    };
+    created.getRepository.mockReturnValue(repository);
+    vscodeMocks.showQuickPick.mockImplementation(
+      (items: readonly unknown[]) => Promise.resolve(items[0]),
+    );
+    vscodeMocks.showInputBox.mockImplementation(() => {
+      repository.state.remotes = [{
+        name: 'origin',
+        fetchUrl: 'https://example.test/changed.git',
+        pushUrl: 'https://example.test/changed.git',
+      }];
+      return Promise.resolve('https://example.test/new.git');
+    });
+
+    await expect(created.actions.editRemote())
+      .rejects.toThrow('修改远程期间仓库状态已变化，请重试');
+
+    expect(vscodeMocks.showWarningMessage).not.toHaveBeenCalled();
+    expect(created.setRemoteUrl).not.toHaveBeenCalled();
+  });
+
+  it('推送全部在无上游时拒绝采用交互期间出现的新版本', async () => {
     const created = createActions();
     created.pushAll
-      .mockResolvedValueOnce({ kind: 'needs-remote', remotes: ['origin'] })
-      .mockResolvedValueOnce({
-        kind: 'pushed',
-        remote: 'origin',
-        branch: 'main',
-      });
+      .mockResolvedValueOnce({ kind: 'needs-remote', remotes: ['origin'] });
     created.getViewModel
       .mockReturnValueOnce(model())
       .mockReturnValue(model({ version: 8 }));
@@ -353,17 +404,72 @@ describe('GitoolViewActions', () => {
       (items: readonly unknown[]) => Promise.resolve(items[0]),
     );
 
-    await created.actions.pushAll();
+    await expect(created.actions.pushAll())
+      .rejects.toThrow('推送期间仓库状态已变化，请重试');
 
     expect(created.pushAll).toHaveBeenNthCalledWith(1, {
       repositoryId: '/workspace/repo',
       version: 7,
     });
-    expect(created.pushAll).toHaveBeenNthCalledWith(2, {
-      repositoryId: '/workspace/repo',
-      version: 8,
-      selectedRemote: 'origin',
+    expect(created.pushAll).toHaveBeenCalledOnce();
+  });
+
+  it('推送远程选择期间分支和 HEAD 变化后拒绝继续', async () => {
+    const created = createActions();
+    const repository = {
+      rootUri: uri('/workspace/repo'),
+      state: {
+        HEAD: { name: 'main', commit: 'head-1' },
+        remotes: [{ name: 'origin', fetchUrl: 'https://example.test/repo.git' }],
+      },
+    };
+    created.getRepository.mockReturnValue(repository);
+    created.pushAll.mockResolvedValueOnce({
+      kind: 'needs-remote',
+      remotes: ['origin'],
     });
+    vscodeMocks.showQuickPick.mockImplementation((
+      items: readonly unknown[],
+    ) => {
+      repository.state.HEAD = { name: 'feature', commit: 'head-2' };
+      created.getViewModel.mockReturnValue(model({ branch: 'feature' }));
+      return Promise.resolve(items[0]);
+    });
+
+    await expect(created.actions.pushAll())
+      .rejects.toThrow('推送期间仓库状态已变化，请重试');
+
+    expect(created.pushAll).toHaveBeenCalledOnce();
+  });
+
+  it('推送远程选择期间远程身份变化后拒绝继续', async () => {
+    const created = createActions();
+    const repository = {
+      rootUri: uri('/workspace/repo'),
+      state: {
+        HEAD: { name: 'main', commit: 'head-1' },
+        remotes: [{ name: 'origin', fetchUrl: 'https://example.test/old.git' }],
+      },
+    };
+    created.getRepository.mockReturnValue(repository);
+    created.pushAll.mockResolvedValueOnce({
+      kind: 'needs-remote',
+      remotes: ['origin'],
+    });
+    vscodeMocks.showQuickPick.mockImplementation((
+      items: readonly unknown[],
+    ) => {
+      repository.state.remotes = [{
+        name: 'origin',
+        fetchUrl: 'https://example.test/changed.git',
+      }];
+      return Promise.resolve(items[0]);
+    });
+
+    await expect(created.actions.pushAll())
+      .rejects.toThrow('推送期间仓库状态已变化，请重试');
+
+    expect(created.pushAll).toHaveBeenCalledOnce();
   });
 
   it('刷新、拉取和历史刷新都绑定动作开始时的当前范围', async () => {

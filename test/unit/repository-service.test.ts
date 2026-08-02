@@ -1126,6 +1126,24 @@ describe('RepositoryService', () => {
     expect(gitApi.closed.listenerCount()).toBe(0);
   });
 
+  it('同路径新仓库打开后忽略旧实例的乱序关闭事件', () => {
+    const root = '/workspace/repo-a';
+    const oldRepository = new TestRepository(root);
+    const newRepository = new TestRepository(root);
+    const gitApi = new TestGitApi([oldRepository]);
+    const registry = new RepositoryRegistry(gitApi);
+
+    gitApi.opened.fire(newRepository);
+    gitApi.closed.fire(oldRepository);
+
+    expect(registry.get(root)?.repository).toBe(newRepository);
+    expect(registry.getViewModel(true).currentRepositoryId).toBe(root);
+    expect(newRepository.changed.listenerCount()).toBe(1);
+
+    registry.dispose();
+    expect(newRepository.changed.listenerCount()).toBe(0);
+  });
+
   it('关闭仓库监听首次释放失败时保留句柄供最终释放重试', () => {
     let disposeAttempts = 0;
     const repository = new TestRepository('/workspace/repo-a', {}, {
@@ -1263,7 +1281,7 @@ describe('RepositoryService', () => {
     expect(created.service.getViewModel().version).toBe(1);
   });
 
-  it('不同 wrapper 的关闭事件立即封存已进入提交服务的 generation', async () => {
+  it('不同 wrapper 的关闭事件不会封存当前仓库 generation', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {
       working: [change(root, 'a.ts')],
@@ -1287,9 +1305,12 @@ describe('RepositoryService', () => {
       version: 0,
       message: '关闭前请求',
       selectedIds: ['a.ts'],
-    })).rejects.toThrow('提交前版本复核失败');
-    expect(repository.changed.listenerCount()).toBe(0);
-    expect(created.service.getViewModel().currentRepositoryId).toBeUndefined();
+    })).resolves.toEqual({
+      commitHash: 'abc123',
+      committedPaths: ['a.ts'],
+    });
+    expect(repository.changed.listenerCount()).toBe(1);
+    expect(created.service.getViewModel().currentRepositoryId).toBe(root);
   });
 
   it('存在冲突时在进入任一写服务前拒绝操作', async () => {
