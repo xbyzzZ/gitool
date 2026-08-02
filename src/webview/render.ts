@@ -79,13 +79,21 @@ export function renderCommitWebviewHtml(
         <textarea id="commit-message" rows="3" placeholder="输入本次提交信息" spellcheck="true"></textarea>
         <div class="commit-actions">
           <div class="ai-actions">
-            <button id="ai-generate-button" class="ai-button" type="button" aria-label="使用 AI 生成提交信息">AI 生成 · 标准</button>
-            <button id="ai-density-button" class="ai-menu-button" type="button" aria-label="选择 AI 信息密度" aria-haspopup="menu">⌄</button>
+            <button id="ai-generate-button" class="ai-button commit-icon-button" type="button" aria-label="使用 AI 生成提交信息（标准）" title="使用 AI 生成提交信息（标准）">
+              <span id="ai-generate-icon" class="codicon codicon-sparkle" aria-hidden="true"></span>
+            </button>
+            <button id="ai-density-button" class="ai-menu-button" type="button" aria-label="选择 AI 信息密度（标准）" title="选择 AI 信息密度（标准）" aria-haspopup="menu">
+              <span class="codicon codicon-chevron-down" aria-hidden="true"></span>
+            </button>
             <div id="ai-density-menu" role="menu" hidden></div>
           </div>
           <div class="primary-actions">
-            <button id="commit-button" class="secondary" type="button" aria-label="提交所选文件">仅提交</button>
-            <button id="commit-push-button" class="primary" type="button" aria-label="提交并推送所选文件">提交并推送</button>
+            <button id="commit-button" class="secondary commit-icon-button" type="button" aria-label="提交所选文件" title="仅提交">
+              <span class="codicon codicon-git-commit" aria-hidden="true"></span>
+            </button>
+            <button id="commit-push-button" class="primary commit-icon-button" type="button" aria-label="提交并推送所选文件" title="提交并推送">
+              <span class="codicon codicon-cloud-upload" aria-hidden="true"></span>
+            </button>
           </div>
         </div>
         <section id="operation-feedback" class="feedback" aria-label="操作反馈">

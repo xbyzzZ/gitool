@@ -2,6 +2,13 @@ import type {
   OperationState,
   RepositoryViewModel,
 } from '../domain/view-model.js';
+import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
+
+export interface AiControlPresentation {
+  readonly generateIcon: 'sparkle' | 'loading';
+  readonly generateLabel: string;
+  readonly densityLabel: string;
+}
 
 export interface OperationFeedback {
   readonly message: string;
@@ -32,6 +39,24 @@ const actionLabels: Readonly<Record<
   fetch: '正在刷新远程状态…',
   pull: '正在从远程拉取…',
 };
+
+export function densityLabel(density: CommitMessageDensity): string {
+  return { compact: '精简', standard: '标准', detailed: '详细' }[density];
+}
+
+export function aiControlPresentation(
+  density: CommitMessageDensity,
+  generating: boolean,
+): AiControlPresentation {
+  const label = densityLabel(density);
+  return {
+    generateIcon: generating ? 'loading' : 'sparkle',
+    generateLabel: generating
+      ? '取消 AI 生成'
+      : `使用 AI 生成提交信息（${label}）`,
+    densityLabel: `选择 AI 信息密度（${label}）`,
+  };
+}
 
 export function operationFeedback(
   operation: OperationState,

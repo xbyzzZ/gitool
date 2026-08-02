@@ -30,8 +30,15 @@ describe('工作台紧凑布局样式', () => {
   });
 
   it('AI 生成状态由按钮自身显示加载动画', () => {
-    expect(readRule('.ai-button.loading::before')).toMatch(
-      /animation:\s*ai-button-spin/u,
+    expect(stylesheet).toContain('.codicon-modifier-spin');
+  });
+
+  it('提交图标按钮使用固定尺寸且不改变左右分组', () => {
+    expect(readRule('.commit-icon-button')).toMatch(/width:\s*28px/u);
+    expect(readRule('.commit-icon-button')).toMatch(/min-width:\s*28px/u);
+    expect(readRule('.commit-icon-button')).toMatch(/padding:\s*0/u);
+    expect(readRule('.commit-actions')).toMatch(
+      /justify-content:\s*space-between/u,
     );
   });
 

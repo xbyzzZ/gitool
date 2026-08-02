@@ -58,6 +58,22 @@ describe('独立 Webview 壳页面', () => {
     expect(html).not.toContain('class="pane-resizer"');
   });
 
+  it('提交操作使用固定 Codicon 且不显示可折行文字', () => {
+    const html = renderCommitWebviewHtml(
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
+    );
+
+    expect(html).toContain('id="ai-generate-icon"');
+    expect(html).toContain('codicon-sparkle');
+    expect(html).toContain('codicon-chevron-down');
+    expect(html).toContain('codicon-git-commit');
+    expect(html).toContain('codicon-cloud-upload');
+    expect(html).not.toContain('>仅提交</button>');
+    expect(html).not.toContain('>提交并推送</button>');
+  });
+
   it('渲染模块不再提供历史 Webview 页面', () => {
     expect('renderHistoryWebviewHtml' in renderModule).toBe(false);
   });

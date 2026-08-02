@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import {
+  aiControlPresentation,
   commitControlState,
   operationFeedback,
 } from '../../src/webview/commit-view-state.js';
@@ -40,6 +41,22 @@ function model(hasRemote: boolean): RepositoryViewModel {
 }
 
 describe('提交信息展示状态', () => {
+  it('按信息密度生成 AI 图标按钮提示', () => {
+    expect(aiControlPresentation('compact', false)).toEqual({
+      generateIcon: 'sparkle',
+      generateLabel: '使用 AI 生成提交信息（精简）',
+      densityLabel: '选择 AI 信息密度（精简）',
+    });
+  });
+
+  it('AI 生成中使用加载图标并保留取消入口', () => {
+    expect(aiControlPresentation('detailed', true)).toEqual({
+      generateIcon: 'loading',
+      generateLabel: '取消 AI 生成',
+      densityLabel: '选择 AI 信息密度（详细）',
+    });
+  });
+
   it('完整提交成功不显示成功文字', () => {
     expect(operationFeedback({
       kind: 'commit-succeeded',

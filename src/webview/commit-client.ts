@@ -1,7 +1,9 @@
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
 import {
+  aiControlPresentation,
   commitControlState,
+  densityLabel,
   operationFeedback,
 } from './commit-view-state.js';
 import type { WebviewMessage } from './messages.js';
@@ -54,10 +56,6 @@ function readPersistedState(value: unknown): PersistedState {
   return { densities };
 }
 
-function densityLabel(density: CommitMessageDensity): string {
-  return { compact: '精简', standard: '标准', detailed: '详细' }[density];
-}
-
 const vscode = acquireVsCodeApi();
 const layoutElement = document.querySelector<HTMLElement>('.layout');
 if (layoutElement === null) {
@@ -71,6 +69,7 @@ const controls = {
   commitButton: element('commit-button') as HTMLButtonElement,
   commitPushButton: element('commit-push-button') as HTMLButtonElement,
   aiGenerateButton: element('ai-generate-button') as HTMLButtonElement,
+  aiGenerateIcon: element('ai-generate-icon'),
   aiDensityButton: element('ai-density-button') as HTMLButtonElement,
   aiDensityMenu: element('ai-density-menu'),
   loadingStatus: element('loading-status') as HTMLParagraphElement,
@@ -161,10 +160,13 @@ function render(model: RepositoryViewModel): void {
     ? false
     : !canWrite || model.selectedIds.length === 0;
   controls.aiDensityButton.disabled = !canWrite || model.selectedIds.length === 0;
-  controls.aiGenerateButton.textContent = aiGenerating
-    ? '取消 AI 生成'
-    : `AI 生成 · ${densityLabel(density)}`;
-  controls.aiGenerateButton.classList.toggle('loading', aiGenerating);
+  const aiPresentation = aiControlPresentation(density, aiGenerating);
+  controls.aiGenerateIcon.className = `codicon codicon-${aiPresentation.generateIcon}`;
+  controls.aiGenerateIcon.classList.toggle('codicon-modifier-spin', aiGenerating);
+  controls.aiGenerateButton.setAttribute('aria-label', aiPresentation.generateLabel);
+  controls.aiGenerateButton.title = aiPresentation.generateLabel;
+  controls.aiDensityButton.setAttribute('aria-label', aiPresentation.densityLabel);
+  controls.aiDensityButton.title = aiPresentation.densityLabel;
 
   const feedback = operationFeedback(model.operation);
   controls.operationStatus.textContent = feedback.message;
