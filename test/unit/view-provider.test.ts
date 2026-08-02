@@ -92,6 +92,7 @@ interface ServiceDouble {
   readonly service: RepositoryService;
   readonly getViewModel: ReturnType<typeof vi.fn>;
   readonly getRepository: ReturnType<typeof vi.fn>;
+  readonly getFileChange: ReturnType<typeof vi.fn>;
   readonly commitAndPush: ReturnType<typeof vi.fn>;
   readonly commit: ReturnType<typeof vi.fn>;
   readonly selectPushRemote: ReturnType<typeof vi.fn>;
@@ -126,6 +127,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
   const pushAll = vi.fn();
   const generateCommitMessage = vi.fn();
   const changeListeners = new Set<() => unknown>();
+  const getFileChange = vi.fn();
   const getRepository = vi.fn().mockReturnValue({
     rootUri: uri('/workspace/repo'),
     state: {
@@ -139,7 +141,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     },
     getViewModel,
     getRepository,
-    getFileChange: vi.fn(),
+    getFileChange,
     reportFailure,
     reportPushFailure: vi.fn().mockReturnValue(true),
     refresh,
@@ -165,6 +167,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     service,
     getViewModel,
     getRepository,
+    getFileChange,
     commitAndPush,
     commit,
     selectPushRemote,
@@ -718,6 +721,54 @@ describe('GitoolViewProvider', () => {
     expect(created.trash).not.toHaveBeenCalled();
   });
 
+  it('旧 Webview 舍弃消息经动作控制器后仍保留明确文件范围', async () => {
+    const first = {
+      id: 'notes/first.md',
+      path: 'notes/first.md',
+      kind: 'untracked' as const,
+      staged: false,
+      unstaged: true,
+      untracked: true,
+      conflicted: false,
+      commitPaths: ['notes/first.md'],
+    };
+    const second = {
+      ...first,
+      id: 'notes/second.md',
+      path: 'notes/second.md',
+      commitPaths: ['notes/second.md'],
+    };
+    const created = createServiceDouble(model({
+      changes: [first, second],
+      selectedIds: [first.id, second.id],
+    }));
+    created.getFileChange.mockImplementation(
+      (_repositoryId, fileId) => [first, second].find(
+        (change) => change.id === fileId,
+      ),
+    );
+    vscodeMocks.stat.mockResolvedValue({ type: 1 });
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'trash',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      fileIds: [first.id],
+      requestId: 'trash-one-file',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.trash).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+        fileIds: [first.id],
+      });
+    });
+  });
+
   it('重复写请求被锁拒绝时不覆盖仍在运行的状态', async () => {
     const runningModel = model({
       operation: { kind: 'running', action: 'commit' },
@@ -744,5 +795,29 @@ describe('GitoolViewProvider', () => {
       kind: 'running',
       action: 'commit',
     });
+  });
+
+  it('动作控制器已报告失败时 Provider 不重复写入失败状态', async () => {
+    const created = createServiceDouble();
+    created.pushAll.mockRejectedValue(new Error('远程拒绝推送'));
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'pushAll',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      requestId: 'push-all-failed',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.reportFailure).toHaveBeenCalled();
+    });
+    expect(created.reportFailure).toHaveBeenCalledTimes(1);
+    expect(created.reportFailure).toHaveBeenCalledWith(
+      '推送全部本地提交',
+      '远程拒绝推送',
+    );
   });
 });
