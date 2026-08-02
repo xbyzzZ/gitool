@@ -1,34 +1,44 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 const stylesheet = readFileSync(resolve('media/main.css'), 'utf8');
 
 function readRule(selector: string): string {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  const matches = [...stylesheet.matchAll(
-    new RegExp(`(?:^|\\n)${escapedSelector}\\s*\\{([^}]*)\\}`, 'gu'),
-  )];
+  const matches = [
+    ...stylesheet.matchAll(
+      new RegExp(`(?:^|\\n)${escapedSelector}\\s*\\{([^}]*)\\}`, 'gu'),
+    ),
+  ];
+
   expect(matches, `未找到 ${selector} 样式规则`).not.toHaveLength(0);
   return matches.map((match) => match[1] ?? '').join('\n');
 }
 
-describe('提交信息 Webview 样式', () => {
-  it('使用 VS Code 基线字号且不固定按钮高度', () => {
+describe('工作台紧凑布局样式', () => {
+  it('清除 Webview 默认内边距并避免功能区卡片式外框', () => {
     expect(readRule('body')).toMatch(/(?:^|;)\s*padding:\s*0\s*;/u);
-    expect(readRule(':root')).toMatch(
-      /font-size:\s*var\(--vscode-font-size\)/u,
-    );
-    expect(readRule('button')).not.toMatch(/(?:min-)?height\s*:/u);
+    expect(readRule('.workbench-pane')).not.toMatch(/(?:^|;)\s*border\s*:/u);
   });
 
-  it('删除已迁移变更树、历史树和手绘分隔轨道规则', () => {
-    for (const selector of [
-      '.change-group', '.file-row', '.history-list', '.commit-row',
-      '.pane-resizer',
-    ]) {
-      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-      expect(stylesheet).not.toMatch(new RegExp(`(?:^|\\n)${escaped}\\s*\\{`, 'u'));
-    }
+  it('历史展开使用连续轨道且文件区不形成独立卡片', () => {
+    expect(readRule('.commit-row')).toMatch(/min-height:\s*32px/u);
+    expect(stylesheet).not.toMatch(
+      /\.commit-files\s*\{[^}]*(?:margin-left|border-left|background)/su,
+    );
+    expect(readRule('.commit-file')).toMatch(/min-height:\s*28px/u);
+    expect(readRule('.commit-file')).toMatch(
+      /grid-template-columns:\s*28px 19px minmax\(60px, auto\) minmax\(0, 1fr\) 18px/u,
+    );
+    expect(readRule('.commit-file-graph::before')).toMatch(/width:\s*2px/u);
+    expect(readRule('.commit-file-directory')).toMatch(/min-width:\s*0/u);
+    expect(readRule('.commit-file-directory')).toMatch(/overflow:\s*hidden/u);
+    expect(readRule('.commit-file-directory')).toMatch(
+      /text-overflow:\s*ellipsis/u,
+    );
+    expect(readRule('.commit-file-status')).toMatch(/width:\s*18px/u);
+    expect(readRule('.commit-file-status')).toMatch(/grid-column:\s*5/u);
   });
 });

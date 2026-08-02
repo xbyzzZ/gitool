@@ -43,12 +43,6 @@ interface RepositoryState {
   };
 }
 
-interface GitoolViewTestState {
-  readonly viewIds: readonly string[];
-  readonly changeBadge: number | undefined;
-  readonly historyDescription: string | undefined;
-}
-
 interface RawGitRepository {
   readonly rootUri: vscode.Uri;
   readonly state: {
@@ -390,70 +384,5 @@ suite('Gitool 扩展', () => {
       '测试：由 VS Code AI 适配器生成',
       '测试适配器应只在 Extension Host 测试模式生成提交信息',
     );
-  });
-
-  test('注册原生三分区并同步变更数量与上游位置', async () => {
-    const extension = vscode.extensions.getExtension(
-      'xbyzzz.gitool-file-commit',
-    );
-    assert.ok(extension, '扩展应存在');
-    await extension.activate();
-
-    let repositoryState = await waitForState(
-      (state) => state.repositories.length === 2,
-    );
-    const repository = repositoryState.repositories.find(
-      (candidate) => candidate.label === 'repo-b',
-    );
-    assert.ok(repository, '应存在专用验收仓库 repo-b');
-    repositoryState = await vscode.commands.executeCommand<RepositoryState>(
-      'gitool.test.selectRepository',
-      repository.id,
-    );
-    assert.equal(repositoryState.currentRepositoryId, repository.id);
-
-    await git(repository.id, ['add', '--all']);
-    await git(repository.id, [
-      'commit',
-      '-m',
-      '测试：准备原生视图验收',
-    ]);
-    const remote = join(dirname(repository.id), 'view-state-remote.git');
-    await mkdir(remote, { recursive: true });
-    await git(remote, ['init', '--bare']);
-    await git(repository.id, ['remote', 'add', 'origin', remote]);
-    await git(repository.id, [
-      'push',
-      '--set-upstream',
-      'origin',
-      'main',
-    ]);
-
-    await writeFile(
-      join(repository.id, 'tracked.txt'),
-      '用于验收已跟踪变更\n',
-      'utf8',
-    );
-    await writeFile(
-      join(repository.id, 'view-state-untracked.txt'),
-      '用于验收未跟踪变更\n',
-      'utf8',
-    );
-    repositoryState = await vscode.commands.executeCommand<RepositoryState>(
-      'gitool.test.refresh',
-    );
-    assert.equal(repositoryState.changeCount, 2);
-    assert.equal(repositoryState.sync.kind, 'ready');
-    assert.equal(repositoryState.sync.upstream, 'origin/main');
-    const state = await vscode.commands.executeCommand<GitoolViewTestState>(
-      'gitool.test.getViewState',
-    );
-    assert.deepEqual(state.viewIds, [
-      'gitool.commitView',
-      'gitool.changesView',
-      'gitool.historyView',
-    ]);
-    assert.equal(state.changeBadge, 2);
-    assert.match(state.historyDescription ?? '', /origin\/main/);
   });
 });

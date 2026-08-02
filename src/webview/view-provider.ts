@@ -1,15 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
+import type { FileChange } from '../domain/change-model.js';
 import { redactSensitiveText } from '../git/git-runner.js';
+import type { BuiltinGitApi } from '../git/builtin-git-api.js';
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { RepositoryService } from '../services/repository-service.js';
 import type { PushResult } from '../services/push-service.js';
-import { isReportedViewActionError } from '../views/view-actions.js';
 import { parseWebviewMessage, type WebviewMessage } from './messages.js';
 import { renderWebviewHtml } from './render.js';
 
 export interface GitoolViewProviderDependencies {
   readonly extensionUri: vscode.Uri;
+  readonly gitApi: BuiltinGitApi;
   readonly repositoryService: RepositoryService;
 }
 
@@ -17,6 +19,17 @@ interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
   readonly acknowledgedRequestId?: string;
+}
+
+interface CommitDetailsMessage {
+  readonly type: 'commitDetails';
+  readonly repositoryId: string;
+  readonly version: number;
+  readonly details: Awaited<ReturnType<RepositoryService['loadCommitDetails']>>;
+}
+
+interface RemotePickItem extends vscode.QuickPickItem {
+  readonly remoteName: string;
 }
 
 function errorMessage(error: unknown): string {
@@ -28,16 +41,39 @@ function errorMessage(error: unknown): string {
 function messageAction(message: WebviewMessage): string {
   switch (message.type) {
     case 'ready':
+    case 'refresh':
+      return '刷新';
     case 'selectRepository':
       return '切换仓库';
+    case 'toggleFile':
+    case 'setGroup':
+      return '选择文件';
     case 'setCommitMessage':
       return '更新提交信息';
+    case 'openDiff':
+      return '打开变更';
     case 'commit':
       return '提交';
     case 'commitAndPush':
     case 'selectPushRemote':
     case 'retryPush':
       return '推送';
+    case 'trash':
+      return '舍弃未跟踪文件';
+    case 'editRemoteUrl':
+      return '修改远程 URL';
+    case 'refreshHistory':
+      return '刷新提交历史';
+    case 'fetchHistory':
+      return '刷新远程状态';
+    case 'pull':
+      return '从远程拉取';
+    case 'pushAll':
+      return '推送全部本地提交';
+    case 'loadCommitDetails':
+      return '读取提交详情';
+    case 'openCommitDiff':
+      return '打开历史改动';
     case 'generateCommitMessage':
       return '生成提交信息';
     case 'cancelCommitMessageGeneration':
@@ -67,26 +103,10 @@ function selectedRequest(
   };
 }
 
-function disposeReverse(
-  disposables: vscode.Disposable[],
-  message: string,
-): void {
-  const errors: unknown[] = [];
-  for (const disposable of disposables.splice(0).reverse()) {
-    try {
-      disposable.dispose();
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  if (errors.length > 0) {
-    throw new AggregateError(errors, message);
-  }
-}
-
 export class GitoolViewProvider implements vscode.WebviewViewProvider {
   static readonly viewType = 'gitool.commitView';
 
+  private readonly disposables: vscode.Disposable[] = [];
   private viewDisposables: vscode.Disposable[] = [];
   private webview: vscode.Webview | undefined;
   private view: vscode.WebviewView | undefined;
@@ -99,49 +119,31 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     this.disposeView();
     this.view = webviewView;
     this.webview = webviewView.webview;
-    const viewDisposables: vscode.Disposable[] = [];
-    try {
-      this.webview.options = {
-        enableScripts: true,
-        localResourceRoots: [
-          vscode.Uri.joinPath(this.dependencies.extensionUri, 'media'),
-        ],
-      };
-      this.webview.html = renderWebviewHtml(
-        this.webview,
-        this.dependencies.extensionUri,
-        randomBytes(16).toString('hex'),
-      );
-      this.updateBadge();
+    this.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.dependencies.extensionUri, 'media'),
+      ],
+    };
+    this.webview.html = renderWebviewHtml(
+      this.webview,
+      this.dependencies.extensionUri,
+      randomBytes(16).toString('hex'),
+    );
+    this.updateBadge();
 
-      viewDisposables.push(this.webview.onDidReceiveMessage((input: unknown) => {
+    this.viewDisposables = [
+      this.webview.onDidReceiveMessage((input: unknown) => {
         void this.handleInput(input);
-      }));
-      viewDisposables.push(
-        this.dependencies.repositoryService.onDidChange(() => {
+      }),
+      this.dependencies.repositoryService.onDidChange(() => {
         this.updateBadge();
         void this.postState();
-        }),
-      );
-      viewDisposables.push(webviewView.onDidDispose(() => {
+      }),
+      webviewView.onDidDispose(() => {
         this.disposeView();
-      }));
-      this.viewDisposables = viewDisposables;
-    } catch (error) {
-      this.clearViewState();
-      try {
-        disposeReverse(viewDisposables, '清理 Gitool 提交视图订阅失败');
-      } catch (cleanupError) {
-        const cleanupErrors: unknown[] = cleanupError instanceof AggregateError
-          ? cleanupError.errors as unknown[]
-          : [cleanupError];
-        throw new AggregateError(
-          [error, ...cleanupErrors],
-          '初始化 Gitool 提交视图失败，且资源清理失败',
-        );
-      }
-      throw error;
-    }
+      }),
+    ];
   }
 
   dispose(): void {
@@ -150,17 +152,12 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     }
     this.disposed = true;
     this.disposeView();
+    for (const disposable of this.disposables.splice(0)) {
+      disposable.dispose();
+    }
   }
 
   private disposeView(): void {
-    this.clearViewState();
-    disposeReverse(
-      this.viewDisposables,
-      '释放 Gitool 提交视图订阅失败',
-    );
-  }
-
-  private clearViewState(): void {
     this.aiController?.abort();
     this.aiController = undefined;
     if (this.view !== undefined) {
@@ -168,6 +165,9 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     }
     this.view = undefined;
     this.webview = undefined;
+    for (const disposable of this.viewDisposables.splice(0)) {
+      disposable.dispose();
+    }
   }
 
   private async handleInput(input: unknown): Promise<void> {
@@ -193,14 +193,40 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     const service = this.dependencies.repositoryService;
     switch (message.type) {
       case 'ready':
+        {
+          const model = service.getViewModel();
+          if (model.currentRepositoryId === undefined) {
+            await this.postState();
+          } else {
+            await service.refreshHistory({
+              repositoryId: model.currentRepositoryId,
+              version: model.version,
+            });
+          }
+        }
+        return;
+      case 'refresh':
+        await service.refresh();
         return;
       case 'selectRepository':
         this.aiController?.abort();
         service.selectRepository(message.repositoryId);
         return;
+      case 'toggleFile':
+        this.requireRepository(message.repositoryId);
+        service.setFileSelected(message.fileId, message.selected);
+        return;
+      case 'setGroup':
+        this.requireRepository(message.repositoryId);
+        service.setGroup(message.group, message.selected);
+        return;
       case 'setCommitMessage':
         this.requireRepository(message.repositoryId);
         service.setCommitMessage(message.message);
+        return;
+      case 'openDiff':
+        this.requireRepository(message.repositoryId);
+        await this.openDiff(message.repositoryId, message.fileId);
         return;
       case 'commit': {
         const model = this.requireScope(
@@ -225,6 +251,46 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         return;
       case 'retryPush':
         await this.retryPush(message.repositoryId, message.version);
+        return;
+      case 'trash':
+        await this.trash(
+          message.repositoryId,
+          message.version,
+          message.fileIds,
+        );
+        return;
+      case 'editRemoteUrl':
+        await this.editRemoteUrl(message.repositoryId, message.version);
+        return;
+      case 'refreshHistory':
+        this.requireScope(message.repositoryId, message.version);
+        await service.refreshHistory({
+          repositoryId: message.repositoryId,
+          version: message.version,
+        });
+        return;
+      case 'fetchHistory':
+        this.requireScope(message.repositoryId, message.version);
+        await service.fetchHistory({
+          repositoryId: message.repositoryId,
+          version: message.version,
+        });
+        return;
+      case 'pull':
+        this.requireScope(message.repositoryId, message.version);
+        await service.pull({
+          repositoryId: message.repositoryId,
+          version: message.version,
+        });
+        return;
+      case 'pushAll':
+        await this.pushAll(message.repositoryId, message.version);
+        return;
+      case 'loadCommitDetails':
+        await this.loadCommitDetails(message);
+        return;
+      case 'openCommitDiff':
+        await this.openCommitDiff(message);
         return;
       case 'generateCommitMessage':
         await this.generateCommitMessage(message);
@@ -252,6 +318,54 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         };
   }
 
+  private async loadCommitDetails(
+    message: Extract<WebviewMessage, { readonly type: 'loadCommitDetails' }>,
+  ): Promise<void> {
+    this.requireScope(message.repositoryId, message.version);
+    const details = await this.dependencies.repositoryService
+      .loadCommitDetails({
+        repositoryId: message.repositoryId,
+        version: message.version,
+        hash: message.hash,
+      });
+    const webview = this.webview;
+    if (webview === undefined) {
+      return;
+    }
+    const response: CommitDetailsMessage = {
+      type: 'commitDetails',
+      repositoryId: message.repositoryId,
+      version: message.version,
+      details,
+    };
+    await webview.postMessage(response);
+  }
+
+  private async pushAll(repositoryId: string, version: number): Promise<void> {
+    const service = this.dependencies.repositoryService;
+    this.requireScope(repositoryId, version);
+    const result = await service.pushAll({ repositoryId, version });
+    if (result.kind !== 'needs-remote') {
+      return;
+    }
+    const selected = await vscode.window.showQuickPick(
+      result.remotes.map((remote) => ({ label: remote, remote })),
+      {
+        placeHolder: '选择用于推送全部本地提交并建立上游的远程',
+        title: 'Gitool：推送全部本地提交',
+      },
+    );
+    if (selected === undefined) {
+      return;
+    }
+    const latest = this.requireRepository(repositoryId);
+    await service.pushAll({
+      repositoryId,
+      version: latest.version,
+      selectedRemote: selected.remote,
+    });
+  }
+
   private async generateCommitMessage(
     message: Extract<WebviewMessage, {
       readonly type: 'generateCommitMessage';
@@ -273,6 +387,48 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.aiController = undefined;
       }
     }
+  }
+
+  private async openCommitDiff(
+    message: Extract<WebviewMessage, { readonly type: 'openCommitDiff' }>,
+  ): Promise<void> {
+    this.requireScope(message.repositoryId, message.version);
+    const service = this.dependencies.repositoryService;
+    const repository = service.getRepository(message.repositoryId);
+    if (repository === undefined) {
+      throw new Error('当前仓库不存在或已关闭');
+    }
+    const details = await service.loadCommitDetails({
+      repositoryId: message.repositoryId,
+      version: message.version,
+      hash: message.hash,
+    });
+    const file = details.files.find((item) => item.path === message.path);
+    if (file === undefined) {
+      throw new Error('文件不属于所选历史提交');
+    }
+    const originalPath = file.originalPath ?? file.path;
+    const leftFile = vscode.Uri.joinPath(repository.rootUri, originalPath);
+    const rightFile = vscode.Uri.joinPath(repository.rootUri, file.path);
+    const emptyUri = vscode.Uri.from({
+      scheme: 'gitool-empty',
+      path: `/${details.hash}/${file.path}`,
+    });
+    const leftUri = file.status.startsWith('A')
+      ? emptyUri
+      : this.dependencies.gitApi.toGitUri(
+          leftFile,
+          details.parentHash ?? details.hash,
+        );
+    const rightUri = file.status.startsWith('D')
+      ? emptyUri
+      : this.dependencies.gitApi.toGitUri(rightFile, details.hash);
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      leftUri,
+      rightUri,
+      `${file.originalPath === undefined ? file.path : `${file.originalPath} → ${file.path}`}（历史提交 ${details.hash.slice(0, 7)}）`,
+    );
   }
 
   private requireRepository(repositoryId: string): RepositoryViewModel {
@@ -373,6 +529,203 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async openDiff(
+    repositoryId: string,
+    fileId: string,
+  ): Promise<void> {
+    const service = this.dependencies.repositoryService;
+    const repository = service.getRepository(repositoryId);
+    const change = service.getFileChange(repositoryId, fileId);
+    if (repository === undefined || change === undefined) {
+      throw new Error('文件不属于当前仓库状态');
+    }
+
+    const fileUri = vscode.Uri.joinPath(repository.rootUri, change.path);
+    if (change.untracked) {
+      await vscode.window.showTextDocument(fileUri, { preview: true });
+      return;
+    }
+    if (change.kind === 'deleted') {
+      await vscode.window.showTextDocument(
+        this.dependencies.gitApi.toGitUri(fileUri, 'HEAD'),
+        { preview: true },
+      );
+      return;
+    }
+
+    const originalUri = change.originalPath === undefined
+      ? fileUri
+      : vscode.Uri.joinPath(repository.rootUri, change.originalPath);
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      this.dependencies.gitApi.toGitUri(originalUri, 'HEAD'),
+      fileUri,
+      this.diffTitle(change),
+    );
+  }
+
+  private diffTitle(change: FileChange): string {
+    return change.originalPath === undefined
+      ? `${change.path}（工作区 ↔ HEAD）`
+      : `${change.originalPath} → ${change.path}（工作区 ↔ HEAD）`;
+  }
+
+  private async trash(
+    repositoryId: string,
+    version: number,
+    fileIds: readonly string[],
+  ): Promise<void> {
+    const service = this.dependencies.repositoryService;
+    const model = this.requireScope(repositoryId, version);
+    const selected = new Set(model.selectedIds);
+    const changes = fileIds.map((fileId) => {
+      const change = service.getFileChange(repositoryId, fileId);
+      if (
+        change === undefined
+        || !change.untracked
+        || !selected.has(fileId)
+      ) {
+        throw new Error('只能舍弃当前已选择的未跟踪文件');
+      }
+      return change;
+    });
+    const repository = service.getRepository(repositoryId);
+    if (repository === undefined) {
+      throw new Error('当前仓库不存在或已关闭');
+    }
+    for (const change of changes) {
+      const stat = await vscode.workspace.fs.stat(
+        vscode.Uri.joinPath(repository.rootUri, change.path),
+      );
+      if ((stat.type & vscode.FileType.Directory) !== 0) {
+        throw new Error('不能通过此操作舍弃目录');
+      }
+    }
+
+    await service.trash({
+      repositoryId,
+      version,
+      fileIds,
+    });
+    await service.refresh();
+  }
+
+  private async editRemoteUrl(
+    repositoryId: string,
+    version: number,
+  ): Promise<void> {
+    const service = this.dependencies.repositoryService;
+    this.requireScope(repositoryId, version);
+    const repository = service.getRepository(repositoryId);
+    if (repository === undefined) {
+      throw new Error('当前仓库不存在或已关闭');
+    }
+    if (repository.state.remotes.length === 0) {
+      await this.addRemote(repositoryId, version);
+      return;
+    }
+
+    const remote = await vscode.window.showQuickPick<RemotePickItem>(
+      repository.state.remotes.map((item) => ({
+        label: item.name,
+        description: redactSensitiveText(
+          item.fetchUrl ?? item.pushUrl ?? '未配置 URL',
+        ),
+        remoteName: item.name,
+      })),
+      {
+        placeHolder: '选择要修改 URL 的现有远程',
+        title: 'Gitool：修改远程 URL',
+      },
+    );
+    if (remote === undefined) {
+      return;
+    }
+
+    const selectedRemote = repository.state.remotes.find(
+      (item) => item.name === remote.remoteName,
+    );
+    if (selectedRemote === undefined) {
+      throw new Error('所选远程已不存在');
+    }
+    const currentUrl = selectedRemote.fetchUrl ?? '';
+    const redactedCurrentUrl = redactSensitiveText(currentUrl);
+    const containsCredential = currentUrl !== redactedCurrentUrl;
+    const url = await vscode.window.showInputBox({
+      title: `Gitool：修改远程 ${selectedRemote.name}`,
+      prompt: containsCredential
+        ? '当前 URL 含凭据，已禁止自动回填；请输入完整的新 URL'
+        : '请输入新的 fetch URL',
+      value: containsCredential ? '' : currentUrl,
+      ...(containsCredential ? { placeHolder: redactedCurrentUrl } : {}),
+      ignoreFocusOut: true,
+      validateInput: (value) => value.trim().length === 0
+        ? '远程 URL 不能为空'
+        : undefined,
+    });
+    if (url === undefined) {
+      return;
+    }
+    const normalizedUrl = url.trim();
+    const confirmed = await vscode.window.showWarningMessage(
+      `确认修改远程 ${selectedRemote.name} 的 URL？`,
+      {
+        modal: true,
+        detail: `新 URL：${redactSensitiveText(normalizedUrl)}`,
+      },
+      '确认修改',
+    );
+    if (confirmed !== '确认修改') {
+      return;
+    }
+
+    await service.setRemoteUrl({
+      repositoryId,
+      version,
+      remote: selectedRemote.name,
+      url: normalizedUrl,
+    });
+    await service.refresh();
+  }
+
+  private async addRemote(
+    repositoryId: string,
+    version: number,
+  ): Promise<void> {
+    const url = await vscode.window.showInputBox({
+      title: 'Gitool：添加远程 origin',
+      prompt: '请输入完整的远程仓库 URL',
+      value: '',
+      ignoreFocusOut: true,
+      validateInput: (value) => value.trim().length === 0
+        ? '远程 URL 不能为空'
+        : undefined,
+    });
+    if (url === undefined) {
+      return;
+    }
+    const normalizedUrl = url.trim();
+    const confirmed = await vscode.window.showWarningMessage(
+      '确认添加远程 origin？',
+      {
+        modal: true,
+        detail: `远程 URL：${redactSensitiveText(normalizedUrl)}`,
+      },
+      '确认添加',
+    );
+    if (confirmed !== '确认添加') {
+      return;
+    }
+
+    await this.dependencies.repositoryService.addRemote({
+      repositoryId,
+      version,
+      remote: 'origin',
+      url: normalizedUrl,
+    });
+    await this.dependencies.repositoryService.refresh();
+  }
+
   private async postState(
     acknowledgedRequestId?: string,
   ): Promise<void> {
@@ -391,9 +744,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   }
 
   private reportError(action: string, error: unknown): void {
-    if (isReportedViewActionError(error)) {
-      return;
-    }
     const message = errorMessage(error);
     if (action === '生成提交信息' && message.includes('已取消')) {
       return;

@@ -129,24 +129,16 @@ export class RepositoryRegistry implements vscode.Disposable {
       for (const repository of gitApi.repositories) {
         this.addRepository(repository);
       }
-      this.lifecycleListeners.push(gitApi.onDidOpenRepository((repository) => {
-        this.addRepository(repository);
-      }));
-      this.lifecycleListeners.push(gitApi.onDidCloseRepository((repository) => {
-        this.removeRepository(repository);
-      }));
+      this.lifecycleListeners.push(
+        gitApi.onDidOpenRepository((repository) => {
+          this.addRepository(repository);
+        }),
+        gitApi.onDidCloseRepository((repository) => {
+          this.removeRepository(repository);
+        }),
+      );
     } catch (error) {
-      try {
-        this.dispose();
-      } catch (cleanupError) {
-        const cleanupErrors: unknown[] = cleanupError instanceof AggregateError
-          ? cleanupError.errors as unknown[]
-          : [cleanupError];
-        throw new AggregateError(
-          [error, ...cleanupErrors],
-          '初始化仓库注册表失败，且资源清理失败',
-        );
-      }
+      this.dispose();
       throw error;
     }
   }
@@ -271,7 +263,7 @@ export class RepositoryRegistry implements vscode.Disposable {
     const ids = state.changes
       .filter((change) => group === 'untracked'
         ? change.untracked
-        : !change.untracked && !change.conflicted)
+        : !change.untracked)
       .map((change) => change.id);
     this.selectionStore.setGroup(state.id, ids, selected);
     state.selectedIds = this.selectionStore.reconcile(state.id, state.changes);
@@ -335,21 +327,15 @@ export class RepositoryRegistry implements vscode.Disposable {
       return;
     }
     this.disposed = true;
-    const errors: unknown[] = [];
-    for (const listener of [...this.lifecycleListeners].reverse()) {
-      try {
-        listener.dispose();
-      } catch (error) {
-        errors.push(error);
-      }
+    for (const listener of this.lifecycleListeners) {
+      listener.dispose();
     }
-    this.lifecycleListeners.length = 0;
+    for (const state of this.repositories.values()) {
+      state.changeListener.dispose();
+    }
     this.repositories.clear();
     this.currentRepositoryId = undefined;
     this.changeListeners.clear();
-    if (errors.length > 0) {
-      throw new AggregateError(errors, '释放仓库注册表资源失败');
-    }
   }
 
   private addRepository(repository: BuiltinRepository): void {
@@ -362,7 +348,7 @@ export class RepositoryRegistry implements vscode.Disposable {
       if (existing.repository === repository) {
         return;
       }
-      this.disposeLifecycleListener(existing.changeListener);
+      existing.changeListener.dispose();
       this.lastVersions.set(id, existing.version);
       this.repositories.delete(id);
     }
@@ -388,7 +374,6 @@ export class RepositoryRegistry implements vscode.Disposable {
       this.synchronizeStateIfChanged(state, true);
       this.notifyChange();
     });
-    this.lifecycleListeners.push(state.changeListener);
     this.repositories.set(id, state);
     this.applySnapshot(state, state.snapshot, false);
     this.currentRepositoryId ??= id;
@@ -398,24 +383,16 @@ export class RepositoryRegistry implements vscode.Disposable {
   private removeRepository(repository: BuiltinRepository): void {
     const id = repositoryId(repository);
     const state = this.repositories.get(id);
-    if (state?.repository !== repository) {
+    if (state === undefined) {
       return;
     }
-    this.disposeLifecycleListener(state.changeListener);
+    state.changeListener.dispose();
     this.lastVersions.set(id, state.version);
     this.repositories.delete(id);
     if (this.currentRepositoryId === id) {
       this.currentRepositoryId = this.repositories.keys().next().value;
     }
     this.notifyChange();
-  }
-
-  private disposeLifecycleListener(listener: vscode.Disposable): void {
-    const index = this.lifecycleListeners.lastIndexOf(listener);
-    listener.dispose();
-    if (index >= 0) {
-      this.lifecycleListeners.splice(index, 1);
-    }
   }
 
   private synchronizeStateIfChanged(

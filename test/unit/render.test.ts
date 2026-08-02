@@ -13,12 +13,12 @@ function createExtensionUri(): vscode.Uri {
   function uriForPath(path: string): vscode.Uri {
     return {
       path,
-      with(change: { readonly path?: string }): vscode.Uri {
+    with(change: { readonly path?: string }): vscode.Uri {
         return uriForPath(change.path ?? path);
-      },
-      toString(): string {
-        return `file://${path}`;
-      },
+    },
+    toString(): string {
+      return `file://${path}`;
+    },
     } as vscode.Uri;
   }
   return uriForPath('/extensions/gitool');
@@ -27,7 +27,9 @@ function createExtensionUri(): vscode.Uri {
 describe('renderWebviewHtml', () => {
   it('生成带严格 CSP 和 nonce 的固定壳页面', () => {
     const html = renderWebviewHtml(
-      createWebview(), createExtensionUri(), 'nonce-123',
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
     );
 
     expect(html).toContain("default-src 'none'");
@@ -38,24 +40,68 @@ describe('renderWebviewHtml', () => {
     expect(html).not.toContain("'unsafe-eval'");
   });
 
-  it('只渲染提交输入，不重复绘制 View 标题、变更树和历史树', () => {
+  it('包含固定顺序的提交、当前变更和提交历史三分区', () => {
     const html = renderWebviewHtml(
-      createWebview(), createExtensionUri(), 'nonce-123',
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
     );
+    expect(html).toContain('class="commit-panel workbench-pane"');
+    expect(html).toContain('class="changes-panel workbench-pane"');
+    expect(html).toContain('class="history-panel workbench-pane"');
+    expect(html.match(/class="pane-resizer"/gu)).toHaveLength(2);
 
-    expect(html).toContain('id="commit-message"');
+    const ids = [
+      'commit-message',
+      'commit-button',
+      'commit-push-button',
+      'selection-summary',
+      'tracked-group',
+      'untracked-group',
+      'history-list',
+    ];
+
+    for (const id of ids) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    expect(ids.map((id) => html.indexOf(`id="${id}"`)))
+      .toEqual([...ids].map((id) => html.indexOf(`id="${id}"`)).sort(
+        (left, right) => left - right,
+      ));
+    expect(html).toContain('已跟踪变更');
+    expect(html).toContain('未跟踪文件');
+    expect(html).toContain('当前变更');
+    expect(html).toContain('提交历史');
+    expect(html).toContain('提交并推送');
     expect(html).toContain('id="ai-generate-button"');
-    expect(html).toContain('id="commit-button"');
-    expect(html).toContain('id="commit-push-button"');
-    expect(html).not.toContain('class="pane-header"');
-    expect(html).not.toContain('id="tracked-group"');
-    expect(html).not.toContain('id="history-list"');
-    expect(html).not.toContain('pane-resizer');
+    expect(html).toContain('id="pull-button"');
+    expect(html).toContain('id="push-all-button"');
+    expect(html).toContain('id="refresh-history-button"');
+    expect(html).toContain('id="collapse-history-button"');
+  });
+
+  it('把拉取和推送操作放在提交历史标题栏', () => {
+    const html = renderWebviewHtml(
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
+    );
+    const changesStart = html.indexOf('class="changes-panel workbench-pane"');
+    const historyStart = html.indexOf('class="history-panel workbench-pane"');
+    const pullButton = html.indexOf('id="pull-button"');
+    const pushButton = html.indexOf('id="push-all-button"');
+
+    expect(changesStart).toBeGreaterThan(-1);
+    expect(historyStart).toBeGreaterThan(changesStart);
+    expect(pullButton).toBeGreaterThan(historyStart);
+    expect(pushButton).toBeGreaterThan(historyStart);
   });
 
   it('只生成固定壳，不包含动态仓库数据或敏感文本', () => {
     const html = renderWebviewHtml(
-      createWebview(), createExtensionUri(), 'nonce-123',
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
     );
 
     expect(html).not.toContain('/workspace/private/project');
@@ -66,11 +112,14 @@ describe('renderWebviewHtml', () => {
 
   it('为状态、错误和关键操作提供可访问语义', () => {
     const html = renderWebviewHtml(
-      createWebview(), createExtensionUri(), 'nonce-123',
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
     );
 
     expect(html).toContain('role="alert"');
     expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('aria-label="刷新仓库状态"');
     expect(html).toContain('aria-label="提交所选文件"');
     expect(html).toContain('aria-label="提交并推送所选文件"');
     expect(html).toContain('aria-label="重试推送当前提交"');

@@ -37,7 +37,7 @@
 
 ---
 
-### Task 1：声明三个原生 View 与图标命令
+### 任务 1：声明三个原生 View 与图标命令
 
 **文件：**
 - 修改：`package.json`
@@ -98,7 +98,7 @@ git commit -m "界面：声明 Gitool 原生三分区视图"
 
 ---
 
-### Task 2：实现当前变更原生 TreeView
+### 任务 2：实现当前变更原生 TreeView
 
 **文件：**
 - 新建：`src/views/change-tree-provider.ts`
@@ -193,7 +193,7 @@ git commit -m "界面：实现当前变更原生文件树"
 
 ---
 
-### Task 3：实现提交历史原生 TreeView
+### 任务 3：实现提交历史原生 TreeView
 
 **文件：**
 - 新建：`src/views/history-tree-provider.ts`
@@ -276,7 +276,7 @@ git commit -m "界面：实现提交历史原生文件树"
 
 ---
 
-### Task 4：抽取原生 View 动作控制器
+### 任务 4：抽取原生 View 动作控制器
 
 **文件：**
 - 新建：`src/views/view-actions.ts`
@@ -358,7 +358,7 @@ git commit -m "重构：拆分 Gitool 原生视图动作"
 
 ---
 
-### Task 5：精简提交信息 Webview
+### 任务 5：精简提交信息 Webview
 
 **文件：**
 - 修改：`src/webview/render.ts`
@@ -415,7 +415,7 @@ git commit -m "界面：精简提交信息 Webview"
 
 ---
 
-### Task 6：接线运行时并移除模拟实现
+### 任务 6：接线运行时并移除模拟实现
 
 **文件：**
 - 修改：`src/extension.ts`
@@ -487,7 +487,7 @@ git commit -m "功能：接入 Gitool 原生三分区运行时"
 
 ---
 
-### Task 7：真实 Extension Host 验收与 0.2.0 交付
+### 任务 7：真实 Extension Host 验收与 0.2.0 交付
 
 **文件：**
 - 修改：`test/vscode/suite/extension.test.ts`

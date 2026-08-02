@@ -29,95 +29,16 @@
         {
           "type": "webview",
           "id": "gitool.commitView",
-          "name": "提交信息"
-        },
-        {
-          "id": "gitool.changesView",
-          "name": "当前变更"
-        },
-        {
-          "id": "gitool.historyView",
-          "name": "提交历史"
+          "name": "文件提交"
         }
       ]
     },
     "commands": [
       {
-        "command": "gitool.editRemote",
-        "title": "Gitool：编辑远程仓库",
-        "icon": "$(remote)"
-      },
-      {
-        "command": "gitool.refreshChanges",
-        "title": "Gitool：刷新当前变更",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "gitool.trashUntracked",
-        "title": "Gitool：移至废纸篓",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "gitool.openChange",
-        "title": "Gitool：打开变更",
-        "icon": "$(go-to-file)"
-      },
-      {
-        "command": "gitool.pull",
-        "title": "Gitool：拉取",
-        "icon": "$(cloud-download)"
-      },
-      {
-        "command": "gitool.pushAll",
-        "title": "Gitool：推送全部",
-        "icon": "$(cloud-upload)"
-      },
-      {
-        "command": "gitool.refreshHistory",
-        "title": "Gitool：刷新提交历史",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "gitool.openHistoryDiff",
-        "title": "Gitool：打开提交差异",
-        "icon": "$(diff)"
+        "command": "gitool.refresh",
+        "title": "Gitool：刷新仓库状态"
       }
-    ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "gitool.editRemote",
-          "when": "view == gitool.commitView",
-          "group": "navigation@1"
-        },
-        {
-          "command": "gitool.refreshChanges",
-          "when": "view == gitool.changesView",
-          "group": "navigation@1"
-        },
-        {
-          "command": "gitool.pull",
-          "when": "view == gitool.historyView",
-          "group": "navigation@1"
-        },
-        {
-          "command": "gitool.pushAll",
-          "when": "view == gitool.historyView",
-          "group": "navigation@2"
-        },
-        {
-          "command": "gitool.refreshHistory",
-          "when": "view == gitool.historyView",
-          "group": "navigation@3"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "gitool.trashUntracked",
-          "when": "view == gitool.changesView && viewItem == gitool.untrackedFile"
-        }
-      ]
-    }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build",

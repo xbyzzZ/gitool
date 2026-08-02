@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FileChange } from '../../src/domain/change-model.js';
-import {
-  directoryPath,
-  groupChanges,
-} from '../../src/domain/change-groups.js';
+import { groupChanges } from '../../src/domain/change-groups.js';
 
 function change(
   path: string,
@@ -26,11 +23,6 @@ function change(
 }
 
 describe('变更分区', () => {
-  it('将根目录统一为点号并保留嵌套目录路径', () => {
-    expect(directoryPath('README.md')).toBe('.');
-    expect(directoryPath('src/domain/model.ts')).toBe('src/domain');
-  });
-
   it('按待提交、未跟踪和冲突的固定顺序分区', () => {
     const result = groupChanges([
       change('conflict.ts', { conflicted: true }),

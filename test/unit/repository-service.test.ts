@@ -14,13 +14,6 @@ import {
   RepositoryService,
   type RepositoryServiceDependencies,
 } from '../../src/services/repository-service.js';
-import { RepositoryRegistry } from '../../src/services/repository-registry.js';
-
-interface TestEventOptions {
-  readonly onRegister?: () => void;
-  readonly beforeDispose?: () => void;
-  readonly onDispose?: () => void;
-}
 
 interface TestEvent<T> {
   readonly event: vscode.Event<T>;
@@ -28,17 +21,14 @@ interface TestEvent<T> {
   readonly listenerCount: () => number;
 }
 
-function createEvent<T>(options: TestEventOptions = {}): TestEvent<T> {
+function createEvent<T>(): TestEvent<T> {
   const listeners = new Set<(value: T) => unknown>();
   return {
     event: (listener) => {
-      options.onRegister?.();
       listeners.add(listener);
       return {
         dispose(): void {
-          options.beforeDispose?.();
           listeners.delete(listener);
-          options.onDispose?.();
         },
       };
     },
@@ -56,7 +46,7 @@ function uri(fsPath: string): vscode.Uri {
 }
 
 class TestRepository implements BuiltinRepository {
-  readonly changed: TestEvent<undefined>;
+  readonly changed = createEvent<undefined>();
   readonly rootUri: vscode.Uri;
   readonly state: BuiltinRepository['state'];
   statusCalls = 0;
@@ -70,9 +60,7 @@ class TestRepository implements BuiltinRepository {
       readonly untracked?: readonly BuiltinChange[];
       readonly merge?: readonly BuiltinChange[];
     } = {},
-    changedOptions: TestEventOptions = {},
   ) {
-    this.changed = createEvent<undefined>(changedOptions);
     this.rootUri = uri(rootPath);
     this.state = {
       HEAD: { name: 'main' },
@@ -145,23 +133,12 @@ class TestRepository implements BuiltinRepository {
 
 class TestGitApi implements BuiltinGitApi {
   readonly git = { path: '/usr/bin/git' };
-  readonly opened: TestEvent<BuiltinRepository>;
-  readonly closed: TestEvent<BuiltinRepository>;
-  readonly onDidOpenRepository: vscode.Event<BuiltinRepository>;
-  readonly onDidCloseRepository: vscode.Event<BuiltinRepository>;
+  readonly opened = createEvent<BuiltinRepository>();
+  readonly closed = createEvent<BuiltinRepository>();
+  readonly onDidOpenRepository = this.opened.event;
+  readonly onDidCloseRepository = this.closed.event;
 
-  constructor(
-    readonly repositories: readonly BuiltinRepository[],
-    options: {
-      readonly opened?: TestEventOptions;
-      readonly closed?: TestEventOptions;
-    } = {},
-  ) {
-    this.opened = createEvent<BuiltinRepository>(options.opened);
-    this.closed = createEvent<BuiltinRepository>(options.closed);
-    this.onDidOpenRepository = this.opened.event;
-    this.onDidCloseRepository = this.closed.event;
-  }
+  constructor(readonly repositories: readonly BuiltinRepository[]) {}
 
   toGitUri(value: vscode.Uri): vscode.Uri {
     return value;
@@ -834,20 +811,6 @@ describe('RepositoryService', () => {
     });
   });
 
-  it('切换已跟踪分组时保持冲突文件未选中', () => {
-    const root = '/workspace/repo-a';
-    const repository = new TestRepository(root, {
-      working: [change(root, 'normal.ts')],
-      merge: [change(root, 'conflict.ts', 18)],
-    });
-    const { service } = createService([repository]);
-
-    service.setGroup('tracked', false);
-    service.setGroup('tracked', true);
-
-    expect(service.getViewModel().selectedIds).toEqual(['normal.ts']);
-  });
-
   it('旧版本提交请求在进入提交服务前被拒绝', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {
@@ -1054,156 +1017,6 @@ describe('RepositoryService', () => {
     expect(gitApi.closed.listenerCount()).toBe(0);
   });
 
-  it('关闭仓库生命周期监听注册失败时释放已注册的打开监听', () => {
-    const trace: string[] = [];
-    const gitApi = new TestGitApi([], {
-      opened: { onDispose: () => trace.push('打开监听') },
-      closed: {
-        onRegister: () => {
-          throw new Error('关闭监听注册失败');
-        },
-      },
-    });
-
-    expect(() => new RepositoryRegistry(gitApi)).toThrow(
-      '关闭监听注册失败',
-    );
-    expect(gitApi.opened.listenerCount()).toBe(0);
-    expect(trace).toEqual(['打开监听']);
-  });
-
-  it('释放异常时继续按创建顺序的相反顺序清理全部监听', () => {
-    const trace: string[] = [];
-    const repository = new TestRepository('/workspace/repo-a', {}, {
-      onDispose: () => trace.push('仓库监听'),
-    });
-    const gitApi = new TestGitApi([repository], {
-      opened: { onDispose: () => trace.push('打开监听') },
-      closed: {
-        onDispose: () => {
-          trace.push('关闭监听');
-          throw new Error('关闭监听释放失败');
-        },
-      },
-    });
-    const registry = new RepositoryRegistry(gitApi);
-
-    expect(() => {
-      registry.dispose();
-    }).toThrow(AggregateError);
-    expect(trace).toEqual(['关闭监听', '打开监听', '仓库监听']);
-    expect(repository.changed.listenerCount()).toBe(0);
-    expect(gitApi.opened.listenerCount()).toBe(0);
-    expect(gitApi.closed.listenerCount()).toBe(0);
-  });
-
-  it('动态打开仓库后按全部监听的真实创建顺序逆序释放', () => {
-    const trace: string[] = [];
-    const repositoryA = new TestRepository('/workspace/repo-a', {}, {
-      onDispose: () => trace.push('仓库 A 监听'),
-    });
-    const repositoryB = new TestRepository('/workspace/repo-b', {}, {
-      onDispose: () => trace.push('仓库 B 监听'),
-    });
-    const gitApi = new TestGitApi([repositoryA], {
-      opened: { onDispose: () => trace.push('打开监听') },
-      closed: { onDispose: () => trace.push('关闭监听') },
-    });
-    const registry = new RepositoryRegistry(gitApi);
-
-    gitApi.opened.fire(repositoryB);
-    registry.dispose();
-
-    expect(trace).toEqual([
-      '仓库 B 监听',
-      '关闭监听',
-      '打开监听',
-      '仓库 A 监听',
-    ]);
-    expect(repositoryA.changed.listenerCount()).toBe(0);
-    expect(repositoryB.changed.listenerCount()).toBe(0);
-    expect(gitApi.opened.listenerCount()).toBe(0);
-    expect(gitApi.closed.listenerCount()).toBe(0);
-  });
-
-  it('同路径新仓库打开后忽略旧实例的乱序关闭事件', () => {
-    const root = '/workspace/repo-a';
-    const oldRepository = new TestRepository(root);
-    const newRepository = new TestRepository(root);
-    const gitApi = new TestGitApi([oldRepository]);
-    const registry = new RepositoryRegistry(gitApi);
-
-    gitApi.opened.fire(newRepository);
-    gitApi.closed.fire(oldRepository);
-
-    expect(registry.get(root)?.repository).toBe(newRepository);
-    expect(registry.getViewModel(true).currentRepositoryId).toBe(root);
-    expect(newRepository.changed.listenerCount()).toBe(1);
-
-    registry.dispose();
-    expect(newRepository.changed.listenerCount()).toBe(0);
-  });
-
-  it('关闭仓库监听首次释放失败时保留句柄供最终释放重试', () => {
-    let disposeAttempts = 0;
-    const repository = new TestRepository('/workspace/repo-a', {}, {
-      beforeDispose: () => {
-        disposeAttempts += 1;
-        if (disposeAttempts === 1) {
-          throw new Error('仓库监听首次释放失败');
-        }
-      },
-    });
-    const gitApi = new TestGitApi([repository]);
-    const registry = new RepositoryRegistry(gitApi);
-
-    expect(() => {
-      gitApi.closed.fire(repository);
-    }).toThrow(
-      '仓库监听首次释放失败',
-    );
-    expect(registry.getViewModel(true).currentRepositoryId).toBe(
-      '/workspace/repo-a',
-    );
-    expect(repository.changed.listenerCount()).toBe(1);
-
-    registry.dispose();
-
-    expect(disposeAttempts).toBe(2);
-    expect(repository.changed.listenerCount()).toBe(0);
-  });
-
-  it('同路径替换监听首次释放失败时保留旧句柄供最终释放重试', () => {
-    let disposeAttempts = 0;
-    const oldRepository = new TestRepository('/workspace/repo-a', {}, {
-      beforeDispose: () => {
-        disposeAttempts += 1;
-        if (disposeAttempts === 1) {
-          throw new Error('旧仓库监听首次释放失败');
-        }
-      },
-    });
-    const newRepository = new TestRepository('/workspace/repo-a');
-    const gitApi = new TestGitApi([oldRepository]);
-    const registry = new RepositoryRegistry(gitApi);
-
-    expect(() => {
-      gitApi.opened.fire(newRepository);
-    }).toThrow(
-      '旧仓库监听首次释放失败',
-    );
-    expect(registry.getViewModel(true).currentRepositoryId).toBe(
-      '/workspace/repo-a',
-    );
-    expect(oldRepository.changed.listenerCount()).toBe(1);
-    expect(newRepository.changed.listenerCount()).toBe(0);
-
-    registry.dispose();
-
-    expect(disposeAttempts).toBe(2);
-    expect(oldRepository.changed.listenerCount()).toBe(0);
-  });
-
   it('同路径仓库关闭重开后拒绝旧版本提交请求', async () => {
     const root = '/workspace/repo-a';
     const oldRepository = new TestRepository(root, {
@@ -1281,7 +1094,7 @@ describe('RepositoryService', () => {
     expect(created.service.getViewModel().version).toBe(1);
   });
 
-  it('不同 wrapper 的关闭事件不会封存当前仓库 generation', async () => {
+  it('不同 wrapper 的关闭事件立即封存已进入提交服务的 generation', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root, {
       working: [change(root, 'a.ts')],
@@ -1305,12 +1118,9 @@ describe('RepositoryService', () => {
       version: 0,
       message: '关闭前请求',
       selectedIds: ['a.ts'],
-    })).resolves.toEqual({
-      commitHash: 'abc123',
-      committedPaths: ['a.ts'],
-    });
-    expect(repository.changed.listenerCount()).toBe(1);
-    expect(created.service.getViewModel().currentRepositoryId).toBe(root);
+    })).rejects.toThrow('提交前版本复核失败');
+    expect(repository.changed.listenerCount()).toBe(0);
+    expect(created.service.getViewModel().currentRepositoryId).toBeUndefined();
   });
 
   it('存在冲突时在进入任一写服务前拒绝操作', async () => {
