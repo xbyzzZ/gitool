@@ -5,6 +5,7 @@ import type { BuiltinGitApi } from '../git/builtin-git-api.js';
 import { redactSensitiveText } from '../git/git-runner.js';
 import type { RepositoryService } from '../services/repository-service.js';
 import type { ChangeFileNode } from './change-tree-provider.js';
+import type { HistoryFileNode } from './history-tree-provider.js';
 
 export interface GitoolViewActionsDependencies {
   readonly service: RepositoryService;
@@ -177,6 +178,42 @@ export class GitoolViewActions {
     await service.refresh();
   }
 
+  async openHistoryChange(node: HistoryFileNode): Promise<void> {
+    const { repositoryId, version } = this.currentScope(node.repositoryId);
+    if (node.version !== version) {
+      throw new Error('仓库状态已变化，请刷新后重试');
+    }
+    const repository = this.dependencies.service.getRepository(repositoryId);
+    if (repository === undefined) {
+      throw new Error('当前仓库不存在或已关闭');
+    }
+    const originalPath = node.file.originalPath ?? node.file.path;
+    const leftFile = vscode.Uri.joinPath(repository.rootUri, originalPath);
+    const rightFile = vscode.Uri.joinPath(repository.rootUri, node.file.path);
+    const emptyUri = vscode.Uri.from({
+      scheme: 'gitool-empty',
+      path: `/${node.hash}/${node.file.path}`,
+    });
+    const leftUri = node.file.status.startsWith('A')
+      ? emptyUri
+      : this.dependencies.gitApi.toGitUri(
+          leftFile,
+          node.parentHash ?? node.hash,
+        );
+    const rightUri = node.file.status.startsWith('D')
+      ? emptyUri
+      : this.dependencies.gitApi.toGitUri(rightFile, node.hash);
+    const pathLabel = node.file.originalPath === undefined
+      ? node.file.path
+      : `${node.file.originalPath} → ${node.file.path}`;
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      leftUri,
+      rightUri,
+      `${pathLabel}（历史提交 ${node.hash.slice(0, 7)}）`,
+    );
+  }
+
   async pull(): Promise<void> {
     const { repositoryId, version } = this.currentScope();
     await this.dependencies.service.pull({ repositoryId, version });
@@ -312,6 +349,11 @@ export function registerViewCommands(
       'gitool.openChange',
       '打开变更',
       (node: ChangeFileNode) => actions.openChange(node),
+    ),
+    register(
+      'gitool.openHistoryChange',
+      '打开历史改动',
+      (node: HistoryFileNode) => actions.openHistoryChange(node),
     ),
     register('gitool.pull', '从远程拉取', () => actions.pull()),
     register('gitool.pushAll', '推送', () => actions.pushAll()),
