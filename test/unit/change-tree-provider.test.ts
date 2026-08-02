@@ -244,6 +244,24 @@ describe('当前变更原生文件树', () => {
     expect(item.description).toContain('src');
   });
 
+  it('未跟踪文件描述不重复显示问号状态', () => {
+    const untracked = findNode(
+      provider.getChildren(),
+      (node) => node.kind === 'section' && node.section === 'untracked',
+    );
+    const directory = provider.getChildren(untracked)[0];
+    const file = directory === undefined
+      ? undefined
+      : provider.getChildren(directory)[0];
+    if (file === undefined) {
+      throw new Error('缺少未跟踪文件节点');
+    }
+
+    expect(provider.getTreeItem(file).description).toBe(
+      'notebooks · 未跟踪',
+    );
+  });
+
   it('文件复选框变化写回选择状态', () => {
     const tracked = findNode(
       provider.getChildren(),
