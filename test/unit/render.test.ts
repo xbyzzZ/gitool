@@ -68,8 +68,10 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('id="ai-generate-icon"');
     expect(html).toContain('codicon-sparkle');
     expect(html).toContain('codicon-chevron-down');
-    expect(html).toContain('codicon-git-commit');
-    expect(html).toContain('codicon-cloud-upload');
+    expect(html).toContain('codicon-check');
+    expect(html).toContain('codicon-arrow-up');
+    expect(html).not.toContain('codicon-git-commit');
+    expect(html).not.toContain('codicon-cloud-upload');
     expect(html).not.toContain('>仅提交</button>');
     expect(html).not.toContain('>提交并推送</button>');
   });

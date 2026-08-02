@@ -89,10 +89,10 @@ export function renderCommitWebviewHtml(
           </div>
           <div class="primary-actions">
             <button id="commit-button" class="secondary commit-icon-button" type="button" aria-label="提交所选文件" title="仅提交">
-              <span class="codicon codicon-git-commit" aria-hidden="true"></span>
+              <span class="codicon codicon-check" aria-hidden="true"></span>
             </button>
             <button id="commit-push-button" class="primary commit-icon-button" type="button" aria-label="提交并推送所选文件" title="提交并推送">
-              <span class="codicon codicon-cloud-upload" aria-hidden="true"></span>
+              <span class="codicon codicon-arrow-up" aria-hidden="true"></span>
             </button>
           </div>
         </div>

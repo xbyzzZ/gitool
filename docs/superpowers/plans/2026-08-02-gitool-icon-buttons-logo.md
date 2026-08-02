@@ -60,8 +60,8 @@ expect(aiControlPresentation('detailed', true)).toEqual({
 expect(html).toContain('id="ai-generate-icon"');
 expect(html).toContain('codicon-sparkle');
 expect(html).toContain('codicon-chevron-down');
-expect(html).toContain('codicon-git-commit');
-expect(html).toContain('codicon-cloud-upload');
+expect(html).toContain('codicon-check');
+expect(html).toContain('codicon-arrow-up');
 expect(html).not.toContain('>仅提交</button>');
 expect(html).not.toContain('>提交并推送</button>');
 ```
@@ -119,7 +119,7 @@ export function aiControlPresentation(
 </button>
 ```
 
-右侧按钮分别使用 `codicon-git-commit` 和 `codicon-cloud-upload`，保留现有 ID、`secondary`/`primary` 类与中文 `aria-label`、`title`。
+右侧按钮分别使用 `codicon-check` 和 `codicon-arrow-up`，保留现有 ID、`secondary`/`primary` 类与中文 `aria-label`、`title`。
 
 - [ ] **Step 6: 接入 AI 图标与提示更新**
 
