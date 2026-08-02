@@ -88,7 +88,7 @@ async function git(
 suite('Gitool 扩展', () => {
   test('可以激活并注册原生视图命令', async () => {
     const extension = vscode.extensions.getExtension(
-      'xbyzzz.gitool-file-commit',
+      'gitool.gitool-file-commit',
     );
     assert.ok(extension, '扩展应存在');
 
@@ -115,7 +115,7 @@ suite('Gitool 扩展', () => {
 
   test('真实双仓库默认选择安全且刷新后保持', async () => {
     const extension = vscode.extensions.getExtension(
-      'xbyzzz.gitool-file-commit',
+      'gitool.gitool-file-commit',
     );
     assert.ok(extension, '扩展应存在');
     await extension.activate();
