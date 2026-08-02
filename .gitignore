@@ -3,6 +3,8 @@
 node_modules/
 dist/
 media/main.js
+media/commit.js
+media/history.js
 coverage/
 .vscode-test/
 *.vsix

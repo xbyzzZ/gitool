@@ -15,6 +15,11 @@ interface RegistrationState {
 }
 
 const mocks = vi.hoisted(() => {
+  class EventEmitter {
+    readonly event = vi.fn(() => ({ dispose: vi.fn() }));
+    fire = vi.fn();
+    dispose = vi.fn();
+  }
   const state: RegistrationState = {
     activeCommands: new Map(),
     activeViews: new Map(),
@@ -58,6 +63,21 @@ const mocks = vi.hoisted(() => {
       state.registeredProviders.push(provider);
       return register(state.activeViews, state.viewDisposals, id);
     }),
+    createTreeView: vi.fn((id: string) => {
+      const registration = register(
+        state.activeViews,
+        state.viewDisposals,
+        id,
+      );
+      return {
+        description: undefined,
+        onDidChangeCheckboxState: vi.fn(() => ({ dispose: vi.fn() })),
+        dispose: () => {
+          registration.dispose();
+        },
+      };
+    }),
+    EventEmitter,
     onDidGrantWorkspaceTrust: vi.fn(() => {
       if (state.trustRegistrationError !== undefined) {
         const error = state.trustRegistrationError;
@@ -73,6 +93,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('vscode', () => ({
+  EventEmitter: mocks.EventEmitter,
   commands: {
     registerCommand: mocks.registerCommand,
   },
@@ -87,6 +108,7 @@ vi.mock('vscode', () => ({
     file: (fsPath: string) => ({ fsPath }),
   },
   window: {
+    createTreeView: mocks.createTreeView,
     registerWebviewViewProvider: mocks.registerWebviewViewProvider,
     showErrorMessage: mocks.showErrorMessage,
     showWarningMessage: mocks.showWarningMessage,
@@ -232,8 +254,21 @@ describe('扩展激活', () => {
     const runtime = await activate(context());
 
     expect(runtime.mode).toBe('initialization-failed');
-    expect(mocks.state.viewDisposals).toEqual(['gitool.commitView']);
-    expect(mocks.state.commandDisposals).toEqual(['gitool.refresh']);
+    expect(mocks.state.viewDisposals).toEqual([
+      'gitool.historyView',
+      'gitool.changesView',
+      'gitool.commitView',
+    ]);
+    expect(mocks.state.commandDisposals).toEqual([
+      'gitool.refresh',
+      'gitool.refreshHistory',
+      'gitool.pushAll',
+      'gitool.pull',
+      'gitool.openChange',
+      'gitool.trashUntracked',
+      'gitool.refreshChanges',
+      'gitool.editRemote',
+    ]);
     expect(mocks.state.gitOpenListeners.size).toBe(0);
     expect(mocks.state.gitCloseListeners.size).toBe(0);
     expect(mocks.state.activeViews.size).toBe(1);
@@ -248,7 +283,7 @@ describe('扩展激活', () => {
 
     const nextRuntime: GitoolRuntime = await activate(context());
     expect(nextRuntime.mode).toBe('ready');
-    expect(mocks.state.activeViews.size).toBe(1);
-    expect(mocks.state.activeCommands.size).toBe(1);
+    expect(mocks.state.activeViews.size).toBe(3);
+    expect(mocks.state.activeCommands.size).toBe(8);
   });
 });

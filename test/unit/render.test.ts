@@ -1,6 +1,9 @@
 import type * as vscode from 'vscode';
 import { describe, expect, it, vi } from 'vitest';
-import { renderWebviewHtml } from '../../src/webview/render.js';
+import {
+  renderCommitWebviewHtml,
+  renderHistoryWebviewHtml,
+} from '../../src/webview/render.js';
 
 function createWebview(): vscode.Webview {
   return {
@@ -24,9 +27,9 @@ function createExtensionUri(): vscode.Uri {
   return uriForPath('/extensions/gitool');
 }
 
-describe('renderWebviewHtml', () => {
+describe('独立 Webview 壳页面', () => {
   it('生成带严格 CSP 和 nonce 的固定壳页面', () => {
-    const html = renderWebviewHtml(
+    const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
@@ -42,93 +45,47 @@ describe('renderWebviewHtml', () => {
     expect(html).not.toContain("'unsafe-eval'");
   });
 
-  it('包含固定顺序的提交、当前变更和提交历史三分区', () => {
-    const html = renderWebviewHtml(
+  it('提交页面只保留现有提交内容', () => {
+    const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
     );
-    expect(html).toContain('class="commit-panel workbench-pane"');
-    expect(html).toContain('class="changes-panel workbench-pane"');
-    expect(html).toContain('class="history-panel workbench-pane"');
-    expect(html.match(/class="pane-resizer"/gu)).toHaveLength(2);
-
-    const ids = [
-      'commit-message',
-      'commit-button',
-      'commit-push-button',
-      'selection-summary',
-      'tracked-group',
-      'untracked-group',
-      'history-list',
-    ];
-
-    for (const id of ids) {
-      expect(html).toContain(`id="${id}"`);
-    }
-    expect(ids.map((id) => html.indexOf(`id="${id}"`)))
-      .toEqual([...ids].map((id) => html.indexOf(`id="${id}"`)).sort(
-        (left, right) => left - right,
-      ));
-    expect(html).toContain('已跟踪变更');
-    expect(html).toContain('未跟踪文件');
-    expect(html).toContain('当前变更');
-    expect(html).toContain('提交历史');
+    expect(html).toContain('id="commit-message"');
     expect(html).toContain('提交并推送');
     expect(html).toContain('id="ai-generate-button"');
-    expect(html).toContain('id="pull-button"');
-    expect(html).toContain('id="push-all-button"');
-    expect(html).toContain('id="refresh-history-button"');
-    expect(html).toContain('id="collapse-history-button"');
+    expect(html).not.toContain('id="tracked-group"');
+    expect(html).not.toContain('id="history-list"');
+    expect(html).not.toContain('class="pane-resizer"');
   });
 
-  it('把拉取和推送操作放在提交历史标题栏', () => {
-    const html = renderWebviewHtml(
+  it('历史页面保留现有拓扑内容且没有内部标题栏', () => {
+    const html = renderHistoryWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
     );
-    const changesStart = html.indexOf('class="changes-panel workbench-pane"');
-    const historyStart = html.indexOf('class="history-panel workbench-pane"');
-    const pullButton = html.indexOf('id="pull-button"');
-    const pushButton = html.indexOf('id="push-all-button"');
-
-    expect(changesStart).toBeGreaterThan(-1);
-    expect(historyStart).toBeGreaterThan(changesStart);
-    expect(pullButton).toBeGreaterThan(historyStart);
-    expect(pushButton).toBeGreaterThan(historyStart);
-    expect(pullButton).toBeLessThan(html.indexOf('</header>', historyStart));
-    expect(pushButton).toBeLessThan(html.indexOf('</header>', historyStart));
+    expect(html).toContain('id="history-list"');
+    expect(html).toContain('class="history-list"');
+    expect(html).toContain('id="sync-summary"');
+    expect(html).not.toContain('id="commit-message"');
+    expect(html).not.toContain('id="collapse-history-button"');
+    expect(html).not.toContain('id="changes-history-resizer"');
   });
 
-  it('工具栏和舍弃操作使用可访问的矢量图标而不是字符或文字', () => {
-    const html = renderWebviewHtml(
+  it('不再生成由原生视图标题栏承载的内部工具栏', () => {
+    const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
     );
-    const iconButtons = [
-      'edit-remote-button',
-      'fetch-history-button',
-      'refresh-button',
-      'trash-button',
-      'pull-button',
-      'push-all-button',
-      'refresh-history-button',
-    ];
-
-    for (const id of iconButtons) {
-      const start = html.indexOf(`id="${id}"`);
-      const end = html.indexOf('</button>', start);
-      expect(start, `缺少按钮 ${id}`).toBeGreaterThan(-1);
-      expect(html.slice(start, end)).toContain('<svg');
-    }
-    expect(html).not.toContain('>舍弃</button>');
+    expect(html).not.toContain('id="edit-remote-button"');
+    expect(html).not.toContain('class="pane-header"');
     expect(html).not.toContain('>⋯</button>');
   });
 
   it('只生成固定壳，不包含动态仓库数据或敏感文本', () => {
-    const html = renderWebviewHtml(
+    const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
@@ -141,7 +98,7 @@ describe('renderWebviewHtml', () => {
   });
 
   it('为状态、错误和关键操作提供可访问语义', () => {
-    const html = renderWebviewHtml(
+    const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
@@ -149,7 +106,6 @@ describe('renderWebviewHtml', () => {
 
     expect(html).toContain('role="alert"');
     expect(html).toContain('aria-live="polite"');
-    expect(html).toContain('aria-label="刷新仓库状态"');
     expect(html).toContain('aria-label="提交所选文件"');
     expect(html).toContain('aria-label="提交并推送所选文件"');
     expect(html).toContain('aria-label="重试推送当前提交"');

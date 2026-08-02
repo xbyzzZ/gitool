@@ -677,3 +677,18 @@ input:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+.commit-layout,
+.history-layout {
+  display: block;
+  min-height: 0;
+}
+
+.commit-layout .commit-panel,
+.history-layout .history-panel {
+  min-height: 0;
+  height: auto !important;
+}
+
+.compatibility-controls {
+  display: none !important;
+}

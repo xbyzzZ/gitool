@@ -7,7 +7,10 @@ import type { RepositoryService } from '../services/repository-service.js';
 import type { PushResult } from '../services/push-service.js';
 import { GitoolViewActions } from '../views/view-actions.js';
 import { parseWebviewMessage, type WebviewMessage } from './messages.js';
-import { renderWebviewHtml } from './render.js';
+import {
+  renderCommitWebviewHtml,
+  renderHistoryWebviewHtml,
+} from './render.js';
 
 export interface GitoolViewProviderDependencies {
   readonly extensionUri: vscode.Uri;
@@ -100,7 +103,7 @@ function selectedRequest(
 }
 
 export class GitoolViewProvider implements vscode.WebviewViewProvider {
-  static readonly viewType = 'gitool.commitView';
+  static readonly viewType: string = 'gitool.commitView';
 
   private readonly disposables: vscode.Disposable[] = [];
   private viewDisposables: vscode.Disposable[] = [];
@@ -110,7 +113,10 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   private readonly viewActions: GitoolViewActions;
   private disposed = false;
 
-  constructor(private readonly dependencies: GitoolViewProviderDependencies) {
+  constructor(
+    private readonly dependencies: GitoolViewProviderDependencies,
+    private readonly viewKind: 'commit' | 'history' = 'commit',
+  ) {
     this.viewActions = new GitoolViewActions({
       service: dependencies.repositoryService,
       gitApi: dependencies.gitApi,
@@ -132,19 +138,19 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         void this.handleInput(input);
       }),
       this.dependencies.repositoryService.onDidChange(() => {
-        this.updateBadge();
+        this.updateViewMetadata();
         void this.postState();
       }),
       webviewView.onDidDispose(() => {
         this.disposeView();
       }),
     ];
-    this.webview.html = renderWebviewHtml(
-      this.webview,
-      this.dependencies.extensionUri,
-      randomBytes(16).toString('hex'),
-    );
-    this.updateBadge();
+    const render = this.viewKind === 'commit'
+      ? renderCommitWebviewHtml
+      : renderHistoryWebviewHtml;
+    this.webview.html = render(this.webview, this.dependencies.extensionUri,
+      randomBytes(16).toString('hex'));
+    this.updateViewMetadata();
   }
 
   dispose(): void {
@@ -163,6 +169,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     this.aiController = undefined;
     if (this.view !== undefined) {
       this.view.badge = undefined;
+      this.view.description = '';
     }
     this.view = undefined;
     this.webview = undefined;
@@ -308,19 +315,34 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private updateBadge(): void {
+  private updateViewMetadata(): void {
     const view = this.view;
     if (view === undefined) {
       return;
     }
-    const count = this.dependencies.repositoryService.getViewModel()
-      .changeCount;
+    const model = this.dependencies.repositoryService.getViewModel();
+    if (this.viewKind === 'history') {
+      view.description = this.syncDescription(model);
+      return;
+    }
+    const count = model.changeCount;
     view.badge = count === 0
       ? undefined
       : {
           value: count,
           tooltip: `Gitool：${String(count)} 个变更文件`,
         };
+  }
+
+  private syncDescription(model: RepositoryViewModel): string {
+    switch (model.sync.kind) {
+      case 'detached':
+        return '游离 HEAD';
+      case 'no-upstream':
+        return '未设置上游';
+      case 'ready':
+        return `${model.sync.upstream} · ↑${String(model.sync.ahead)} ↓${String(model.sync.behind)}`;
+    }
   }
 
   private async loadCommitDetails(
@@ -547,5 +569,13 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     if (!this.dependencies.repositoryService.reportFailure(action, message)) {
       void vscode.window.showErrorMessage(`Gitool：${message}`);
     }
+  }
+}
+
+export class GitoolHistoryViewProvider extends GitoolViewProvider {
+  static override readonly viewType = 'gitool.historyView';
+
+  constructor(dependencies: GitoolViewProviderDependencies) {
+    super(dependencies, 'history');
   }
 }

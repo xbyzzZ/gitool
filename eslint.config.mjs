@@ -3,7 +3,14 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: ['dist/**', 'media/main.js', 'coverage/**', '.vscode-test/**'],
+    ignores: [
+      'dist/**',
+      'media/main.js',
+      'media/commit.js',
+      'media/history.js',
+      'coverage/**',
+      '.vscode-test/**',
+    ],
   },
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
