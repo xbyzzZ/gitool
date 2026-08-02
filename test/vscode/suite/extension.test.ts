@@ -43,6 +43,12 @@ interface RepositoryState {
   };
 }
 
+interface GitoolViewTestState {
+  readonly viewIds: readonly string[];
+  readonly changeBadge: number | undefined;
+  readonly historyDescription: string | undefined;
+}
+
 interface RawGitRepository {
   readonly rootUri: vscode.Uri;
   readonly state: {
@@ -384,5 +390,33 @@ suite('Gitool 扩展', () => {
       '测试：由 VS Code AI 适配器生成',
       '测试适配器应只在 Extension Host 测试模式生成提交信息',
     );
+  });
+
+  test('注册原生三分区并同步变更数量与上游位置', async () => {
+    const beforeRefresh = await vscode.commands.executeCommand<RepositoryState>(
+      'gitool.test.getState',
+    );
+    assert.ok(beforeRefresh.currentRepositoryId, '应存在当前仓库');
+    await writeFile(
+      join(beforeRefresh.currentRepositoryId, 'view-state-untracked.txt'),
+      '用于验收变更徽标\n',
+      'utf8',
+    );
+    const repositoryState = await vscode.commands.executeCommand<RepositoryState>(
+      'gitool.test.refresh',
+    );
+    assert.equal(repositoryState.changeCount, 2);
+    assert.equal(repositoryState.sync.kind, 'ready');
+    assert.equal(repositoryState.sync.upstream, 'origin/main');
+    const state = await vscode.commands.executeCommand<GitoolViewTestState>(
+      'gitool.test.getViewState',
+    );
+    assert.deepEqual(state.viewIds, [
+      'gitool.commitView',
+      'gitool.changesView',
+      'gitool.historyView',
+    ]);
+    assert.equal(state.changeBadge, 2);
+    assert.match(state.historyDescription ?? '', /origin\/main/);
   });
 });

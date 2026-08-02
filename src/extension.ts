@@ -428,6 +428,8 @@ function registerReadyRuntime(
   context: vscode.ExtensionContext,
   gitApi: BuiltinGitApi,
 ): GitoolRuntime {
+  const changesViewId = 'gitool.changesView';
+  const historyViewId = 'gitool.historyView';
   const disposables: vscode.Disposable[] = [];
   try {
     const git = new GitRunner(gitApi.git.path || 'git');
@@ -477,7 +479,7 @@ function registerReadyRuntime(
       GitoolViewProvider.viewType,
       commitProvider,
     ));
-    const changesTree = vscode.window.createTreeView('gitool.changesView', {
+    const changesTree = vscode.window.createTreeView(changesViewId, {
       treeDataProvider: changeProvider,
       manageCheckboxStateManually: true,
     });
@@ -487,7 +489,7 @@ function registerReadyRuntime(
       changeProvider,
       repositoryService,
     ));
-    const historyTree = vscode.window.createTreeView('gitool.historyView', {
+    const historyTree = vscode.window.createTreeView(historyViewId, {
       treeDataProvider: historyProvider,
       showCollapseAll: true,
     });
@@ -531,6 +533,18 @@ function registerReadyRuntime(
         };
       };
 
+      disposables.push(vscode.commands.registerCommand(
+        'gitool.test.getViewState',
+        () => ({
+          viewIds: [
+            GitoolViewProvider.viewType,
+            changesViewId,
+            historyViewId,
+          ],
+          changeBadge: changesTree.badge?.value,
+          historyDescription: historyTree.description,
+        }),
+      ));
       disposables.push(vscode.commands.registerCommand(
         'gitool.test.getState',
         (): RepositoryViewModel => repositoryService.getViewModel(),
