@@ -58,6 +58,7 @@ const mocks = vi.hoisted(() => {
     getExtension: vi.fn(() => state.gitExtension),
     registerCommand: vi.fn((id: string) =>
       register(state.activeCommands, state.commandDisposals, id)),
+    executeCommand: vi.fn(() => Promise.resolve(undefined)),
     registerWebviewViewProvider: vi.fn((
       id: string,
       provider: vscode.WebviewViewProvider,
@@ -99,6 +100,7 @@ vi.mock('vscode', () => ({
   EventEmitter: mocks.EventEmitter,
   commands: {
     registerCommand: mocks.registerCommand,
+    executeCommand: mocks.executeCommand,
   },
   ExtensionMode: {
     Production: 1,
@@ -227,6 +229,11 @@ describe('扩展激活', () => {
       'gitool.changesView',
       'gitool.historyView',
     ]);
+    expect(mocks.executeCommand).toHaveBeenCalledWith(
+      'setContext',
+      'gitool.canPushAll',
+      false,
+    );
   });
 
   it('内置 Git 缺失时进入 Git 不可用模式', async () => {

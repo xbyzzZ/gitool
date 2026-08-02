@@ -95,6 +95,8 @@ function model(
     history: { kind: 'idle', commits: [] },
     ai: { kind: 'idle' },
     ...overrides,
+    hasRemote: overrides.hasRemote ?? false,
+    hasHeadCommit: overrides.hasHeadCommit ?? true,
   };
 }
 

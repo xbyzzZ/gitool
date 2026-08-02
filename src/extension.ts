@@ -31,6 +31,7 @@ import {
   HistoryTreeProvider,
   type HistoryTreeNode,
 } from './views/history-tree-provider.js';
+import { PushAvailabilityContext } from './views/push-availability-context.js';
 
 interface BuiltinGitExtensionExports {
   getAPI(version: 1): unknown;
@@ -441,6 +442,22 @@ function registerReadyRuntime(
     disposables.push(historyProvider);
     const changeProvider = new ChangeTreeProvider(repositoryService);
     disposables.push(changeProvider);
+    const pushAvailability = new PushAvailabilityContext(
+      repositoryService,
+      (enabled) => {
+        void vscode.commands.executeCommand(
+          'setContext',
+          'gitool.canPushAll',
+          enabled,
+        ).then(undefined, (error: unknown) => {
+          repositoryService.reportFailure(
+            '更新推送按钮状态',
+            error instanceof Error ? error.message : String(error),
+          );
+        });
+      },
+    );
+    disposables.push(pushAvailability);
 
     disposables.push(vscode.window.registerWebviewViewProvider(
       GitoolViewProvider.viewType,

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 删除重复的未跟踪状态，保留且完整显示提交成功提示，按真实仓库状态禁用两个推送入口，并用最后一个可独立回滚的提交精简历史引用显示。
+**Goal:** 删除重复的未跟踪状态与成功提示，按真实仓库状态禁用两个推送入口，并用最后一个可独立回滚的提交精简历史引用显示。
 
 **Architecture:** `RepositoryViewModel` 增加 `hasRemote`，作为提交 Webview 与原生历史标题栏共享的远程配置事实。提交 Webview 使用可单测的纯展示函数计算反馈和按钮状态；原生历史标题栏由独立上下文键控制器把服务状态映射到 `gitool.canPushAll`。历史引用仅修改 TreeItem 描述文本，保持现有原生 TreeView 和图标优先级。
 
@@ -13,25 +13,23 @@
 - 默认使用简体中文；代码保持英文。
 - 不修改提交历史拓扑、展开方式、拉取或刷新行为。
 - 没有远程时两个推送入口保持显示但禁用，“仅提交”仍然可用。
-- 完整成功保留文字并自动滚动到可见区域；失败、部分推送失败和重试入口继续显示。
+- 完整成功不显示文字；失败、部分推送失败和重试入口继续显示。
 - 历史引用显示优化必须是最后一个独立 Git 提交，视觉验收不通过时可单独回滚。
 - 不使用子代理，不提交 `.serena/project.yml`。
 
 ---
 
-### Task 1: 精简未跟踪描述并保证成功反馈可见
+### Task 1: 精简未跟踪描述与成功反馈
 
 **Files:**
 - Create: `src/webview/commit-view-state.ts`
 - Modify: `src/views/change-tree-provider.ts`
 - Modify: `src/webview/commit-client.ts`
-- Modify: `media/main.css`
 - Test: `test/unit/change-tree-provider.test.ts`
 - Test: `test/unit/commit-view-state.test.ts`
-- Test: `test/unit/main-css.test.ts`
 
 **Interfaces:**
-- Produces: `operationFeedback(operation: OperationState): OperationFeedback`，完整成功保留提交哈希并要求显现反馈，部分推送失败保留提交哈希、错误和重试状态。
+- Produces: `operationFeedback(operation: OperationState): OperationFeedback`，完整成功返回空消息，部分推送失败保留提交哈希、错误和重试状态。
 - Produces: `commitControlState(model: RepositoryViewModel, input: CommitControlInput): CommitControlState`，供 Task 2 接入 `hasRemote` 后计算“提交并推送”状态。
 
 - [ ] **Step 1: 写失败测试**

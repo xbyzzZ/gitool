@@ -48,6 +48,8 @@ export interface RepositoryViewModel {
   readonly branch?: string;
   readonly upstream?: string;
   readonly detached: boolean;
+  readonly hasRemote: boolean;
+  readonly hasHeadCommit: boolean;
   readonly changes: readonly FileChange[];
   readonly changeCount: number;
   readonly selectedIds: readonly string[];

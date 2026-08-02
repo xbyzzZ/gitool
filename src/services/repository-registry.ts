@@ -182,6 +182,8 @@ export class RepositoryRegistry implements vscode.Disposable {
         ? {}
         : { upstream: `${upstream.remote}/${upstream.name}` }),
       detached: state !== undefined && head?.name === undefined,
+      hasRemote: (state?.repository.state.remotes.length ?? 0) > 0,
+      hasHeadCommit: head?.commit !== undefined,
       changes: state?.changes ?? [],
       changeCount: state?.changes.length ?? 0,
       selectedIds: state === undefined ? [] : [...state.selectedIds],
