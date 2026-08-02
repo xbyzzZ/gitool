@@ -412,10 +412,10 @@ export class RepositoryRegistry implements vscode.Disposable {
 
   private disposeLifecycleListener(listener: vscode.Disposable): void {
     const index = this.lifecycleListeners.lastIndexOf(listener);
+    listener.dispose();
     if (index >= 0) {
       this.lifecycleListeners.splice(index, 1);
     }
-    listener.dispose();
   }
 
   private synchronizeStateIfChanged(

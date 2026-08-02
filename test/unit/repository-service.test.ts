@@ -18,6 +18,7 @@ import { RepositoryRegistry } from '../../src/services/repository-registry.js';
 
 interface TestEventOptions {
   readonly onRegister?: () => void;
+  readonly beforeDispose?: () => void;
   readonly onDispose?: () => void;
 }
 
@@ -35,6 +36,7 @@ function createEvent<T>(options: TestEventOptions = {}): TestEvent<T> {
       listeners.add(listener);
       return {
         dispose(): void {
+          options.beforeDispose?.();
           listeners.delete(listener);
           options.onDispose?.();
         },
@@ -1122,6 +1124,66 @@ describe('RepositoryService', () => {
     expect(repositoryB.changed.listenerCount()).toBe(0);
     expect(gitApi.opened.listenerCount()).toBe(0);
     expect(gitApi.closed.listenerCount()).toBe(0);
+  });
+
+  it('关闭仓库监听首次释放失败时保留句柄供最终释放重试', () => {
+    let disposeAttempts = 0;
+    const repository = new TestRepository('/workspace/repo-a', {}, {
+      beforeDispose: () => {
+        disposeAttempts += 1;
+        if (disposeAttempts === 1) {
+          throw new Error('仓库监听首次释放失败');
+        }
+      },
+    });
+    const gitApi = new TestGitApi([repository]);
+    const registry = new RepositoryRegistry(gitApi);
+
+    expect(() => {
+      gitApi.closed.fire(repository);
+    }).toThrow(
+      '仓库监听首次释放失败',
+    );
+    expect(registry.getViewModel(true).currentRepositoryId).toBe(
+      '/workspace/repo-a',
+    );
+    expect(repository.changed.listenerCount()).toBe(1);
+
+    registry.dispose();
+
+    expect(disposeAttempts).toBe(2);
+    expect(repository.changed.listenerCount()).toBe(0);
+  });
+
+  it('同路径替换监听首次释放失败时保留旧句柄供最终释放重试', () => {
+    let disposeAttempts = 0;
+    const oldRepository = new TestRepository('/workspace/repo-a', {}, {
+      beforeDispose: () => {
+        disposeAttempts += 1;
+        if (disposeAttempts === 1) {
+          throw new Error('旧仓库监听首次释放失败');
+        }
+      },
+    });
+    const newRepository = new TestRepository('/workspace/repo-a');
+    const gitApi = new TestGitApi([oldRepository]);
+    const registry = new RepositoryRegistry(gitApi);
+
+    expect(() => {
+      gitApi.opened.fire(newRepository);
+    }).toThrow(
+      '旧仓库监听首次释放失败',
+    );
+    expect(registry.getViewModel(true).currentRepositoryId).toBe(
+      '/workspace/repo-a',
+    );
+    expect(oldRepository.changed.listenerCount()).toBe(1);
+    expect(newRepository.changed.listenerCount()).toBe(0);
+
+    registry.dispose();
+
+    expect(disposeAttempts).toBe(2);
+    expect(oldRepository.changed.listenerCount()).toBe(0);
   });
 
   it('同路径仓库关闭重开后拒绝旧版本提交请求', async () => {
