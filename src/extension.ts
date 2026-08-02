@@ -421,7 +421,6 @@ function registerReadyRuntime(
     disposables.push(repositoryService);
     const provider = new GitoolViewProvider({
       extensionUri: context.extensionUri,
-      gitApi,
       repositoryService,
     });
     disposables.push(provider);

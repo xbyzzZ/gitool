@@ -18,6 +18,18 @@ interface PersistedClientState {
   readonly densities: Readonly<Record<string, CommitMessageDensity>>;
 }
 
+interface PendingCommitMessage {
+  readonly repositoryId: string;
+  readonly message: string;
+  readonly lifecycle: number;
+  readonly timer: number | undefined;
+}
+
+interface PendingRequest {
+  readonly repositoryId: string;
+  readonly requestId: string;
+}
+
 declare function acquireVsCodeApi(): VsCodeApi;
 
 const vscode = acquireVsCodeApi();
@@ -52,12 +64,11 @@ const controls = {
 };
 
 let currentModel: RepositoryViewModel | undefined;
-let commitMessageTimer: number | undefined;
-let pendingCommitMessage: string | undefined;
-let pendingWriteRequestId: string | undefined;
-let pendingRepositoryId: string | undefined;
-let pendingRepositoryRequestId: string | undefined;
+let pendingCommitMessage: PendingCommitMessage | undefined;
+let pendingWriteRequest: PendingRequest | undefined;
+let pendingRepositoryRequest: PendingRequest | undefined;
 let writeRequestSequence = 0;
+let commitMessageLifecycle = 0;
 let persistedState = readPersistedState(vscode.getState());
 let activeDensity: CommitMessageDensity = 'standard';
 
@@ -126,7 +137,9 @@ function updateRepository(model: RepositoryViewModel): void {
     for (const repository of model.repositories) {
       const option = document.createElement('option');
       option.value = repository.id;
-      option.selected = repository.id === (pendingRepositoryId ?? model.currentRepositoryId);
+      option.selected = repository.id === (
+        pendingRepositoryRequest?.repositoryId ?? model.currentRepositoryId
+      );
       option.title = repository.rootPath;
       setText(option, repository.label);
       options.append(option);
@@ -142,9 +155,13 @@ function updateRepository(model: RepositoryViewModel): void {
 }
 
 function render(model: RepositoryViewModel, acknowledgeHostState: boolean): void {
-  if (acknowledgeHostState && model.currentRepositoryId === pendingRepositoryId) {
-    pendingRepositoryId = undefined;
-    pendingRepositoryRequestId = undefined;
+  if (acknowledgeHostState
+    && pendingRepositoryRequest !== undefined
+    && model.currentRepositoryId === pendingRepositoryRequest.repositoryId) {
+    pendingRepositoryRequest = undefined;
+  }
+  if (pendingWriteRequest?.repositoryId !== model.currentRepositoryId) {
+    pendingWriteRequest = undefined;
   }
   currentModel = model;
   activeDensity = model.currentRepositoryId === undefined
@@ -152,13 +169,24 @@ function render(model: RepositoryViewModel, acknowledgeHostState: boolean): void
   layout.setAttribute('aria-busy', model.operation.kind === 'running' ? 'true' : 'false');
   controls.loadingStatus.hidden = true;
   updateRepository(model);
-  if (pendingCommitMessage === undefined || pendingCommitMessage === model.commitMessage) {
-    controls.commitMessage.value = model.commitMessage;
+  if (pendingCommitMessage !== undefined
+    && pendingCommitMessage.repositoryId !== model.currentRepositoryId) {
+    cancelCommitMessageTimer();
     pendingCommitMessage = undefined;
+  }
+  const pending = pendingCommitMessage;
+  if (pending === undefined
+    || pending.repositoryId !== model.currentRepositoryId
+    || pending.message === model.commitMessage) {
+    controls.commitMessage.value = model.commitMessage;
+    if (pending?.repositoryId === model.currentRepositoryId) {
+      pendingCommitMessage = undefined;
+    }
   }
   const running = model.operation.kind === 'running';
   const noRepository = model.currentRepositoryId === undefined;
-  const locallyBusy = pendingWriteRequestId !== undefined || pendingRepositoryId !== undefined;
+  const locallyBusy = pendingWriteRequest !== undefined
+    || pendingRepositoryRequest !== undefined;
   const hasConflict = model.changes.some((change) => change.conflicted);
   const canWrite = model.trusted && !noRepository && !running && !locallyBusy && !hasConflict;
   const canCommit = canWrite && model.selectedIds.length > 0 && controls.commitMessage.value.trim().length > 0;
@@ -173,7 +201,7 @@ function render(model: RepositoryViewModel, acknowledgeHostState: boolean): void
     ? '取消 AI 生成' : `AI 生成 · ${densityLabel(activeDensity)}`);
 
   const feedback = operationFeedback(model.operation);
-  setText(controls.operationStatus, feedback.message.length === 0 && pendingWriteRequestId !== undefined
+  setText(controls.operationStatus, feedback.message.length === 0 && pendingWriteRequest !== undefined
     ? '正在处理请求…' : feedback.message);
   setText(controls.errorStatus, feedback.error);
   controls.errorStatus.hidden = feedback.error.length === 0;
@@ -193,41 +221,82 @@ function withModel(callback: (model: RepositoryViewModel) => void): void {
 }
 
 function cancelCommitMessageTimer(): void {
-  if (commitMessageTimer !== undefined) {
-    window.clearTimeout(commitMessageTimer);
-    commitMessageTimer = undefined;
+  if (pendingCommitMessage?.timer !== undefined) {
+    window.clearTimeout(pendingCommitMessage.timer);
+    pendingCommitMessage = {
+      ...pendingCommitMessage,
+      timer: undefined,
+    };
+  }
+}
+
+function sendPendingCommitMessage(
+  repositoryId: string,
+  clearAfterSend: boolean,
+): void {
+  const pending = pendingCommitMessage;
+  if (pending?.repositoryId !== repositoryId) {
+    return;
+  }
+  cancelCommitMessageTimer();
+  post({
+    type: 'setCommitMessage',
+    repositoryId: pending.repositoryId,
+    message: pending.message,
+  });
+  if (clearAfterSend) {
+    pendingCommitMessage = undefined;
   }
 }
 
 function beginWrite(model: RepositoryViewModel): { readonly repositoryId: string; readonly version: number; readonly requestId: string } | undefined {
-  if (pendingWriteRequestId !== undefined || pendingRepositoryId !== undefined
+  if (pendingWriteRequest !== undefined || pendingRepositoryRequest !== undefined
     || model.operation.kind === 'running' || model.currentRepositoryId === undefined) return undefined;
   writeRequestSequence += 1;
-  pendingWriteRequestId = `write-${String(writeRequestSequence)}`;
+  const requestId = `write-${String(writeRequestSequence)}`;
+  pendingWriteRequest = {
+    repositoryId: model.currentRepositoryId,
+    requestId,
+  };
   render(model, false);
-  return { repositoryId: model.currentRepositoryId, version: model.version, requestId: pendingWriteRequestId };
+  return { repositoryId: model.currentRepositoryId, version: model.version, requestId };
 }
 
 controls.repositorySelect.addEventListener('change', () => {
   if (controls.repositorySelect.value.length === 0) return;
-  pendingRepositoryId = controls.repositorySelect.value;
+  if (currentModel?.currentRepositoryId !== undefined) {
+    sendPendingCommitMessage(currentModel.currentRepositoryId, true);
+  }
   writeRequestSequence += 1;
-  pendingRepositoryRequestId = `switch-${String(writeRequestSequence)}`;
-  cancelCommitMessageTimer();
+  pendingRepositoryRequest = {
+    repositoryId: controls.repositorySelect.value,
+    requestId: `switch-${String(writeRequestSequence)}`,
+  };
   if (currentModel !== undefined) render(currentModel, false);
-  post({ type: 'selectRepository', repositoryId: controls.repositorySelect.value, requestId: pendingRepositoryRequestId });
+  post({
+    type: 'selectRepository',
+    repositoryId: controls.repositorySelect.value,
+    requestId: pendingRepositoryRequest.requestId,
+  });
 });
 
 controls.commitMessage.addEventListener('input', () => {
-  pendingCommitMessage = controls.commitMessage.value;
   cancelCommitMessageTimer();
-  if (currentModel !== undefined) render(currentModel, false);
   const repositoryId = currentModel?.currentRepositoryId;
   if (repositoryId === undefined) return;
-  commitMessageTimer = window.setTimeout(() => {
-    commitMessageTimer = undefined;
-    post({ type: 'setCommitMessage', repositoryId, message: controls.commitMessage.value });
+  commitMessageLifecycle += 1;
+  const lifecycle = commitMessageLifecycle;
+  const message = controls.commitMessage.value;
+  const timer = window.setTimeout(() => {
+    const pending = pendingCommitMessage;
+    if (pending?.repositoryId !== repositoryId || pending.lifecycle !== lifecycle) {
+      return;
+    }
+    pendingCommitMessage = { ...pending, timer: undefined };
+    sendPendingCommitMessage(repositoryId, false);
   }, 150);
+  pendingCommitMessage = { repositoryId, message, lifecycle, timer };
+  if (currentModel !== undefined) render(currentModel, false);
 });
 
 controls.commitButton.addEventListener('click', () => {
@@ -237,7 +306,7 @@ controls.commitButton.addEventListener('click', () => {
   const scope = beginWrite(model);
   if (scope === undefined) return;
   cancelCommitMessageTimer();
-  pendingCommitMessage = message;
+  pendingCommitMessage = undefined;
   post({ type: 'commit', ...scope, message });
   });
 });
@@ -249,7 +318,7 @@ controls.commitPushButton.addEventListener('click', () => {
   const scope = beginWrite(model);
   if (scope === undefined) return;
   cancelCommitMessageTimer();
-  pendingCommitMessage = message;
+  pendingCommitMessage = undefined;
   post({ type: 'commitAndPush', ...scope, message });
   });
 });
@@ -285,9 +354,16 @@ controls.aiGenerateButton.addEventListener('click', () => {
   withModel((model) => {
   if (model.currentRepositoryId === undefined) return;
   if (model.ai.kind === 'generating') {
-    post({ type: 'cancelCommitMessageGeneration', repositoryId: model.currentRepositoryId, requestId: pendingWriteRequestId ?? 'ai-current' });
+    post({
+      type: 'cancelCommitMessageGeneration',
+      repositoryId: model.currentRepositoryId,
+      requestId: pendingWriteRequest?.repositoryId === model.currentRepositoryId
+        ? pendingWriteRequest.requestId
+        : 'ai-current',
+    });
     return;
   }
+  sendPendingCommitMessage(model.currentRepositoryId, true);
   const scope = beginWrite(model);
   if (scope !== undefined) post({ type: 'generateCommitMessage', ...scope, selectedIds: model.selectedIds, density: activeDensity });
   });
@@ -300,12 +376,14 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
     || typeof message.model !== 'object' || message.model === null) return;
   const stateMessage = message as StateMessage;
   if (stateMessage.acknowledgedRequestId !== undefined
-    && stateMessage.acknowledgedRequestId === pendingWriteRequestId) pendingWriteRequestId = undefined;
+    && pendingWriteRequest?.requestId === stateMessage.acknowledgedRequestId
+    && pendingWriteRequest.repositoryId === stateMessage.model.currentRepositoryId) {
+    pendingWriteRequest = undefined;
+  }
   if (stateMessage.acknowledgedRequestId !== undefined
-    && stateMessage.acknowledgedRequestId === pendingRepositoryRequestId
-    && stateMessage.model.currentRepositoryId !== pendingRepositoryId) {
-    pendingRepositoryId = undefined;
-    pendingRepositoryRequestId = undefined;
+    && pendingRepositoryRequest?.requestId === stateMessage.acknowledgedRequestId
+    && stateMessage.model.currentRepositoryId !== pendingRepositoryRequest.repositoryId) {
+    pendingRepositoryRequest = undefined;
   }
   render(stateMessage.model, true);
 });

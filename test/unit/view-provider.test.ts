@@ -1,7 +1,6 @@
 import type * as vscode from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RepositoryViewModel } from '../../src/domain/view-model.js';
-import type { BuiltinGitApi } from '../../src/git/builtin-git-api.js';
 import type { RepositoryService } from '../../src/services/repository-service.js';
 
 const vscodeMocks = vi.hoisted(() => ({
@@ -46,9 +45,13 @@ function model(overrides: Partial<RepositoryViewModel> = {}): RepositoryViewMode
 interface ServiceDouble {
   readonly service: RepositoryService;
   readonly getViewModel: ReturnType<typeof vi.fn>;
+  readonly reportFailure: ReturnType<typeof vi.fn>;
+  readonly selectRepository: ReturnType<typeof vi.fn>;
+  readonly setCommitMessage: ReturnType<typeof vi.fn>;
   readonly commit: ReturnType<typeof vi.fn>;
   readonly commitAndPush: ReturnType<typeof vi.fn>;
   readonly selectPushRemote: ReturnType<typeof vi.fn>;
+  readonly retryPush: ReturnType<typeof vi.fn>;
   readonly generateCommitMessage: ReturnType<typeof vi.fn>;
 }
 
@@ -91,7 +94,6 @@ function createHarness(): { readonly view: vscode.WebviewView; readonly receive:
 function createProvider(service: RepositoryService): GitoolViewProvider {
   return new GitoolViewProvider({
     extensionUri: uri('/extension/gitool'),
-    gitApi: {} as BuiltinGitApi,
     repositoryService: service,
   });
 }
@@ -124,17 +126,44 @@ describe('GitoolViewProvider', () => {
   });
 
   it('提交使用消息绑定的最终文案而不是旧模型文案', async () => {
-    const created = createServiceDouble();
+    const created = createServiceDouble(model({ selectedIds: ['a.ts', 'b.ts'] }));
     const provider = createProvider(created.service);
     const harness = createHarness();
     provider.resolveWebviewView(harness.view);
     harness.receive({ type: 'commit', repositoryId: '/workspace/repo', version: 0, message: '新文案', requestId: 'request-1' });
 
     await vi.waitFor(() => {
-      expect(created.commit).toHaveBeenCalledWith(expect.objectContaining({
-        repositoryId: '/workspace/repo', version: 0, message: '新文案',
-      }));
+      expect(created.commit).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+        message: '新文案',
+        selectedIds: ['a.ts', 'b.ts'],
+      });
     });
+  });
+
+  it('拒绝旧仓库同版本的提交请求', async () => {
+    const created = createServiceDouble(model({
+      currentRepositoryId: '/workspace/repo-b',
+      repositories: [{
+        id: '/workspace/repo-b', label: 'repo-b', rootPath: '/workspace/repo-b',
+      }],
+    }));
+    const provider = createProvider(created.service);
+    const harness = createHarness();
+    provider.resolveWebviewView(harness.view);
+    harness.receive({
+      type: 'commit', repositoryId: '/workspace/repo-a', version: 0,
+      message: '仓库 A 提交', requestId: 'old-repository',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.reportFailure).toHaveBeenCalledWith(
+        '提交',
+        '界面来源仓库与当前仓库不一致，请等待刷新',
+      );
+    });
+    expect(created.commit).not.toHaveBeenCalled();
   });
 
   it('选择远程后继续推送原提交且不再次提交', async () => {
@@ -142,6 +171,9 @@ describe('GitoolViewProvider', () => {
     created.commitAndPush.mockResolvedValue({ kind: 'needs-remote', remotes: ['origin'] });
     created.selectPushRemote.mockResolvedValue({ kind: 'pushed', remote: 'origin', branch: 'main' });
     vscodeMocks.showQuickPick.mockResolvedValue({ label: 'origin', remote: 'origin' });
+    created.getViewModel.mockReturnValueOnce(model());
+    created.getViewModel.mockReturnValueOnce(model());
+    created.getViewModel.mockReturnValue(model({ version: 1 }));
     const provider = createProvider(created.service);
     const harness = createHarness();
     provider.resolveWebviewView(harness.view);
@@ -149,7 +181,7 @@ describe('GitoolViewProvider', () => {
 
     await vi.waitFor(() => {
       expect(created.selectPushRemote).toHaveBeenCalledWith({
-        repositoryId: '/workspace/repo', version: 0, remote: 'origin',
+        repositoryId: '/workspace/repo', version: 1, remote: 'origin',
       });
     });
     expect(created.commitAndPush).toHaveBeenCalledTimes(1);
@@ -167,6 +199,74 @@ describe('GitoolViewProvider', () => {
       expect(created.generateCommitMessage).toHaveBeenCalledWith({
         repositoryId: '/workspace/repo', version: 0, selectedIds: ['a.ts'], density: 'detailed',
       }, expect.any(AbortSignal));
+    });
+  });
+
+  it('重试推送使用当前仓库和消息版本', async () => {
+    const created = createServiceDouble();
+    created.retryPush.mockResolvedValue({
+      kind: 'pushed', remote: 'origin', branch: 'main',
+    });
+    const provider = createProvider(created.service);
+    const harness = createHarness();
+    provider.resolveWebviewView(harness.view);
+    harness.receive({
+      type: 'retryPush', repositoryId: '/workspace/repo', version: 0,
+      requestId: 'retry-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.retryPush).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo', version: 0,
+      });
+    });
+  });
+
+  it('取消 AI 生成会中止仍在运行的请求', async () => {
+    const created = createServiceDouble();
+    let rejectGeneration: (reason: unknown) => void = () => undefined;
+    const generation = new Promise<void>((_resolve, reject) => {
+      rejectGeneration = reject;
+    });
+    created.generateCommitMessage.mockReturnValue(generation);
+    const provider = createProvider(created.service);
+    const harness = createHarness();
+    provider.resolveWebviewView(harness.view);
+    harness.receive({
+      type: 'generateCommitMessage', repositoryId: '/workspace/repo', version: 0,
+      selectedIds: ['a.ts'], density: 'standard', requestId: 'ai-1',
+    });
+    await vi.waitFor(() => {
+      expect(created.generateCommitMessage).toHaveBeenCalledOnce();
+    });
+    const signal = created.generateCommitMessage.mock.calls[0]?.[1] as AbortSignal;
+    harness.receive({
+      type: 'cancelCommitMessageGeneration', repositoryId: '/workspace/repo',
+      requestId: 'ai-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(signal.aborted).toBe(true);
+    });
+    rejectGeneration(new Error('已取消'));
+    expect(created.reportFailure).not.toHaveBeenCalled();
+  });
+
+  it('切换仓库后回传对应 acknowledgedRequestId', async () => {
+    const created = createServiceDouble();
+    const provider = createProvider(created.service);
+    const harness = createHarness();
+    provider.resolveWebviewView(harness.view);
+    harness.receive({
+      type: 'selectRepository', repositoryId: '/workspace/repo-b',
+      requestId: 'switch-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.selectRepository).toHaveBeenCalledWith('/workspace/repo-b');
+      expect(harness.postMessage).toHaveBeenCalledWith({
+        type: 'state', model: model(), acknowledgedRequestId: 'switch-1',
+      });
     });
   });
 });

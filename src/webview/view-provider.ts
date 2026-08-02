@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { redactSensitiveText } from '../git/git-runner.js';
-import type { BuiltinGitApi } from '../git/builtin-git-api.js';
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { RepositoryService } from '../services/repository-service.js';
 import type { PushResult } from '../services/push-service.js';
@@ -11,7 +10,6 @@ import { renderWebviewHtml } from './render.js';
 
 export interface GitoolViewProviderDependencies {
   readonly extensionUri: vscode.Uri;
-  readonly gitApi: BuiltinGitApi;
   readonly repositoryService: RepositoryService;
 }
 
