@@ -198,10 +198,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
           if (model.currentRepositoryId === undefined) {
             await this.postState();
           } else {
-            await service.refreshHistory({
-              repositoryId: model.currentRepositoryId,
-              version: model.version,
-            });
+            await service.refresh();
           }
         }
         return;

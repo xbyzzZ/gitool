@@ -239,7 +239,7 @@ beforeEach(() => {
 });
 
 describe('GitoolViewProvider', () => {
-  it('Webview 就绪时自动读取当前仓库提交历史', async () => {
+  it('Webview 首次就绪时先刷新仓库快照并读取提交历史', async () => {
     const created = createServiceDouble();
     const provider = createProvider(created.service);
     const harness = createViewHarness();
@@ -248,11 +248,9 @@ describe('GitoolViewProvider', () => {
     harness.receive({ type: 'ready' });
 
     await vi.waitFor(() => {
-      expect(created.refreshHistory).toHaveBeenCalledWith({
-        repositoryId: '/workspace/repo',
-        version: 0,
-      });
+      expect(created.refresh).toHaveBeenCalledOnce();
     });
+    expect(created.refreshHistory).not.toHaveBeenCalled();
   });
 
   it('在活动栏徽标显示当前仓库改动文件数并在清空后移除', async () => {
