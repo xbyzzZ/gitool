@@ -19,6 +19,15 @@ import {
 } from './services/trash-service.js';
 import { GitoolViewProvider } from './webview/view-provider.js';
 import type { RepositoryViewModel } from './domain/view-model.js';
+import {
+  bindChangeTreeCheckboxes,
+  ChangeTreeProvider,
+} from './views/change-tree-provider.js';
+import { HistoryTreeProvider } from './views/history-tree-provider.js';
+import {
+  GitoolViewActions,
+  registerViewCommands,
+} from './views/view-actions.js';
 
 interface BuiltinGitExtensionExports {
   getAPI(version: 1): unknown;
@@ -241,6 +250,16 @@ class ErrorViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
+class ErrorTreeProvider implements vscode.TreeDataProvider<never> {
+  getTreeItem(node: never): vscode.TreeItem {
+    return node;
+  }
+
+  getChildren(): never[] {
+    return [];
+  }
+}
+
 function isBuiltinGitExtensionExports(
   value: unknown,
 ): value is BuiltinGitExtensionExports {
@@ -343,12 +362,25 @@ function registerErrorRuntime(
   content: ErrorViewContent,
 ): GitoolRuntime {
   const provider = new ErrorViewProvider(content);
+  const treeProvider = new ErrorTreeProvider();
   const disposables: vscode.Disposable[] = [];
   try {
     disposables.push(vscode.window.registerWebviewViewProvider(
       GitoolViewProvider.viewType,
       provider,
     ));
+    const changesTree = vscode.window.createTreeView('gitool.changesView', {
+      treeDataProvider: treeProvider,
+      manageCheckboxStateManually: true,
+    });
+    changesTree.message = content.message;
+    disposables.push(changesTree);
+    const historyTree = vscode.window.createTreeView('gitool.historyView', {
+      treeDataProvider: treeProvider,
+      showCollapseAll: true,
+    });
+    historyTree.message = content.message;
+    disposables.push(historyTree);
     disposables.push(vscode.workspace.registerTextDocumentContentProvider(
       'gitool-empty',
       { provideTextDocumentContent: () => '' },
@@ -419,22 +451,66 @@ function registerReadyRuntime(
       isWorkspaceTrusted: () => vscode.workspace.isTrusted,
     });
     disposables.push(repositoryService);
-    const provider = new GitoolViewProvider({
+    const actions = new GitoolViewActions({
+      repositoryService,
+      gitApi,
+    });
+    const commitProvider = new GitoolViewProvider({
       extensionUri: context.extensionUri,
       repositoryService,
     });
-    disposables.push(provider);
+    disposables.push(commitProvider);
+    const changeProvider = new ChangeTreeProvider({
+      service: repositoryService,
+    });
+    disposables.push(changeProvider);
+    const historyProvider = new HistoryTreeProvider({
+      service: repositoryService,
+    });
+    disposables.push(historyProvider);
+    disposables.push(vscode.workspace.registerTextDocumentContentProvider(
+      'gitool-empty',
+      { provideTextDocumentContent: () => '' },
+    ));
 
     disposables.push(vscode.window.registerWebviewViewProvider(
       GitoolViewProvider.viewType,
-      provider,
+      commitProvider,
     ));
+    const changesTree = vscode.window.createTreeView('gitool.changesView', {
+      treeDataProvider: changeProvider,
+      manageCheckboxStateManually: true,
+    });
+    disposables.push(changesTree);
+    disposables.push(bindChangeTreeCheckboxes(
+      changesTree,
+      changeProvider,
+      repositoryService,
+    ));
+    const historyTree = vscode.window.createTreeView('gitool.historyView', {
+      treeDataProvider: historyProvider,
+      showCollapseAll: true,
+    });
+    disposables.push(historyTree);
+    const synchronizeTreeState = (): void => {
+      const model = repositoryService.getViewModel();
+      changesTree.badge = model.changeCount === 0
+        ? undefined
+        : {
+            value: model.changeCount,
+            tooltip: `Gitool：${String(model.changeCount)} 个变更文件`,
+          };
+      historyTree.description = historyProvider.getDescription();
+    };
+    synchronizeTreeState();
+    disposables.push(repositoryService.onDidChange(synchronizeTreeState));
     disposables.push(vscode.commands.registerCommand(
       'gitool.refresh',
       async () => {
         await refreshSafely(repositoryService);
       },
     ));
+    disposables.push(...registerViewCommands(actions));
     disposables.push(vscode.workspace.onDidGrantWorkspaceTrust(() => {
       void refreshSafely(repositoryService);
     }));

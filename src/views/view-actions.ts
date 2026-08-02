@@ -409,54 +409,72 @@ export class GitoolViewActions {
 export function registerViewCommands(
   actions: GitoolViewActions,
 ): readonly vscode.Disposable[] {
-  return [
-    vscode.commands.registerCommand(
+  const disposables: vscode.Disposable[] = [];
+  try {
+    disposables.push(vscode.commands.registerCommand(
       'gitool.editRemote',
       async () => {
         await actions.editRemote();
       },
-    ),
-    vscode.commands.registerCommand(
+    ));
+    disposables.push(vscode.commands.registerCommand(
       'gitool.refreshChanges',
       async () => {
         await actions.refreshChanges();
       },
-    ),
-    vscode.commands.registerCommand(
+    ));
+    disposables.push(vscode.commands.registerCommand(
       'gitool.trashUntracked',
       async (node?: ChangeFileNode) => {
         await actions.trashUntracked(node);
       },
-    ),
-    vscode.commands.registerCommand(
+    ));
+    disposables.push(vscode.commands.registerCommand(
       'gitool.openChange',
       async (node: ChangeFileNode) => {
         await actions.openChange(node);
       },
-    ),
-    vscode.commands.registerCommand(
+    ));
+    disposables.push(vscode.commands.registerCommand(
       'gitool.pull',
       async () => {
         await actions.pull();
       },
-    ),
-    vscode.commands.registerCommand(
+    ));
+    disposables.push(vscode.commands.registerCommand(
       'gitool.pushAll',
       async () => {
         await actions.pushAll();
       },
-    ),
-    vscode.commands.registerCommand(
+    ));
+    disposables.push(vscode.commands.registerCommand(
       'gitool.refreshHistory',
       async () => {
         await actions.refreshHistory();
       },
-    ),
-    vscode.commands.registerCommand(
+    ));
+    disposables.push(vscode.commands.registerCommand(
       'gitool.openHistoryDiff',
       async (node: HistoryFileNode) => {
         await actions.openHistoryDiff(node);
       },
-    ),
-  ];
+    ));
+    return disposables;
+  } catch (error) {
+    const cleanupErrors: unknown[] = [];
+    for (const disposable of disposables.reverse()) {
+      try {
+        disposable.dispose();
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupErrors],
+        '注册 Gitool View 命令失败，且资源清理失败',
+      );
+    }
+    throw error;
+  }
 }

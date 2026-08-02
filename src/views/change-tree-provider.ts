@@ -220,7 +220,11 @@ export function createChangeTreeView(
       manageCheckboxStateManually: true,
     },
   );
-  const checkboxes = bindCheckboxes(treeView, provider, options.service);
+  const checkboxes = bindChangeTreeCheckboxes(
+    treeView,
+    provider,
+    options.service,
+  );
   const disposeTreeView = treeView.dispose.bind(treeView);
   treeView.dispose = (): void => {
     checkboxes.dispose();
@@ -230,7 +234,7 @@ export function createChangeTreeView(
   return treeView;
 }
 
-function bindCheckboxes(
+export function bindChangeTreeCheckboxes(
   treeView: vscode.TreeView<ChangeTreeNode>,
   provider: ChangeTreeProvider,
   service: RepositoryService,
