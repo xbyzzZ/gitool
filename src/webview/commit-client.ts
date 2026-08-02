@@ -1,5 +1,6 @@
-import type { RepositoryViewModel, OperationState } from '../domain/view-model.js';
+import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
+import { operationFeedback } from './commit-view-state.js';
 import type { WebviewMessage } from './messages.js';
 import {
   beginScopedRequest,
@@ -50,45 +51,6 @@ function readPersistedState(value: unknown): PersistedState {
   return { densities };
 }
 
-const actionLabels: Readonly<Record<
-  Extract<OperationState, { readonly kind: 'running' }>['action'],
-  string
->> = {
-  commit: '正在提交所选文件…',
-  push: '正在推送提交…',
-  trash: '正在移入废纸篓…',
-  remote: '正在修改远程 URL…',
-  fetch: '正在刷新远程状态…',
-  pull: '正在从远程拉取…',
-};
-
-function operationFeedback(operation: OperationState): {
-  readonly message: string;
-  readonly error: string;
-  readonly retry: boolean;
-} {
-  switch (operation.kind) {
-    case 'idle':
-      return { message: '', error: '', retry: false };
-    case 'running':
-      return { message: actionLabels[operation.action], error: '', retry: false };
-    case 'commit-succeeded':
-      return {
-        message: `提交已完成：${operation.commitHash}`,
-        error: '',
-        retry: false,
-      };
-    case 'push-failed':
-      return {
-        message: `提交已创建：${operation.commitHash}`,
-        error: operation.message,
-        retry: true,
-      };
-    case 'failed':
-      return { message: '', error: operation.message, retry: false };
-  }
-}
-
 function densityLabel(density: CommitMessageDensity): string {
   return { compact: '精简', standard: '标准', detailed: '详细' }[density];
 }
@@ -112,6 +74,7 @@ const controls = {
   operationStatus: element('operation-status') as HTMLParagraphElement,
   errorStatus: element('error-status') as HTMLParagraphElement,
   retryPushButton: element('retry-push-button') as HTMLButtonElement,
+  feedback: element('operation-feedback'),
 };
 
 let currentModel: RepositoryViewModel | undefined;
@@ -123,6 +86,7 @@ let pendingPresentation: PendingRequestPresentation | undefined;
 let sequence = 0;
 let density: CommitMessageDensity = 'standard';
 let persisted = readPersistedState(vscode.getState());
+let revealedFeedbackKey: string | undefined;
 
 function post(message: WebviewMessage): void {
   vscode.postMessage(message);
@@ -202,6 +166,14 @@ function render(model: RepositoryViewModel): void {
   controls.errorStatus.hidden = feedback.error.length === 0;
   controls.retryPushButton.hidden = !feedback.retry;
   controls.retryPushButton.disabled = !feedback.retry || !canWrite;
+  if (feedback.revealKey === undefined) {
+    revealedFeedbackKey = undefined;
+  } else if (feedback.revealKey !== revealedFeedbackKey) {
+    revealedFeedbackKey = feedback.revealKey;
+    window.requestAnimationFrame(() => {
+      controls.feedback.scrollIntoView({ block: 'nearest' });
+    });
+  }
   if (!model.trusted && feedback.error.length === 0) {
     controls.errorStatus.textContent = '当前工作区未受信任，写操作已禁用。';
     controls.errorStatus.hidden = false;

@@ -34,4 +34,16 @@ describe('工作台紧凑布局样式', () => {
       /animation:\s*ai-button-spin/u,
     );
   });
+
+  it('提交内容在独立视图边界内滚动而不被下方视图裁切', () => {
+    expect(readRule('.commit-layout .commit-panel')).toMatch(
+      /height:\s*100%\s*!important/u,
+    );
+    expect(readRule('.commit-layout .commit-content')).toMatch(
+      /height:\s*100%/u,
+    );
+    expect(readRule('.commit-layout .commit-content')).toMatch(
+      /overflow-y:\s*auto/u,
+    );
+  });
 });

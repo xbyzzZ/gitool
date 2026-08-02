@@ -278,4 +278,22 @@ describe('当前变更原生文件树', () => {
       'notebooks/report.ipynb',
     );
   });
+
+  it('未跟踪文件只显示一次状态说明', () => {
+    const untracked = findNode(
+      provider.getChildren(),
+      (node) => node.kind === 'section' && node.section === 'untracked',
+    );
+    const directory = provider.getChildren(untracked)[0];
+    const file = directory === undefined
+      ? undefined
+      : provider.getChildren(directory)[0];
+    if (file === undefined) {
+      throw new Error('缺少未跟踪文件节点');
+    }
+
+    expect(provider.getTreeItem(file).description).toBe(
+      'notebooks · 未跟踪',
+    );
+  });
 });

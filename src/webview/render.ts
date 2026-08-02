@@ -88,7 +88,7 @@ export function renderCommitWebviewHtml(
             <button id="commit-push-button" class="primary" type="button" aria-label="提交并推送所选文件">提交并推送</button>
           </div>
         </div>
-        <section class="feedback" aria-label="操作反馈">
+        <section id="operation-feedback" class="feedback" aria-label="操作反馈">
           <p id="loading-status" class="loading-status" role="status">正在加载仓库状态…</p>
           <p id="operation-status" class="operation-status" aria-live="polite"></p>
           <p id="error-status" class="error-status" role="alert" hidden></p>

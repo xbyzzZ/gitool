@@ -212,7 +212,7 @@ implements vscode.TreeDataProvider<ChangeTreeNode>, vscode.Disposable {
     item.description = [
       ...(directory === '.' ? [] : [directory]),
       layerLabel(node.change),
-      changeLabels[node.change.kind],
+      ...(node.change.untracked ? [] : [changeLabels[node.change.kind]]),
     ].join(' · ');
     item.tooltip = node.change.originalPath === undefined
       ? node.change.path

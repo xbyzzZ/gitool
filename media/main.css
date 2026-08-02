@@ -477,5 +477,10 @@ input:disabled {
 
 .commit-layout .commit-panel {
   min-height: 0;
-  height: auto !important;
+  height: 100% !important;
+}
+
+.commit-layout .commit-content {
+  height: 100%;
+  overflow-y: auto;
 }

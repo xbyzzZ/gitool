@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 删除重复的未跟踪状态与成功提示，按真实仓库状态禁用两个推送入口，并用最后一个可独立回滚的提交精简历史引用显示。
+**Goal:** 删除重复的未跟踪状态，保留且完整显示提交成功提示，按真实仓库状态禁用两个推送入口，并用最后一个可独立回滚的提交精简历史引用显示。
 
 **Architecture:** `RepositoryViewModel` 增加 `hasRemote`，作为提交 Webview 与原生历史标题栏共享的远程配置事实。提交 Webview 使用可单测的纯展示函数计算反馈和按钮状态；原生历史标题栏由独立上下文键控制器把服务状态映射到 `gitool.canPushAll`。历史引用仅修改 TreeItem 描述文本，保持现有原生 TreeView 和图标优先级。
 
@@ -13,28 +13,30 @@
 - 默认使用简体中文；代码保持英文。
 - 不修改提交历史拓扑、展开方式、拉取或刷新行为。
 - 没有远程时两个推送入口保持显示但禁用，“仅提交”仍然可用。
-- 完整成功不显示文字；失败、部分推送失败和重试入口继续显示。
+- 完整成功保留文字并自动滚动到可见区域；失败、部分推送失败和重试入口继续显示。
 - 历史引用显示优化必须是最后一个独立 Git 提交，视觉验收不通过时可单独回滚。
 - 不使用子代理，不提交 `.serena/project.yml`。
 
 ---
 
-### Task 1: 精简未跟踪描述与成功反馈
+### Task 1: 精简未跟踪描述并保证成功反馈可见
 
 **Files:**
 - Create: `src/webview/commit-view-state.ts`
 - Modify: `src/views/change-tree-provider.ts`
 - Modify: `src/webview/commit-client.ts`
+- Modify: `media/main.css`
 - Test: `test/unit/change-tree-provider.test.ts`
 - Test: `test/unit/commit-view-state.test.ts`
+- Test: `test/unit/main-css.test.ts`
 
 **Interfaces:**
-- Produces: `operationFeedback(operation: OperationState): OperationFeedback`，完整成功返回空消息，部分推送失败保留提交哈希、错误和重试状态。
+- Produces: `operationFeedback(operation: OperationState): OperationFeedback`，完整成功保留提交哈希并要求显现反馈，部分推送失败保留提交哈希、错误和重试状态。
 - Produces: `commitControlState(model: RepositoryViewModel, input: CommitControlInput): CommitControlState`，供 Task 2 接入 `hasRemote` 后计算“提交并推送”状态。
 
 - [ ] **Step 1: 写失败测试**
 
-在 `change-tree-provider.test.ts` 断言未跟踪节点描述为 `未跟踪`，不包含 `?`。新建 `commit-view-state.test.ts`，覆盖 `commit-succeeded` 返回空消息、`push-failed` 保留错误与重试。
+在 `change-tree-provider.test.ts` 断言未跟踪节点描述为 `未跟踪`，不包含 `?`。新建 `commit-view-state.test.ts`，覆盖 `commit-succeeded` 保留成功信息并要求显现反馈、`push-failed` 保留错误与重试。样式测试覆盖提交视图内容在自身边界内滚动。
 
 - [ ] **Step 2: 运行测试确认失败**
 
@@ -44,19 +46,19 @@ Expected: 未跟踪描述仍含 `?`，且展示状态模块尚不存在。
 
 - [ ] **Step 3: 实现最小修复**
 
-从未跟踪文件的描述数组中移除 `changeLabels.untracked`。把 `operationFeedback` 和按钮状态计算移入 `commit-view-state.ts`；`commit-succeeded` 返回 `{ message: '', error: '', retry: false }`，`push-failed` 保持现有反馈。
+从未跟踪文件的描述数组中移除 `changeLabels.untracked`。把 `operationFeedback` 和按钮状态计算移入 `commit-view-state.ts`；`commit-succeeded` 保留现有成功信息并标记需要显现，`push-failed` 保持现有反馈。提交视图改为内部滚动，成功状态出现时将反馈行滚动到可见区域。
 
 - [ ] **Step 4: 运行定向测试与静态检查**
 
-Run: `npx vitest run test/unit/change-tree-provider.test.ts test/unit/commit-view-state.test.ts --reporter=dot && npm run typecheck && npm run lint`
+Run: `npx vitest run test/unit/change-tree-provider.test.ts test/unit/commit-view-state.test.ts test/unit/main-css.test.ts --reporter=dot && npm run typecheck && npm run lint`
 
 Expected: 全部通过。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add src/views/change-tree-provider.ts src/webview/commit-client.ts src/webview/commit-view-state.ts test/unit/change-tree-provider.test.ts test/unit/commit-view-state.test.ts
-git commit -m "界面：精简变更状态与提交反馈"
+git add src/views/change-tree-provider.ts src/webview/commit-client.ts src/webview/commit-view-state.ts media/main.css test/unit/change-tree-provider.test.ts test/unit/commit-view-state.test.ts test/unit/main-css.test.ts
+git commit -m "界面：精简变更状态并完整显示提交反馈"
 ```
 
 ### Task 2: 按仓库状态控制两个推送入口

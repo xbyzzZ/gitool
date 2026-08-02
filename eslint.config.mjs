@@ -9,6 +9,7 @@ export default defineConfig(
       'media/commit.js',
       'coverage/**',
       '.vscode-test/**',
+      '.worktrees/**',
     ],
   },
   ...tseslint.configs.strictTypeChecked,
