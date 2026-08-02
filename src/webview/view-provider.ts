@@ -125,13 +125,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         vscode.Uri.joinPath(this.dependencies.extensionUri, 'media'),
       ],
     };
-    this.webview.html = renderWebviewHtml(
-      this.webview,
-      this.dependencies.extensionUri,
-      randomBytes(16).toString('hex'),
-    );
-    this.updateBadge();
-
     this.viewDisposables = [
       this.webview.onDidReceiveMessage((input: unknown) => {
         void this.handleInput(input);
@@ -144,6 +137,12 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.disposeView();
       }),
     ];
+    this.webview.html = renderWebviewHtml(
+      this.webview,
+      this.dependencies.extensionUri,
+      randomBytes(16).toString('hex'),
+    );
+    this.updateBadge();
   }
 
   dispose(): void {

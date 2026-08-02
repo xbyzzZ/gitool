@@ -193,12 +193,14 @@ interface ViewHarness {
   readonly postMessage: ReturnType<typeof vi.fn>;
 }
 
-function createViewHarness(): ViewHarness {
+function createViewHarness(options: {
+  readonly emitReadyWhenHtmlSet?: boolean;
+} = {}): ViewHarness {
   let messageListener: ((message: unknown) => unknown) | undefined;
+  let html = '';
   const postMessage = vi.fn().mockResolvedValue(true);
   const webview = {
     cspSource: 'vscode-webview://gitool',
-    html: '',
     options: {},
     asWebviewUri: (value: vscode.Uri) => value,
     onDidReceiveMessage: (listener: (message: unknown) => unknown) => {
@@ -207,6 +209,16 @@ function createViewHarness(): ViewHarness {
     },
     postMessage,
   } as unknown as vscode.Webview;
+  Object.defineProperty(webview, 'html', {
+    configurable: true,
+    get: () => html,
+    set: (value: string) => {
+      html = value;
+      if (options.emitReadyWhenHtmlSet === true) {
+        messageListener?.({ type: 'ready' });
+      }
+    },
+  });
   const view = {
     webview,
     onDidDispose: () => ({ dispose: vi.fn() }),
@@ -239,6 +251,18 @@ beforeEach(() => {
 });
 
 describe('GitoolViewProvider', () => {
+  it('在写入 Webview HTML 前注册消息监听以接住首次 ready', async () => {
+    const created = createServiceDouble();
+    const provider = createProvider(created.service);
+    const harness = createViewHarness({ emitReadyWhenHtmlSet: true });
+
+    provider.resolveWebviewView(harness.view);
+
+    await vi.waitFor(() => {
+      expect(created.refresh).toHaveBeenCalledOnce();
+    });
+  });
+
   it('Webview 首次就绪时先刷新仓库快照并读取提交历史', async () => {
     const created = createServiceDouble();
     const provider = createProvider(created.service);
