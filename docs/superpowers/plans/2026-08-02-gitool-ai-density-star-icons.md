@@ -4,7 +4,7 @@
 
 **Goal:** 让 AI 生成按钮在固定尺寸内分别用 1、2、3 颗星表示精简、标准、详细密度，并在生成中显示原有加载动画。
 
-**Architecture:** `aiControlPresentation` 输出当前密度与生成状态，作为唯一展示状态来源；Webview 固定渲染三颗 Codicon `sparkle` 和一个 `loading` 节点；客户端只更新容器状态，CSS 在固定 `16 × 16px` 画布内控制星星数量、位置和加载状态显隐。
+**Architecture:** `aiControlPresentation` 输出当前密度与生成状态，作为唯一展示状态来源；Webview 固定渲染三颗取自 Codicon `sparkle-filled.svg` 的单星矢量和一个 `loading` 节点；客户端只更新容器状态，CSS 在固定 `16 × 16px` 画布内控制星星数量、位置和加载状态显隐。
 
 **Tech Stack:** TypeScript、VS Code Webview、Codicon、CSS、Vitest、VS Code Extension Host
 
@@ -13,7 +13,7 @@
 - AI 生成按钮必须保持 `28 × 28px`。
 - 星级图标画布必须保持 `16 × 16px`。
 - 精简、标准、详细分别显示 1、2、3 颗星。
-- 星形必须复用扩展已打包的 VS Code Codicon `sparkle` 字形，不新增图片资源。
+- 星形必须复用 VS Code Codicon `sparkle-filled.svg` 中的单颗星矢量轮廓，不新增图片资源。
 - 生成中只显示旋转加载图标，结束后恢复当前密度星级。
 - 不调整密度菜单、提交按钮、提交信息输入区和三分区布局。
 - 所有新增测试名称、代码注释、文档和 Git 提交信息使用简体中文。
@@ -129,7 +129,8 @@ it('AI 按钮默认渲染标准密度的固定星群和加载节点', () => {
   expect(html).toContain('id="ai-generate-icon"');
   expect(html).toContain('class="ai-density-icon"');
   expect(html).toContain('data-density="standard"');
-  expect(html.match(/codicon-sparkle ai-density-star/g)).toHaveLength(3);
+  expect(html.match(/<svg class="ai-density-star/g)).toHaveLength(3);
+  expect(html).not.toContain('codicon-sparkle ai-density-star');
   expect(html).toContain('ai-density-loading');
 });
 ```
@@ -155,12 +156,14 @@ Expected: FAIL，旧页面只有单个 `codicon-sparkle`，且没有固定星群
 
 - [ ] **Step 4: 将 AI 图标改为固定星群结构**
 
+在 `render.ts` 中将 `aiDensityStarPath` 定义为 `node_modules/@vscode/codicons/src/icons/sparkle-filled.svg` 第一颗星对应的完整首个子路径，三颗星共用该常量。
+
 ```html
 <span id="ai-generate-icon" class="ai-density-icon" data-density="standard" aria-hidden="true">
   <span class="ai-density-stars">
-    <span class="codicon codicon-sparkle ai-density-star ai-density-star-primary"></span>
-    <span class="codicon codicon-sparkle ai-density-star ai-density-star-secondary"></span>
-    <span class="codicon codicon-sparkle ai-density-star ai-density-star-tertiary"></span>
+    <svg class="ai-density-star ai-density-star-primary" viewBox="2 2 8 8" fill="currentColor" focusable="false"><path d="${aiDensityStarPath}"></path></svg>
+    <svg class="ai-density-star ai-density-star-secondary" viewBox="2 2 8 8" fill="currentColor" focusable="false"><path d="${aiDensityStarPath}"></path></svg>
+    <svg class="ai-density-star ai-density-star-tertiary" viewBox="2 2 8 8" fill="currentColor" focusable="false"><path d="${aiDensityStarPath}"></path></svg>
   </span>
   <span class="codicon codicon-loading ai-density-loading"></span>
 </span>
@@ -201,13 +204,14 @@ Expected: FAIL，旧页面只有单个 `codicon-sparkle`，且没有固定星群
 }
 
 .ai-density-star {
-  line-height: 1;
+  display: block;
 }
 
 .ai-density-icon[data-density="compact"] .ai-density-star-primary {
   top: 0;
   left: 0;
-  font-size: 16px;
+  width: 16px;
+  height: 16px;
 }
 
 .ai-density-icon[data-density="compact"] .ai-density-star-secondary,
@@ -218,13 +222,15 @@ Expected: FAIL，旧页面只有单个 `codicon-sparkle`，且没有固定星群
 .ai-density-icon[data-density="standard"] .ai-density-star-primary {
   top: 0;
   left: 0;
-  font-size: 12px;
+  width: 12px;
+  height: 12px;
 }
 
 .ai-density-icon[data-density="standard"] .ai-density-star-secondary {
   top: 8px;
   left: 8px;
-  font-size: 8px;
+  width: 8px;
+  height: 8px;
 }
 
 .ai-density-icon[data-density="standard"] .ai-density-star-tertiary {
@@ -234,19 +240,22 @@ Expected: FAIL，旧页面只有单个 `codicon-sparkle`，且没有固定星群
 .ai-density-icon[data-density="detailed"] .ai-density-star-primary {
   top: 3px;
   left: 0;
-  font-size: 11px;
+  width: 11px;
+  height: 11px;
 }
 
 .ai-density-icon[data-density="detailed"] .ai-density-star-secondary {
   top: 0;
   left: 10px;
-  font-size: 6px;
+  width: 6px;
+  height: 6px;
 }
 
 .ai-density-icon[data-density="detailed"] .ai-density-star-tertiary {
   top: 9px;
   left: 9px;
-  font-size: 7px;
+  width: 7px;
+  height: 7px;
 }
 ```
 

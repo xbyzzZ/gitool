@@ -33,6 +33,26 @@ describe('工作台紧凑布局样式', () => {
     expect(stylesheet).toContain('.codicon-modifier-spin');
   });
 
+  it('AI 星级图标使用固定画布并由密度控制星星数量', () => {
+    expect(readRule('.ai-density-icon')).toMatch(/width:\s*16px/u);
+    expect(readRule('.ai-density-icon')).toMatch(/height:\s*16px/u);
+    expect(stylesheet).toContain(
+      '.ai-density-icon[data-density="compact"]',
+    );
+    expect(stylesheet).toContain(
+      '.ai-density-icon[data-density="standard"]',
+    );
+    expect(stylesheet).toContain(
+      '.ai-density-icon[data-density="detailed"]',
+    );
+    expect(stylesheet).toContain('.ai-density-icon.is-generating');
+    expect(readRule(
+      '.ai-density-icon[data-density="standard"] .ai-density-star-primary',
+    )).toMatch(
+      /width:\s*12px/u,
+    );
+  });
+
   it('提交图标按钮使用固定尺寸且不改变左右分组', () => {
     expect(readRule('.commit-icon-button')).toMatch(/width:\s*28px/u);
     expect(readRule('.commit-icon-button')).toMatch(/min-width:\s*28px/u);

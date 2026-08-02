@@ -1,5 +1,8 @@
 import type * as vscode from 'vscode';
 
+// 源自 VS Code Codicon sparkle-filled 的单颗星轮廓。
+const aiDensityStarPath = 'M5.46524 9.82962C5.62134 9.94037 5.80806 9.99974 5.99946 9.99948C6.19151 10.0003 6.37897 9.94082 6.53546 9.82948C6.69223 9.71378 6.81095 9.55398 6.87646 9.37048L7.22346 8.30348C7.3077 8.05191 7.44906 7.82327 7.63646 7.63548C7.82305 7.44851 8.05078 7.30776 8.30146 7.22448L9.38746 6.87148C9.56665 6.80759 9.72173 6.68989 9.83146 6.53448C9.94145 6.37908 10.0005 6.19337 10.0005 6.00298C10.0005 5.81259 9.94145 5.62689 9.83146 5.47148C9.71293 5.30613 9.54426 5.18339 9.35046 5.12148L8.28146 4.77548C8.02989 4.69238 7.80123 4.55163 7.61371 4.36447C7.4262 4.1773 7.28503 3.9489 7.20146 3.69748L6.84846 2.61348C6.78519 2.43423 6.66777 2.27908 6.51246 2.16948C6.35557 2.06133 6.16951 2.00342 5.97896 2.00342C5.78841 2.00342 5.60235 2.06133 5.44546 2.16948C5.28572 2.28196 5.16594 2.44237 5.10346 2.62748L4.74846 3.71748C4.66476 3.96155 4.52691 4.18351 4.34524 4.36673C4.16358 4.54996 3.9428 4.6897 3.69946 4.77548L2.61546 5.12648C2.43437 5.19048 2.27775 5.30937 2.16743 5.4666C2.05712 5.62383 1.99859 5.81155 2.00003 6.00361C2.00146 6.19568 2.06277 6.38251 2.17541 6.53808C2.28806 6.69364 2.44643 6.81019 2.62846 6.87148L3.69546 7.21848C3.94767 7.30297 4.17673 7.44506 4.36446 7.63348C4.41519 7.6837 4.46262 7.73715 4.50646 7.79348C4.62481 7.94615 4.71614 8.11797 4.77646 8.30148L5.12846 9.38148C5.19143 9.56222 5.30914 9.71886 5.46524 9.82962Z';
+
 function mediaUri(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
@@ -80,7 +83,14 @@ export function renderCommitWebviewHtml(
         <div class="commit-actions">
           <div class="ai-actions">
             <button id="ai-generate-button" class="ai-button commit-icon-button" type="button" aria-label="使用 AI 生成提交信息（标准）" title="使用 AI 生成提交信息（标准）">
-              <span id="ai-generate-icon" class="codicon codicon-sparkle" aria-hidden="true"></span>
+              <span id="ai-generate-icon" class="ai-density-icon" data-density="standard" aria-hidden="true">
+                <span class="ai-density-stars">
+                  <svg class="ai-density-star ai-density-star-primary" viewBox="2 2 8 8" fill="currentColor" focusable="false"><path d="${aiDensityStarPath}"></path></svg>
+                  <svg class="ai-density-star ai-density-star-secondary" viewBox="2 2 8 8" fill="currentColor" focusable="false"><path d="${aiDensityStarPath}"></path></svg>
+                  <svg class="ai-density-star ai-density-star-tertiary" viewBox="2 2 8 8" fill="currentColor" focusable="false"><path d="${aiDensityStarPath}"></path></svg>
+                </span>
+                <span class="codicon codicon-loading ai-density-loading"></span>
+              </span>
             </button>
             <button id="ai-density-button" class="ai-menu-button" type="button" aria-label="选择 AI 信息密度（标准）" title="选择 AI 信息密度（标准）" aria-haspopup="menu">
               <span class="codicon codicon-chevron-down" aria-hidden="true"></span>

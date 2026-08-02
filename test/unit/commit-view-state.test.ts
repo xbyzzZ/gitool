@@ -41,17 +41,23 @@ function model(hasRemote: boolean): RepositoryViewModel {
 }
 
 describe('提交信息展示状态', () => {
-  it('按信息密度生成 AI 图标按钮提示', () => {
-    expect(aiControlPresentation('compact', false)).toEqual({
-      generateIcon: 'sparkle',
-      generateLabel: '使用 AI 生成提交信息（精简）',
-      densityLabel: '选择 AI 信息密度（精简）',
+  it.each([
+    ['compact', '精简'],
+    ['standard', '标准'],
+    ['detailed', '详细'],
+  ] as const)('输出 %s 密度的 AI 星级展示状态', (density, label) => {
+    expect(aiControlPresentation(density, false)).toEqual({
+      density,
+      generating: false,
+      generateLabel: `使用 AI 生成提交信息（${label}）`,
+      densityLabel: `选择 AI 信息密度（${label}）`,
     });
   });
 
-  it('AI 生成中使用加载图标并保留取消入口', () => {
+  it('AI 生成中保留密度并输出加载状态', () => {
     expect(aiControlPresentation('detailed', true)).toEqual({
-      generateIcon: 'loading',
+      density: 'detailed',
+      generating: true,
       generateLabel: '取消 AI 生成',
       densityLabel: '选择 AI 信息密度（详细）',
     });

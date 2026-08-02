@@ -161,8 +161,16 @@ function render(model: RepositoryViewModel): void {
     : !canWrite || model.selectedIds.length === 0;
   controls.aiDensityButton.disabled = !canWrite || model.selectedIds.length === 0;
   const aiPresentation = aiControlPresentation(density, aiGenerating);
-  controls.aiGenerateIcon.className = `codicon codicon-${aiPresentation.generateIcon}`;
-  controls.aiGenerateIcon.classList.toggle('codicon-modifier-spin', aiGenerating);
+  controls.aiGenerateIcon.dataset.density = aiPresentation.density;
+  controls.aiGenerateIcon.classList.toggle(
+    'is-generating',
+    aiPresentation.generating,
+  );
+  controls.aiGenerateIcon.querySelector('.ai-density-loading')
+    ?.classList.toggle(
+      'codicon-modifier-spin',
+      aiPresentation.generating,
+    );
   controls.aiGenerateButton.setAttribute('aria-label', aiPresentation.generateLabel);
   controls.aiGenerateButton.title = aiPresentation.generateLabel;
   controls.aiDensityButton.setAttribute('aria-label', aiPresentation.densityLabel);

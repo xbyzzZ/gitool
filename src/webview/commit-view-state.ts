@@ -5,7 +5,8 @@ import type {
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
 
 export interface AiControlPresentation {
-  readonly generateIcon: 'sparkle' | 'loading';
+  readonly density: CommitMessageDensity;
+  readonly generating: boolean;
   readonly generateLabel: string;
   readonly densityLabel: string;
 }
@@ -50,7 +51,8 @@ export function aiControlPresentation(
 ): AiControlPresentation {
   const label = densityLabel(density);
   return {
-    generateIcon: generating ? 'loading' : 'sparkle',
+    density,
+    generating,
     generateLabel: generating
       ? '取消 AI 生成'
       : `使用 AI 生成提交信息（${label}）`,

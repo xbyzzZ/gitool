@@ -194,7 +194,93 @@ input:disabled {
   font-size: 16px;
 }
 
-.ai-button .codicon-modifier-spin {
+.ai-density-icon {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.ai-density-stars,
+.ai-density-loading,
+.ai-density-star {
+  position: absolute;
+}
+
+.ai-density-stars,
+.ai-density-loading {
+  inset: 0;
+}
+
+.ai-density-loading {
+  display: none;
+  font-size: 16px;
+}
+
+.ai-density-icon.is-generating .ai-density-stars {
+  display: none;
+}
+
+.ai-density-icon.is-generating .ai-density-loading {
+  display: block;
+}
+
+.ai-density-star {
+  display: block;
+}
+
+.ai-density-icon[data-density="compact"] .ai-density-star-primary {
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.ai-density-icon[data-density="compact"] .ai-density-star-secondary,
+.ai-density-icon[data-density="compact"] .ai-density-star-tertiary {
+  display: none;
+}
+
+.ai-density-icon[data-density="standard"] .ai-density-star-primary {
+  top: 0;
+  left: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.ai-density-icon[data-density="standard"] .ai-density-star-secondary {
+  top: 8px;
+  left: 8px;
+  width: 8px;
+  height: 8px;
+}
+
+.ai-density-icon[data-density="standard"] .ai-density-star-tertiary {
+  display: none;
+}
+
+.ai-density-icon[data-density="detailed"] .ai-density-star-primary {
+  top: 3px;
+  left: 0;
+  width: 11px;
+  height: 11px;
+}
+
+.ai-density-icon[data-density="detailed"] .ai-density-star-secondary {
+  top: 0;
+  left: 10px;
+  width: 6px;
+  height: 6px;
+}
+
+.ai-density-icon[data-density="detailed"] .ai-density-star-tertiary {
+  top: 9px;
+  left: 9px;
+  width: 7px;
+  height: 7px;
+}
+
+.ai-density-loading.codicon-modifier-spin {
   animation-duration: 900ms;
 }
 
