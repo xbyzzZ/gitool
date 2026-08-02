@@ -213,7 +213,7 @@ describe('原生提交历史树', () => {
     const item = provider.getTreeItem(firstNode(nodes));
     expect(item.label).toBe('修复：原生历史列表');
     expect(item.description).toBe(
-      '许博阳 · 5 分钟前 · newest · HEAD main · origin/main',
+      '许博阳 · 5 分钟前 · newest · main · origin/main',
     );
     expect(item.collapsibleState).toBe(1);
   });

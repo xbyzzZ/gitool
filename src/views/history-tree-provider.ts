@@ -56,7 +56,7 @@ function relativeTime(authoredAt: string, now = new Date()): string {
 }
 
 function refLabel(ref: CommitGraphNode['refs'][number]): string {
-  return ref.kind === 'head' ? `HEAD ${ref.name}` : ref.name;
+  return ref.name;
 }
 
 function commitIcon(commit: CommitGraphNode): vscode.ThemeIcon {
