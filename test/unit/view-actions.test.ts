@@ -399,11 +399,100 @@ describe('GitoolViewActions', () => {
     expect(created.loadCommitDetails).not.toHaveBeenCalled();
   });
 
+  it('同版本历史列表刷新后拒绝已经消失的旧提交节点', async () => {
+    const oldHash = 'a'.repeat(40);
+    const currentHash = 'c'.repeat(40);
+    const created = createActions(model({
+      history: {
+        kind: 'ready',
+        commits: [{
+          hash: currentHash,
+          shortHash: currentHash.slice(0, 7),
+          parents: [],
+          author: '测试用户',
+          authoredAt: '2026-08-02T08:00:00.000Z',
+          subject: '当前提交',
+          refs: [],
+          lane: 0,
+          parentLanes: [],
+        }],
+      },
+    }));
+    created.loadCommitDetails.mockResolvedValue({
+      hash: oldHash,
+      files: [{ status: 'M', path: 'src/old.ts' }],
+    });
+    const node: HistoryFileNode = {
+      kind: 'file',
+      repositoryId: '/workspace/repo',
+      version: 7,
+      hash: oldHash,
+      file: { status: 'M', path: 'src/old.ts' },
+    };
+
+    await expect(created.actions.openHistoryDiff(node))
+      .rejects.toThrow('所选历史提交已不在当前列表中');
+    expect(created.loadCommitDetails).not.toHaveBeenCalled();
+    expect(vscodeMocks.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('历史详情返回其他提交时拒绝打开差异', async () => {
+    const selectedHash = 'a'.repeat(40);
+    const otherHash = 'b'.repeat(40);
+    const created = createActions(model({
+      history: {
+        kind: 'ready',
+        commits: [{
+          hash: selectedHash,
+          shortHash: selectedHash.slice(0, 7),
+          parents: [],
+          author: '测试用户',
+          authoredAt: '2026-08-02T08:00:00.000Z',
+          subject: '所选提交',
+          refs: [],
+          lane: 0,
+          parentLanes: [],
+        }],
+      },
+    }));
+    created.loadCommitDetails.mockResolvedValue({
+      hash: otherHash,
+      files: [{ status: 'M', path: 'src/client.ts' }],
+    });
+    const node: HistoryFileNode = {
+      kind: 'file',
+      repositoryId: '/workspace/repo',
+      version: 7,
+      hash: selectedHash,
+      file: { status: 'M', path: 'src/client.ts' },
+    };
+
+    await expect(created.actions.openHistoryDiff(node))
+      .rejects.toThrow('提交详情与所选历史提交不一致');
+    expect(vscodeMocks.executeCommand).not.toHaveBeenCalled();
+  });
+
   it('历史新增文件使用空文档作为父版本差异端点', async () => {
-    const created = createActions();
+    const hash = 'a'.repeat(40);
+    const created = createActions(model({
+      history: {
+        kind: 'ready',
+        commits: [{
+          hash,
+          shortHash: hash.slice(0, 7),
+          parents: [],
+          author: '测试用户',
+          authoredAt: '2026-08-02T08:00:00.000Z',
+          subject: '新增文件',
+          refs: [],
+          lane: 0,
+          parentLanes: [],
+        }],
+      },
+    }));
     const file = { status: 'A', path: 'src/new.ts' };
     created.loadCommitDetails.mockResolvedValue({
-      hash: 'a'.repeat(40),
+      hash,
       parentHash: 'b'.repeat(40),
       files: [file],
     });
@@ -411,7 +500,7 @@ describe('GitoolViewActions', () => {
       kind: 'file',
       repositoryId: '/workspace/repo',
       version: 7,
-      hash: 'a'.repeat(40),
+      hash,
       file,
     };
 
@@ -442,6 +531,44 @@ describe('GitoolViewActions', () => {
     );
     expect(vscodeMocks.showErrorMessage).toHaveBeenCalledWith(
       'Gitool：认证失败：https://***:***@example.test/repo.git',
+    );
+  });
+
+  it('其他动作正在执行时失败不会覆盖 running 状态或重复弹错', async () => {
+    const created = createActions(model({
+      operation: { kind: 'running', action: 'commit' },
+    }));
+    created.refresh.mockRejectedValue(new Error('仓库正在执行写操作'));
+
+    await expect(created.actions.refreshChanges())
+      .rejects.toThrow('仓库正在执行写操作');
+
+    expect(created.reportFailure).not.toHaveBeenCalled();
+    expect(vscodeMocks.showErrorMessage).not.toHaveBeenCalled();
+  });
+
+  it('动作期间从仓库 A 切到 B 后失败只显示脱敏错误且不写入 B', async () => {
+    const repositoryA = model({ currentRepositoryId: '/workspace/repo-a' });
+    const repositoryB = model({ currentRepositoryId: '/workspace/repo-b' });
+    const created = createActions(repositoryA);
+    created.pushAll.mockResolvedValue({
+      kind: 'needs-remote',
+      remotes: ['origin'],
+    });
+    vscodeMocks.showQuickPick.mockImplementation(() => {
+      created.getViewModel.mockReturnValue(repositoryB);
+      return Promise.reject(
+        new Error('推送失败：https://user:secret@example.test/repo.git'),
+      );
+    });
+
+    await expect(created.actions.pushAll()).rejects.toThrow(
+      '推送失败：https://***:***@example.test/repo.git',
+    );
+
+    expect(created.reportFailure).not.toHaveBeenCalled();
+    expect(vscodeMocks.showErrorMessage).toHaveBeenCalledWith(
+      'Gitool：推送失败：https://***:***@example.test/repo.git',
     );
   });
 

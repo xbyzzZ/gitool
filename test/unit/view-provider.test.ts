@@ -410,9 +410,25 @@ describe('GitoolViewProvider', () => {
   });
 
   it('历史新增文件使用空文档而不是把 Git 索引当作父版本', async () => {
-    const created = createServiceDouble();
+    const hash = 'a'.repeat(40);
+    const created = createServiceDouble(model({
+      history: {
+        kind: 'ready',
+        commits: [{
+          hash,
+          shortHash: hash.slice(0, 7),
+          parents: [],
+          author: '测试用户',
+          authoredAt: '2026-08-02T08:00:00.000Z',
+          subject: '新增文件',
+          refs: [],
+          lane: 0,
+          parentLanes: [],
+        }],
+      },
+    }));
     created.loadCommitDetails.mockResolvedValue({
-      hash: 'a'.repeat(40),
+      hash,
       parentHash: 'b'.repeat(40),
       files: [{ status: 'A', path: 'src/new.ts' }],
     });
@@ -424,7 +440,7 @@ describe('GitoolViewProvider', () => {
       type: 'openCommitDiff',
       repositoryId: '/workspace/repo',
       version: 0,
-      hash: 'a'.repeat(40),
+      hash,
       path: 'src/new.ts',
       requestId: 'diff-1',
     });
@@ -819,5 +835,36 @@ describe('GitoolViewProvider', () => {
       '推送全部本地提交',
       '远程拒绝推送',
     );
+  });
+
+  it('原生动作并发失败时 Provider 和控制器都不覆盖 running 状态', async () => {
+    const runningModel = model({
+      operation: { kind: 'running', action: 'commit' },
+    });
+    const created = createServiceDouble(runningModel);
+    created.pushAll.mockRejectedValue(new Error('仓库正在执行写操作'));
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'pushAll',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      requestId: 'push-all-running',
+    });
+
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgedRequestId: 'push-all-running' }),
+      );
+    });
+    expect(created.pushAll).toHaveBeenCalledTimes(1);
+    expect(created.reportFailure).not.toHaveBeenCalled();
+    expect(vscodeMocks.showErrorMessage).not.toHaveBeenCalled();
+    expect(created.service.getViewModel().operation).toEqual({
+      kind: 'running',
+      action: 'commit',
+    });
   });
 });

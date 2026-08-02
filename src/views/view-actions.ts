@@ -43,14 +43,12 @@ export class GitoolViewActions {
 
   async refreshChanges(): Promise<void> {
     await this.runAction('刷新当前变更', async () => {
-      this.currentScope();
       await this.dependencies.repositoryService.refresh();
     });
   }
 
   async openChange(node: ChangeFileNode): Promise<void> {
-    await this.runAction('打开变更', async () => {
-      const scope = this.currentScope();
+    await this.runAction('打开变更', async (scope) => {
       const change = this.requireCurrentChange(scope, node);
       const repository = this.dependencies.repositoryService.getRepository(
         scope.repositoryId,
@@ -87,8 +85,7 @@ export class GitoolViewActions {
   async trashUntracked(
     node?: ChangeFileNode | readonly ChangeFileNode[],
   ): Promise<void> {
-    await this.runAction('舍弃未跟踪文件', async () => {
-      const scope = this.currentScope();
+    await this.runAction('舍弃未跟踪文件', async (scope) => {
       const selectedIds = new Set(scope.model.selectedIds);
       const nodes = node === undefined
         ? undefined
@@ -127,8 +124,7 @@ export class GitoolViewActions {
   }
 
   async editRemote(): Promise<void> {
-    await this.runAction('修改远程 URL', async () => {
-      const scope = this.currentScope();
+    await this.runAction('修改远程 URL', async (scope) => {
       const service = this.dependencies.repositoryService;
       const repository = service.getRepository(scope.repositoryId);
       if (repository === undefined) {
@@ -204,8 +200,7 @@ export class GitoolViewActions {
   }
 
   async pull(): Promise<void> {
-    await this.runAction('从远程拉取', async () => {
-      const scope = this.currentScope();
+    await this.runAction('从远程拉取', async (scope) => {
       await this.dependencies.repositoryService.pull({
         repositoryId: scope.repositoryId,
         version: scope.version,
@@ -214,8 +209,7 @@ export class GitoolViewActions {
   }
 
   async pushAll(): Promise<void> {
-    await this.runAction('推送全部本地提交', async () => {
-      const scope = this.currentScope();
+    await this.runAction('推送全部本地提交', async (scope) => {
       const service = this.dependencies.repositoryService;
       const result = await service.pushAll({
         repositoryId: scope.repositoryId,
@@ -247,8 +241,7 @@ export class GitoolViewActions {
   }
 
   async refreshHistory(): Promise<void> {
-    await this.runAction('刷新提交历史', async () => {
-      const scope = this.currentScope();
+    await this.runAction('刷新提交历史', async (scope) => {
       await this.dependencies.repositoryService.refreshHistory({
         repositoryId: scope.repositoryId,
         version: scope.version,
@@ -257,13 +250,17 @@ export class GitoolViewActions {
   }
 
   async openHistoryDiff(node: HistoryFileNode): Promise<void> {
-    await this.runAction('打开历史改动', async () => {
-      const scope = this.currentScope();
+    await this.runAction('打开历史改动', async (scope) => {
       if (node.repositoryId !== scope.repositoryId) {
         throw new Error('节点来源仓库与当前仓库不一致');
       }
       if (node.version !== scope.version) {
         throw new Error('仓库状态已变化，请刷新后重试');
+      }
+      if (!scope.model.history.commits.some(
+        (commit) => commit.hash === node.hash,
+      )) {
+        throw new Error('所选历史提交已不在当前列表中');
       }
       const service = this.dependencies.repositoryService;
       const repository = service.getRepository(scope.repositoryId);
@@ -275,6 +272,9 @@ export class GitoolViewActions {
         version: scope.version,
         hash: node.hash,
       });
+      if (details.hash !== node.hash) {
+        throw new Error('提交详情与所选历史提交不一致');
+      }
       const file = details.files.find((item) =>
         item.path === node.file.path
         && item.status === node.file.status
@@ -378,15 +378,27 @@ export class GitoolViewActions {
 
   private async runAction(
     action: string,
-    operation: () => Promise<void>,
+    operation: (scope: CurrentScope) => Promise<void>,
   ): Promise<void> {
+    let initialScope: CurrentScope | undefined;
     try {
-      await operation();
+      initialScope = this.currentScope();
+      await operation(initialScope);
     } catch (error) {
       const message = redactSensitiveText(
         error instanceof Error ? error.message : String(error),
       );
-      if (!this.dependencies.repositoryService.reportFailure(action, message)) {
+      const service = this.dependencies.repositoryService;
+      const currentModel = service.getViewModel();
+      const sameRepository = initialScope !== undefined
+        && currentModel.currentRepositoryId === initialScope.repositoryId;
+      if (sameRepository && currentModel.operation.kind === 'running') {
+        throw new ReportedViewActionError(message);
+      }
+      if (
+        !sameRepository
+        || !service.reportFailure(action, message)
+      ) {
         await vscode.window.showErrorMessage(`Gitool：${message}`);
       }
       throw new ReportedViewActionError(message);
