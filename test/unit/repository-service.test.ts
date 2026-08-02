@@ -232,6 +232,54 @@ describe('RepositoryService', () => {
     });
   });
 
+  it('服务启动后才打开的首个仓库会自动读取文件状态和提交历史', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root);
+    repository.setHead({
+      name: 'main',
+      upstream: { remote: 'origin', name: 'main' },
+    });
+    repository.onStatus(() => {
+      repository.setChanges({
+        working: [change(root, 'changed.ts')],
+      });
+    });
+    const commits = [{
+      hash: '1'.repeat(40),
+      shortHash: '1111111',
+      parents: [],
+      author: '许博阳',
+      authoredAt: '2026-08-02T10:00:00.000Z',
+      subject: '修复：首次打开仓库',
+      refs: [],
+      lane: 0,
+      parentLanes: [],
+    }];
+    const { service, gitApi } = createService([], true, {
+      historyService: {
+        list: vi.fn().mockResolvedValue({ commits }),
+        details: vi.fn(),
+        aheadBehind: vi.fn().mockResolvedValue({
+          kind: 'ready',
+          upstream: 'origin/main',
+          ahead: 0,
+          behind: 0,
+        }),
+      },
+    });
+
+    gitApi.opened.fire(repository);
+
+    await vi.waitFor(() => {
+      expect(service.getViewModel()).toMatchObject({
+        currentRepositoryId: root,
+        changeCount: 1,
+        changes: [{ id: 'changed.ts' }],
+        history: { kind: 'ready', commits },
+      });
+    });
+  });
+
   it('刷新历史后同时更新提交和领先落后位置', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root);

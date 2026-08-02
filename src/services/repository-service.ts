@@ -82,6 +82,7 @@ export class RepositoryService {
   private readonly registry: RepositoryRegistry;
   private readonly writeCoordinator: RepositoryWriteCoordinator;
   private readonly operationLock: RepositoryOperationLock;
+  private readonly lifecycleListeners: vscode.Disposable[] = [];
 
   constructor(private readonly dependencies: RepositoryServiceDependencies) {
     this.operationLock = dependencies.operationLock
@@ -89,6 +90,18 @@ export class RepositoryService {
     this.registry = new RepositoryRegistry(
       dependencies.gitApi,
       dependencies.selectionStore,
+    );
+    this.lifecycleListeners.push(
+      this.registry.onDidAddRepository((id) => {
+        void this.initializeOpenedRepository(id).catch((error: unknown) => {
+          if (this.registry.get(id) !== undefined) {
+            this.registry.reportFailure(
+              '初始化仓库',
+              this.errorMessage(error),
+            );
+          }
+        });
+      }),
     );
     this.writeCoordinator = new RepositoryWriteCoordinator({
       registry: this.registry,
@@ -355,8 +368,21 @@ export class RepositoryService {
   }
 
   dispose(): void {
+    for (const listener of this.lifecycleListeners.splice(0)) {
+      listener.dispose();
+    }
     this.writeCoordinator.dispose();
     this.registry.dispose();
+  }
+
+  private async initializeOpenedRepository(id: string): Promise<void> {
+    const state = await this.registry.refreshRepositorySnapshot(id);
+    if (this.dependencies.historyService !== undefined) {
+      await this.refreshHistory({
+        repositoryId: id,
+        version: state.version,
+      });
+    }
   }
 
   private requireVersion(request: RepositoryVersionRequest) {

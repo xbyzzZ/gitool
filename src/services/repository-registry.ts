@@ -99,6 +99,7 @@ export class RepositoryRegistry implements vscode.Disposable {
   private readonly repositories = new Map<string, RepositoryContext>();
   private readonly lastVersions = new Map<string, number>();
   private readonly changeListeners = new Set<() => unknown>();
+  private readonly repositoryAddedListeners = new Set<(id: string) => unknown>();
   private readonly lifecycleListeners: vscode.Disposable[] = [];
   private currentRepositoryId: string | undefined;
   private disposed = false;
@@ -115,6 +116,24 @@ export class RepositoryRegistry implements vscode.Disposable {
     const disposable: vscode.Disposable = {
       dispose: () => {
         this.changeListeners.delete(effectiveListener);
+      },
+    };
+    disposables?.push(disposable);
+    return disposable;
+  };
+
+  readonly onDidAddRepository: vscode.Event<string> = (
+    listener,
+    thisArgs,
+    disposables,
+  ) => {
+    const effectiveListener = thisArgs === undefined
+      ? (id: string): unknown => listener(id)
+      : (id: string): unknown => listener.call(thisArgs, id);
+    this.repositoryAddedListeners.add(effectiveListener);
+    const disposable: vscode.Disposable = {
+      dispose: () => {
+        this.repositoryAddedListeners.delete(effectiveListener);
       },
     };
     disposables?.push(disposable);
@@ -336,6 +355,7 @@ export class RepositoryRegistry implements vscode.Disposable {
     this.repositories.clear();
     this.currentRepositoryId = undefined;
     this.changeListeners.clear();
+    this.repositoryAddedListeners.clear();
   }
 
   private addRepository(repository: BuiltinRepository): void {
@@ -378,6 +398,9 @@ export class RepositoryRegistry implements vscode.Disposable {
     this.applySnapshot(state, state.snapshot, false);
     this.currentRepositoryId ??= id;
     this.notifyChange();
+    for (const listener of this.repositoryAddedListeners) {
+      listener(id);
+    }
   }
 
   private removeRepository(repository: BuiltinRepository): void {
