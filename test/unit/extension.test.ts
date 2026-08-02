@@ -11,6 +11,7 @@ interface RegistrationState {
   readonly activeCommands: Map<string, vscode.Disposable>;
   readonly activeViews: Map<string, vscode.Disposable>;
   readonly activeContentProviders: Map<string, vscode.Disposable>;
+  readonly lifecycleTrace: string[];
   readonly commandDisposals: string[];
   readonly viewDisposals: string[];
   readonly registeredWebviews: {
@@ -31,6 +32,11 @@ interface RegistrationState {
     readonly id: string;
     readonly error: Error;
   } | undefined;
+  treeRegistrationErrorAtId: string | undefined;
+  repositoryOnDidChangeErrorAtCall: number | undefined;
+  eventEmitterConstructionErrorAt: number | undefined;
+  eventEmitterConstructionCount: number;
+  disposalErrorAtLabel: string | undefined;
   trustRegistrationError: Error | undefined;
   gitExtension: vscode.Extension<unknown> | undefined;
 }
@@ -40,6 +46,7 @@ const mocks = vi.hoisted(() => {
     activeCommands: new Map(),
     activeViews: new Map(),
     activeContentProviders: new Map(),
+    lifecycleTrace: [],
     commandDisposals: [],
     viewDisposals: [],
     registeredWebviews: [],
@@ -47,6 +54,11 @@ const mocks = vi.hoisted(() => {
     gitOpenListeners: new Set(),
     gitCloseListeners: new Set(),
     commandRegistrationError: undefined,
+    treeRegistrationErrorAtId: undefined,
+    repositoryOnDidChangeErrorAtCall: undefined,
+    eventEmitterConstructionErrorAt: undefined,
+    eventEmitterConstructionCount: 0,
+    disposalErrorAtLabel: undefined,
     trustRegistrationError: undefined,
     gitExtension: undefined,
   };
@@ -55,6 +67,7 @@ const mocks = vi.hoisted(() => {
     active: Map<string, vscode.Disposable>,
     disposed: string[],
     id: string,
+    lifecycleLabel: string,
   ): vscode.Disposable => {
     if (active.has(id)) {
       throw new Error(`重复注册：${id}`);
@@ -63,6 +76,11 @@ const mocks = vi.hoisted(() => {
       dispose(): void {
         if (active.delete(id)) {
           disposed.push(id);
+          state.lifecycleTrace.push(lifecycleLabel);
+          if (state.disposalErrorAtLabel === lifecycleLabel) {
+            state.disposalErrorAtLabel = undefined;
+            throw new Error(`释放失败：${lifecycleLabel}`);
+          }
         }
       },
     };
@@ -74,6 +92,17 @@ const mocks = vi.hoisted(() => {
     state,
     EventEmitter: class<T> {
       private readonly listeners = new Set<(value: T) => unknown>();
+
+      constructor() {
+        state.eventEmitterConstructionCount += 1;
+        if (
+          state.eventEmitterConstructionErrorAt
+          === state.eventEmitterConstructionCount
+        ) {
+          state.eventEmitterConstructionErrorAt = undefined;
+          throw new Error('Provider 初始化失败');
+        }
+      }
 
       readonly event: vscode.Event<T> = (listener) => {
         this.listeners.add(listener);
@@ -101,25 +130,45 @@ const mocks = vi.hoisted(() => {
         state.commandRegistrationError = undefined;
         throw error;
       }
-      return register(state.activeCommands, state.commandDisposals, id);
+      return register(
+        state.activeCommands,
+        state.commandDisposals,
+        id,
+        `command:${id}`,
+      );
     }),
     registerWebviewViewProvider: vi.fn((
       id: string,
       provider: vscode.WebviewViewProvider,
     ) => {
       state.registeredWebviews.push({ id, provider });
-      return register(state.activeViews, state.viewDisposals, id);
+      return register(
+        state.activeViews,
+        state.viewDisposals,
+        id,
+        `view:${id}`,
+      );
     }),
     registerTextDocumentContentProvider: vi.fn((id: string) =>
-      register(state.activeContentProviders, [], id)),
+      register(
+        state.activeContentProviders,
+        [],
+        id,
+        `content:${id}`,
+      )),
     createTreeView: vi.fn((
       id: string,
       options: vscode.TreeViewOptions<unknown>,
     ) => {
+      if (state.treeRegistrationErrorAtId === id) {
+        state.treeRegistrationErrorAtId = undefined;
+        throw new Error(`TreeView 注册失败：${id}`);
+      }
       const registration = register(
         state.activeViews,
         state.viewDisposals,
         id,
+        `view:${id}`,
       );
       const checkboxListeners = new Set<(
         event: vscode.TreeCheckboxChangeEvent<unknown>,
@@ -138,6 +187,7 @@ const mocks = vi.hoisted(() => {
           return {
             dispose(): void {
               checkboxListeners.delete(listener);
+              state.lifecycleTrace.push('checkbox:gitool.changesView');
             },
           };
         },
@@ -154,7 +204,11 @@ const mocks = vi.hoisted(() => {
         state.trustRegistrationError = undefined;
         throw error;
       }
-      return { dispose: vi.fn() };
+      return {
+        dispose: () => {
+          state.lifecycleTrace.push('subscription:workspaceTrust');
+        },
+      };
     }),
     showErrorMessage: vi.fn(),
     showWarningMessage: vi.fn(),
@@ -192,20 +246,79 @@ vi.mock('vscode', () => ({
   },
 }));
 
+vi.mock('../../src/services/repository-service.js', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../src/services/repository-service.js')
+  >();
+  return {
+    ...actual,
+    RepositoryService: class extends actual.RepositoryService {
+      constructor(
+        ...args: ConstructorParameters<typeof actual.RepositoryService>
+      ) {
+        super(...args);
+        const onDidChange = this.onDidChange;
+        let registrationCount = 0;
+        Object.defineProperty(this, 'onDidChange', {
+          value: ((listener, thisArgs, disposables) => {
+            registrationCount += 1;
+            if (
+              mocks.state.repositoryOnDidChangeErrorAtCall
+              === registrationCount
+            ) {
+              mocks.state.repositoryOnDidChangeErrorAtCall = undefined;
+              throw new Error('仓库状态同步订阅失败');
+            }
+            const inner = onDidChange(listener, thisArgs);
+            const registrationIndex = registrationCount;
+            const disposable: vscode.Disposable = {
+              dispose: () => {
+                mocks.state.lifecycleTrace.push(
+                  `subscription:repository:${String(registrationIndex)}`,
+                );
+                inner.dispose();
+              },
+            };
+            disposables?.push(disposable);
+            return disposable;
+          }) satisfies vscode.Event<void>,
+        });
+      }
+
+      override dispose(): void {
+        mocks.state.lifecycleTrace.push('service:repository');
+        super.dispose();
+      }
+    },
+  };
+});
+
 import {
   activate,
   deactivate,
   type GitoolRuntime,
 } from '../../src/extension.js';
+import { ChangeTreeProvider } from '../../src/views/change-tree-provider.js';
+import { HistoryTreeProvider } from '../../src/views/history-tree-provider.js';
+import { GitoolViewProvider } from '../../src/webview/view-provider.js';
+
+// eslint-disable-next-line @typescript-eslint/unbound-method -- 测试通过 call 显式绑定实际实例。
+const disposeChangeProvider = ChangeTreeProvider.prototype.dispose;
+// eslint-disable-next-line @typescript-eslint/unbound-method -- 测试通过 call 显式绑定实际实例。
+const disposeHistoryProvider = HistoryTreeProvider.prototype.dispose;
+// eslint-disable-next-line @typescript-eslint/unbound-method -- 测试通过 call 显式绑定实际实例。
+const disposeCommitProvider = GitoolViewProvider.prototype.dispose;
 
 function eventFor(
   listeners: Set<(value: unknown) => unknown>,
+  lifecycleLabel: string,
 ): vscode.Event<unknown> {
   return (listener) => {
     listeners.add(listener);
     return {
       dispose(): void {
         listeners.delete(listener);
+        mocks.state.lifecycleTrace.push(lifecycleLabel);
       },
     };
   };
@@ -219,9 +332,11 @@ function gitApi(
     repositories,
     onDidOpenRepository: eventFor(
       mocks.state.gitOpenListeners,
+      'subscription:gitOpen',
     ) as vscode.Event<never>,
     onDidCloseRepository: eventFor(
       mocks.state.gitCloseListeners,
+      'subscription:gitClose',
     ) as vscode.Event<never>,
     toGitUri: (uri) => uri,
   };
@@ -337,11 +452,39 @@ function createdTree(id: string): RegistrationState['createdTrees'][number] {
   return created;
 }
 
+const readyLifecycleDisposalOrder = [
+  'subscription:workspaceTrust',
+  'command:gitool.openHistoryDiff',
+  'command:gitool.refreshHistory',
+  'command:gitool.pushAll',
+  'command:gitool.pull',
+  'command:gitool.openChange',
+  'command:gitool.trashUntracked',
+  'command:gitool.refreshChanges',
+  'command:gitool.editRemote',
+  'command:gitool.refresh',
+  'subscription:repository:3',
+  'view:gitool.historyView',
+  'checkbox:gitool.changesView',
+  'view:gitool.changesView',
+  'view:gitool.commitView',
+  'content:gitool-empty',
+  'provider:history',
+  'subscription:repository:2',
+  'provider:changes',
+  'subscription:repository:1',
+  'provider:commit',
+  'service:repository',
+  'subscription:gitClose',
+  'subscription:gitOpen',
+] as const;
+
 beforeEach(() => {
   deactivate();
   mocks.state.activeCommands.clear();
   mocks.state.activeViews.clear();
   mocks.state.activeContentProviders.clear();
+  mocks.state.lifecycleTrace.length = 0;
   mocks.state.commandDisposals.length = 0;
   mocks.state.viewDisposals.length = 0;
   mocks.state.registeredWebviews.length = 0;
@@ -349,9 +492,32 @@ beforeEach(() => {
   mocks.state.gitOpenListeners.clear();
   mocks.state.gitCloseListeners.clear();
   mocks.state.commandRegistrationError = undefined;
+  mocks.state.treeRegistrationErrorAtId = undefined;
+  mocks.state.repositoryOnDidChangeErrorAtCall = undefined;
+  mocks.state.eventEmitterConstructionErrorAt = undefined;
+  mocks.state.eventEmitterConstructionCount = 0;
+  mocks.state.disposalErrorAtLabel = undefined;
   mocks.state.trustRegistrationError = undefined;
   mocks.state.gitExtension = undefined;
   vi.clearAllMocks();
+  vi.spyOn(ChangeTreeProvider.prototype, 'dispose').mockImplementation(
+    function tracedChangeProviderDispose(this: ChangeTreeProvider): void {
+      mocks.state.lifecycleTrace.push('provider:changes');
+      disposeChangeProvider.call(this);
+    },
+  );
+  vi.spyOn(HistoryTreeProvider.prototype, 'dispose').mockImplementation(
+    function tracedHistoryProviderDispose(this: HistoryTreeProvider): void {
+      mocks.state.lifecycleTrace.push('provider:history');
+      disposeHistoryProvider.call(this);
+    },
+  );
+  vi.spyOn(GitoolViewProvider.prototype, 'dispose').mockImplementation(
+    function tracedCommitProviderDispose(this: GitoolViewProvider): void {
+      mocks.state.lifecycleTrace.push('provider:commit');
+      disposeCommitProvider.call(this);
+    },
+  );
 });
 
 describe('扩展激活', () => {
@@ -459,6 +625,98 @@ describe('扩展激活', () => {
     expect(mocks.state.activeCommands.size).toBe(0);
     expect(mocks.state.activeContentProviders.size).toBe(0);
     expect(changesTree.checkboxListeners.size).toBe(0);
+    expect(mocks.state.lifecycleTrace).toEqual(
+      readyLifecycleDisposalOrder,
+    );
+  });
+
+  it('Provider 初始化失败时按统一生命周期栈清理已创建资源', async () => {
+    mocks.state.gitExtension = gitExtension(() => ({
+      getAPI: () => gitApi(),
+    }));
+    mocks.state.eventEmitterConstructionErrorAt = 2;
+
+    const runtime = await activate(context());
+
+    expect(runtime.mode).toBe('initialization-failed');
+    expect(mocks.state.lifecycleTrace).toEqual([
+      'provider:changes',
+      'subscription:repository:1',
+      'provider:commit',
+      'service:repository',
+      'subscription:gitClose',
+      'subscription:gitOpen',
+    ]);
+  });
+
+  it('TreeView 注册失败时按统一生命周期栈清理已创建资源', async () => {
+    mocks.state.gitExtension = gitExtension(() => ({
+      getAPI: () => gitApi(),
+    }));
+    mocks.state.treeRegistrationErrorAtId = 'gitool.historyView';
+
+    const runtime = await activate(context());
+
+    expect(runtime.mode).toBe('initialization-failed');
+    expect(mocks.state.lifecycleTrace).toEqual([
+      'checkbox:gitool.changesView',
+      'view:gitool.changesView',
+      'view:gitool.commitView',
+      'content:gitool-empty',
+      'provider:history',
+      'subscription:repository:2',
+      'provider:changes',
+      'subscription:repository:1',
+      'provider:commit',
+      'service:repository',
+      'subscription:gitClose',
+      'subscription:gitOpen',
+    ]);
+  });
+
+  it('同步订阅注册失败时按统一生命周期栈清理已创建资源', async () => {
+    mocks.state.gitExtension = gitExtension(() => ({
+      getAPI: () => gitApi(),
+    }));
+    mocks.state.repositoryOnDidChangeErrorAtCall = 3;
+
+    const runtime = await activate(context());
+
+    expect(runtime.mode).toBe('initialization-failed');
+    expect(mocks.state.lifecycleTrace).toEqual([
+      'view:gitool.historyView',
+      'checkbox:gitool.changesView',
+      'view:gitool.changesView',
+      'view:gitool.commitView',
+      'content:gitool-empty',
+      'provider:history',
+      'subscription:repository:2',
+      'provider:changes',
+      'subscription:repository:1',
+      'provider:commit',
+      'service:repository',
+      'subscription:gitClose',
+      'subscription:gitOpen',
+    ]);
+  });
+
+  it('嵌套 Disposable 释放失败时继续按统一生命周期栈清理', async () => {
+    mocks.state.gitExtension = gitExtension(() => ({
+      getAPI: () => gitApi(),
+    }));
+    const runtime = await activate(context());
+    mocks.state.disposalErrorAtLabel = 'view:gitool.changesView';
+
+    expect(() => {
+      runtime.dispose();
+    }).toThrow(AggregateError);
+
+    expect(mocks.state.lifecycleTrace).toEqual(
+      readyLifecycleDisposalOrder,
+    );
+    expect(mocks.state.activeViews.size).toBe(0);
+    expect(mocks.state.activeCommands.size).toBe(0);
+    expect(mocks.state.activeContentProviders.size).toBe(0);
   });
 
   it.each([

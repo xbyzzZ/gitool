@@ -129,16 +129,24 @@ export class RepositoryRegistry implements vscode.Disposable {
       for (const repository of gitApi.repositories) {
         this.addRepository(repository);
       }
-      this.lifecycleListeners.push(
-        gitApi.onDidOpenRepository((repository) => {
-          this.addRepository(repository);
-        }),
-        gitApi.onDidCloseRepository((repository) => {
-          this.removeRepository(repository);
-        }),
-      );
+      this.lifecycleListeners.push(gitApi.onDidOpenRepository((repository) => {
+        this.addRepository(repository);
+      }));
+      this.lifecycleListeners.push(gitApi.onDidCloseRepository((repository) => {
+        this.removeRepository(repository);
+      }));
     } catch (error) {
-      this.dispose();
+      try {
+        this.dispose();
+      } catch (cleanupError) {
+        const cleanupErrors: unknown[] = cleanupError instanceof AggregateError
+          ? cleanupError.errors as unknown[]
+          : [cleanupError];
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          '初始化仓库注册表失败，且资源清理失败',
+        );
+      }
       throw error;
     }
   }
@@ -327,15 +335,28 @@ export class RepositoryRegistry implements vscode.Disposable {
       return;
     }
     this.disposed = true;
-    for (const listener of this.lifecycleListeners) {
-      listener.dispose();
+    const errors: unknown[] = [];
+    for (const listener of [...this.lifecycleListeners].reverse()) {
+      try {
+        listener.dispose();
+      } catch (error) {
+        errors.push(error);
+      }
     }
-    for (const state of this.repositories.values()) {
-      state.changeListener.dispose();
+    for (const state of [...this.repositories.values()].reverse()) {
+      try {
+        state.changeListener.dispose();
+      } catch (error) {
+        errors.push(error);
+      }
     }
+    this.lifecycleListeners.length = 0;
     this.repositories.clear();
     this.currentRepositoryId = undefined;
     this.changeListeners.clear();
+    if (errors.length > 0) {
+      throw new AggregateError(errors, '释放仓库注册表资源失败');
+    }
   }
 
   private addRepository(repository: BuiltinRepository): void {

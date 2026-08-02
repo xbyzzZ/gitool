@@ -44,6 +44,7 @@ function model(overrides: Partial<RepositoryViewModel> = {}): RepositoryViewMode
 
 interface ServiceDouble {
   readonly service: RepositoryService;
+  readonly onDidChange: ReturnType<typeof vi.fn>;
   readonly getViewModel: ReturnType<typeof vi.fn>;
   readonly reportFailure: ReturnType<typeof vi.fn>;
   readonly selectRepository: ReturnType<typeof vi.fn>;
@@ -69,24 +70,53 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
   return { ...service, service: service as unknown as RepositoryService };
 }
 
-function createHarness(): { readonly view: vscode.WebviewView; readonly receive: (message: unknown) => void; readonly postMessage: ReturnType<typeof vi.fn> } {
+interface HarnessOptions {
+  readonly receiveRegistrationError?: Error;
+  readonly viewRegistrationError?: Error;
+  readonly onReceiveDispose?: () => void;
+  readonly onViewDispose?: () => void;
+}
+
+function createHarness(options: HarnessOptions = {}): {
+  readonly view: vscode.WebviewView;
+  readonly receive: (message: unknown) => void;
+  readonly receiveListenerCount: () => number;
+  readonly postMessage: ReturnType<typeof vi.fn>;
+} {
   let listener: ((message: unknown) => unknown) | undefined;
   const postMessage = vi.fn().mockResolvedValue(true);
   const webview = {
     cspSource: 'vscode-webview://gitool', html: '', options: {},
     asWebviewUri: (value: vscode.Uri) => value,
     onDidReceiveMessage: (value: (message: unknown) => unknown) => {
+      if (options.receiveRegistrationError !== undefined) {
+        throw options.receiveRegistrationError;
+      }
       listener = value;
-      return { dispose: vi.fn() };
+      return {
+        dispose: () => {
+          listener = undefined;
+          options.onReceiveDispose?.();
+        },
+      };
     },
     postMessage,
   } as unknown as vscode.Webview;
   return {
-    view: { webview, onDidDispose: () => ({ dispose: vi.fn() }) } as unknown as vscode.WebviewView,
+    view: {
+      webview,
+      onDidDispose: () => {
+        if (options.viewRegistrationError !== undefined) {
+          throw options.viewRegistrationError;
+        }
+        return { dispose: () => options.onViewDispose?.() };
+      },
+    } as unknown as vscode.WebviewView,
     receive: (message) => {
       if (listener === undefined) throw new Error('Webview 消息监听器尚未注册');
       listener(message);
     },
+    receiveListenerCount: () => listener === undefined ? 0 : 1,
     postMessage,
   };
 }
@@ -123,6 +153,74 @@ describe('GitoolViewProvider', () => {
     const harness = createHarness();
     provider.resolveWebviewView(harness.view);
     expect(harness.view.badge).toEqual({ value: 4, tooltip: 'Gitool：4 个变更文件' });
+  });
+
+  it('第二个订阅注册失败时释放已注册的消息订阅', () => {
+    const trace: string[] = [];
+    const created = createServiceDouble();
+    created.onDidChange.mockImplementation(() => {
+      throw new Error('仓库状态订阅失败');
+    });
+    const provider = createProvider(created.service);
+    const harness = createHarness({
+      onReceiveDispose: () => trace.push('消息订阅'),
+    });
+
+    expect(() => {
+      provider.resolveWebviewView(harness.view);
+    }).toThrow(
+      '仓库状态订阅失败',
+    );
+    expect(trace).toEqual(['消息订阅']);
+    expect(harness.receiveListenerCount()).toBe(0);
+  });
+
+  it('第三个订阅注册失败时逆序释放前两个订阅', () => {
+    const trace: string[] = [];
+    const created = createServiceDouble();
+    created.onDidChange.mockReturnValue({
+      dispose: () => trace.push('仓库状态订阅'),
+    });
+    const provider = createProvider(created.service);
+    const harness = createHarness({
+      viewRegistrationError: new Error('视图释放订阅失败'),
+      onReceiveDispose: () => trace.push('消息订阅'),
+    });
+
+    expect(() => {
+      provider.resolveWebviewView(harness.view);
+    }).toThrow(
+      '视图释放订阅失败',
+    );
+    expect(trace).toEqual(['仓库状态订阅', '消息订阅']);
+    expect(harness.receiveListenerCount()).toBe(0);
+  });
+
+  it('订阅释放异常时继续逆序清理其余订阅并聚合错误', () => {
+    const trace: string[] = [];
+    const created = createServiceDouble();
+    created.onDidChange.mockReturnValue({
+      dispose: () => {
+        trace.push('仓库状态订阅');
+        throw new Error('仓库状态订阅释放失败');
+      },
+    });
+    const provider = createProvider(created.service);
+    const harness = createHarness({
+      onReceiveDispose: () => trace.push('消息订阅'),
+      onViewDispose: () => trace.push('视图释放订阅'),
+    });
+    provider.resolveWebviewView(harness.view);
+
+    expect(() => {
+      provider.dispose();
+    }).toThrow(AggregateError);
+    expect(trace).toEqual([
+      '视图释放订阅',
+      '仓库状态订阅',
+      '消息订阅',
+    ]);
+    expect(harness.receiveListenerCount()).toBe(0);
   });
 
   it('提交使用消息绑定的最终文案而不是旧模型文案', async () => {

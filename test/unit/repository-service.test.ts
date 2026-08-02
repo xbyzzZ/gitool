@@ -14,6 +14,12 @@ import {
   RepositoryService,
   type RepositoryServiceDependencies,
 } from '../../src/services/repository-service.js';
+import { RepositoryRegistry } from '../../src/services/repository-registry.js';
+
+interface TestEventOptions {
+  readonly onRegister?: () => void;
+  readonly onDispose?: () => void;
+}
 
 interface TestEvent<T> {
   readonly event: vscode.Event<T>;
@@ -21,14 +27,16 @@ interface TestEvent<T> {
   readonly listenerCount: () => number;
 }
 
-function createEvent<T>(): TestEvent<T> {
+function createEvent<T>(options: TestEventOptions = {}): TestEvent<T> {
   const listeners = new Set<(value: T) => unknown>();
   return {
     event: (listener) => {
+      options.onRegister?.();
       listeners.add(listener);
       return {
         dispose(): void {
           listeners.delete(listener);
+          options.onDispose?.();
         },
       };
     },
@@ -46,7 +54,7 @@ function uri(fsPath: string): vscode.Uri {
 }
 
 class TestRepository implements BuiltinRepository {
-  readonly changed = createEvent<undefined>();
+  readonly changed: TestEvent<undefined>;
   readonly rootUri: vscode.Uri;
   readonly state: BuiltinRepository['state'];
   statusCalls = 0;
@@ -60,7 +68,9 @@ class TestRepository implements BuiltinRepository {
       readonly untracked?: readonly BuiltinChange[];
       readonly merge?: readonly BuiltinChange[];
     } = {},
+    changedOptions: TestEventOptions = {},
   ) {
+    this.changed = createEvent<undefined>(changedOptions);
     this.rootUri = uri(rootPath);
     this.state = {
       HEAD: { name: 'main' },
@@ -133,12 +143,23 @@ class TestRepository implements BuiltinRepository {
 
 class TestGitApi implements BuiltinGitApi {
   readonly git = { path: '/usr/bin/git' };
-  readonly opened = createEvent<BuiltinRepository>();
-  readonly closed = createEvent<BuiltinRepository>();
-  readonly onDidOpenRepository = this.opened.event;
-  readonly onDidCloseRepository = this.closed.event;
+  readonly opened: TestEvent<BuiltinRepository>;
+  readonly closed: TestEvent<BuiltinRepository>;
+  readonly onDidOpenRepository: vscode.Event<BuiltinRepository>;
+  readonly onDidCloseRepository: vscode.Event<BuiltinRepository>;
 
-  constructor(readonly repositories: readonly BuiltinRepository[]) {}
+  constructor(
+    readonly repositories: readonly BuiltinRepository[],
+    options: {
+      readonly opened?: TestEventOptions;
+      readonly closed?: TestEventOptions;
+    } = {},
+  ) {
+    this.opened = createEvent<BuiltinRepository>(options.opened);
+    this.closed = createEvent<BuiltinRepository>(options.closed);
+    this.onDidOpenRepository = this.opened.event;
+    this.onDidCloseRepository = this.closed.event;
+  }
 
   toGitUri(value: vscode.Uri): vscode.Uri {
     return value;
@@ -1027,6 +1048,49 @@ describe('RepositoryService', () => {
 
     service.dispose();
     expect(repositoryB.changed.listenerCount()).toBe(0);
+    expect(gitApi.opened.listenerCount()).toBe(0);
+    expect(gitApi.closed.listenerCount()).toBe(0);
+  });
+
+  it('关闭仓库生命周期监听注册失败时释放已注册的打开监听', () => {
+    const trace: string[] = [];
+    const gitApi = new TestGitApi([], {
+      opened: { onDispose: () => trace.push('打开监听') },
+      closed: {
+        onRegister: () => {
+          throw new Error('关闭监听注册失败');
+        },
+      },
+    });
+
+    expect(() => new RepositoryRegistry(gitApi)).toThrow(
+      '关闭监听注册失败',
+    );
+    expect(gitApi.opened.listenerCount()).toBe(0);
+    expect(trace).toEqual(['打开监听']);
+  });
+
+  it('释放异常时继续按创建顺序的相反顺序清理全部监听', () => {
+    const trace: string[] = [];
+    const repository = new TestRepository('/workspace/repo-a', {}, {
+      onDispose: () => trace.push('仓库监听'),
+    });
+    const gitApi = new TestGitApi([repository], {
+      opened: { onDispose: () => trace.push('打开监听') },
+      closed: {
+        onDispose: () => {
+          trace.push('关闭监听');
+          throw new Error('关闭监听释放失败');
+        },
+      },
+    });
+    const registry = new RepositoryRegistry(gitApi);
+
+    expect(() => {
+      registry.dispose();
+    }).toThrow(AggregateError);
+    expect(trace).toEqual(['关闭监听', '打开监听', '仓库监听']);
+    expect(repository.changed.listenerCount()).toBe(0);
     expect(gitApi.opened.listenerCount()).toBe(0);
     expect(gitApi.closed.listenerCount()).toBe(0);
   });

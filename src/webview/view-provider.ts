@@ -67,10 +67,26 @@ function selectedRequest(
   };
 }
 
+function disposeReverse(
+  disposables: vscode.Disposable[],
+  message: string,
+): void {
+  const errors: unknown[] = [];
+  for (const disposable of disposables.splice(0).reverse()) {
+    try {
+      disposable.dispose();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, message);
+  }
+}
+
 export class GitoolViewProvider implements vscode.WebviewViewProvider {
   static readonly viewType = 'gitool.commitView';
 
-  private readonly disposables: vscode.Disposable[] = [];
   private viewDisposables: vscode.Disposable[] = [];
   private webview: vscode.Webview | undefined;
   private view: vscode.WebviewView | undefined;
@@ -83,31 +99,49 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     this.disposeView();
     this.view = webviewView;
     this.webview = webviewView.webview;
-    this.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.dependencies.extensionUri, 'media'),
-      ],
-    };
-    this.webview.html = renderWebviewHtml(
-      this.webview,
-      this.dependencies.extensionUri,
-      randomBytes(16).toString('hex'),
-    );
-    this.updateBadge();
+    const viewDisposables: vscode.Disposable[] = [];
+    try {
+      this.webview.options = {
+        enableScripts: true,
+        localResourceRoots: [
+          vscode.Uri.joinPath(this.dependencies.extensionUri, 'media'),
+        ],
+      };
+      this.webview.html = renderWebviewHtml(
+        this.webview,
+        this.dependencies.extensionUri,
+        randomBytes(16).toString('hex'),
+      );
+      this.updateBadge();
 
-    this.viewDisposables = [
-      this.webview.onDidReceiveMessage((input: unknown) => {
+      viewDisposables.push(this.webview.onDidReceiveMessage((input: unknown) => {
         void this.handleInput(input);
-      }),
-      this.dependencies.repositoryService.onDidChange(() => {
+      }));
+      viewDisposables.push(
+        this.dependencies.repositoryService.onDidChange(() => {
         this.updateBadge();
         void this.postState();
-      }),
-      webviewView.onDidDispose(() => {
+        }),
+      );
+      viewDisposables.push(webviewView.onDidDispose(() => {
         this.disposeView();
-      }),
-    ];
+      }));
+      this.viewDisposables = viewDisposables;
+    } catch (error) {
+      this.clearViewState();
+      try {
+        disposeReverse(viewDisposables, '清理 Gitool 提交视图订阅失败');
+      } catch (cleanupError) {
+        const cleanupErrors: unknown[] = cleanupError instanceof AggregateError
+          ? cleanupError.errors as unknown[]
+          : [cleanupError];
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          '初始化 Gitool 提交视图失败，且资源清理失败',
+        );
+      }
+      throw error;
+    }
   }
 
   dispose(): void {
@@ -116,12 +150,17 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     }
     this.disposed = true;
     this.disposeView();
-    for (const disposable of this.disposables.splice(0)) {
-      disposable.dispose();
-    }
   }
 
   private disposeView(): void {
+    this.clearViewState();
+    disposeReverse(
+      this.viewDisposables,
+      '释放 Gitool 提交视图订阅失败',
+    );
+  }
+
+  private clearViewState(): void {
     this.aiController?.abort();
     this.aiController = undefined;
     if (this.view !== undefined) {
@@ -129,9 +168,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     }
     this.view = undefined;
     this.webview = undefined;
-    for (const disposable of this.viewDisposables.splice(0)) {
-      disposable.dispose();
-    }
   }
 
   private async handleInput(input: unknown): Promise<void> {
