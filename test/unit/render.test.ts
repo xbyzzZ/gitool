@@ -95,6 +95,34 @@ describe('renderWebviewHtml', () => {
     expect(historyStart).toBeGreaterThan(changesStart);
     expect(pullButton).toBeGreaterThan(historyStart);
     expect(pushButton).toBeGreaterThan(historyStart);
+    expect(pullButton).toBeLessThan(html.indexOf('</header>', historyStart));
+    expect(pushButton).toBeLessThan(html.indexOf('</header>', historyStart));
+  });
+
+  it('工具栏和舍弃操作使用可访问的矢量图标而不是字符或文字', () => {
+    const html = renderWebviewHtml(
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
+    );
+    const iconButtons = [
+      'edit-remote-button',
+      'fetch-history-button',
+      'refresh-button',
+      'trash-button',
+      'pull-button',
+      'push-all-button',
+      'refresh-history-button',
+    ];
+
+    for (const id of iconButtons) {
+      const start = html.indexOf(`id="${id}"`);
+      const end = html.indexOf('</button>', start);
+      expect(start, `缺少按钮 ${id}`).toBeGreaterThan(-1);
+      expect(html.slice(start, end)).toContain('<svg');
+    }
+    expect(html).not.toContain('>舍弃</button>');
+    expect(html).not.toContain('>⋯</button>');
   });
 
   it('只生成固定壳，不包含动态仓库数据或敏感文本', () => {

@@ -75,8 +75,8 @@ input:disabled {
 }
 
 .history-panel {
-  min-height: 100px;
-  flex: 1 1 auto;
+  min-height: 66px;
+  flex: none;
 }
 
 .workbench-pane.collapsed {
@@ -402,6 +402,26 @@ input:disabled {
   border-color: transparent;
   color: var(--vscode-icon-foreground, var(--vscode-foreground));
   background: transparent;
+}
+
+.button-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.collapse-button .button-icon {
+  transition: transform 80ms ease-out;
+}
+
+.collapse-button.is-collapsed .button-icon {
+  transform: rotate(180deg);
 }
 
 .icon-button:hover:not(:disabled),

@@ -19,6 +19,7 @@ import {
   type WorkbenchLayoutState,
 } from './layout-state.js';
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
+import { beginScopedRequest } from './request-state.js';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
@@ -398,7 +399,7 @@ function applyLayout(): void {
     panes[pane].style.height = collapsed
       ? '34px'
       : `${String(activeLayout.heights[pane])}px`;
-    collapseButtons[pane].textContent = collapsed ? '⌄' : '⌃';
+    collapseButtons[pane].classList.toggle('is-collapsed', collapsed);
     collapseButtons[pane].setAttribute(
       'aria-label',
       `${collapsed ? '展开' : '折叠'}${pane === 'commit' ? '提交信息' : pane === 'changes' ? '当前变更' : '提交历史'}`,
@@ -707,13 +708,39 @@ function beginWrite(
     return undefined;
   }
   writeRequestSequence += 1;
-  pendingWriteRequestId = `write-${String(writeRequestSequence)}`;
-  render(model, false);
-  return {
+  const request = beginScopedRequest({
     repositoryId: model.currentRepositoryId,
     version: model.version,
-    requestId: pendingWriteRequestId,
-  };
+    sequence: writeRequestSequence,
+    mode: 'write',
+  });
+  pendingWriteRequestId = request.pendingRequestId;
+  render(model, false);
+  return request.scope;
+}
+
+function beginHostPrompt(
+  model: RepositoryViewModel,
+): {
+  readonly repositoryId: string;
+  readonly version: number;
+  readonly requestId: string;
+} | undefined {
+  if (
+    pendingWriteRequestId !== undefined
+    || pendingRepositoryId !== undefined
+    || model.operation.kind === 'running'
+    || model.currentRepositoryId === undefined
+  ) {
+    return undefined;
+  }
+  writeRequestSequence += 1;
+  return beginScopedRequest({
+    repositoryId: model.currentRepositoryId,
+    version: model.version,
+    sequence: writeRequestSequence,
+    mode: 'host-prompt',
+  }).scope;
 }
 
 controls.repositorySelect.addEventListener('change', () => {
@@ -775,7 +802,7 @@ controls.pushAllButton.addEventListener('click', () => {
 });
 controls.editRemoteButton.addEventListener('click', () => {
   withModel((model) => {
-    const scope = beginWrite(model);
+    const scope = beginHostPrompt(model);
     if (scope !== undefined) {
       post({ type: 'editRemoteUrl', ...scope });
     }

@@ -12,16 +12,27 @@ describe('工作台布局状态', () => {
     expect(normalizeLayoutState({
       heights: { commit: Number.NaN, changes: -1, history: 'bad' },
       collapsed: { commit: 'yes', changes: false, history: false },
-    }, 720)).toEqual(defaultLayoutState);
+    }, 720)).toEqual({
+      heights: { commit: 150, changes: 240, history: 330 },
+      collapsed: { commit: false, changes: false, history: false },
+    });
   });
 
   it('把三个展开区域限制在各自最小高度', () => {
     expect(normalizeLayoutState({
       heights: { commit: 20, changes: 20, history: 20 },
       collapsed: { commit: false, changes: false, history: false },
-    }, 600)).toEqual({
-      heights: { commit: 150, changes: 96, history: 100 },
+    }, 312)).toEqual({
+      heights: { commit: 150, changes: 96, history: 66 },
       collapsed: { commit: false, changes: false, history: false },
+    });
+  });
+
+  it('把视口剩余高度计入历史区以便分隔线可以继续向下拖动', () => {
+    expect(normalizeLayoutState(defaultLayoutState, 1_000).heights).toEqual({
+      commit: 150,
+      changes: 240,
+      history: 610,
     });
   });
 
@@ -53,11 +64,11 @@ describe('工作台布局状态', () => {
     ).heights).toEqual({
       commit: defaultLayoutState.heights.commit + 40,
       changes: defaultLayoutState.heights.changes - 40,
-      history: defaultLayoutState.heights.history,
+      history: 330,
     });
   });
 
-  it('拖动第二条分隔线时不把历史区压到最小高度以下', () => {
+  it('拖动第二条分隔线时允许历史区缩到单行记录高度', () => {
     const result = resizeLayout(
       defaultLayoutState,
       'changes-history',
@@ -65,11 +76,11 @@ describe('工作台布局状态', () => {
       720,
     );
 
-    expect(result.heights.history).toBe(100);
+    expect(result.heights.history).toBe(66);
     expect(result.heights.changes).toBe(
       defaultLayoutState.heights.changes
-      + defaultLayoutState.heights.history
-      - 100,
+      + 330
+      - 66,
     );
   });
 
@@ -98,6 +109,9 @@ describe('工作台布局状态', () => {
       720,
     ), 'history');
 
-    expect(resetLayout(changed, 720)).toEqual(defaultLayoutState);
+    expect(resetLayout(changed, 720)).toEqual({
+      heights: { commit: 150, changes: 240, history: 330 },
+      collapsed: { commit: false, changes: false, history: false },
+    });
   });
 });

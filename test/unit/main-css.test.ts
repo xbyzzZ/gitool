@@ -41,4 +41,9 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.commit-file-status')).toMatch(/width:\s*18px/u);
     expect(readRule('.commit-file-status')).toMatch(/grid-column:\s*5/u);
   });
+
+  it('历史区不额外吞掉布局状态之外的剩余高度', () => {
+    expect(readRule('.history-panel')).toMatch(/min-height:\s*66px/u);
+    expect(readRule('.history-panel')).toMatch(/flex:\s*none/u);
+  });
 });

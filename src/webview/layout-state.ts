@@ -10,8 +10,9 @@ const paneNames: readonly PaneName[] = ['commit', 'changes', 'history'];
 const minimumHeights: Readonly<Record<PaneName, number>> = {
   commit: 150,
   changes: 96,
-  history: 100,
+  history: 66,
 };
+const collapsedHeight = 34;
 
 export const defaultLayoutState: WorkbenchLayoutState = {
   heights: {
@@ -52,24 +53,36 @@ function parseLayoutState(input: unknown): WorkbenchLayoutState | undefined {
 
 function fitToViewport(
   heights: Record<PaneName, number>,
+  collapsed: Readonly<Record<PaneName, boolean>>,
   viewportHeight: number,
 ): void {
-  const minimumTotal = paneNames.reduce(
-    (total, pane) => total + minimumHeights[pane],
+  const displayedHeight = (pane: PaneName): number => collapsed[pane]
+    ? collapsedHeight
+    : heights[pane];
+  const displayedTotal = (): number => paneNames.reduce(
+    (total, pane) => total + displayedHeight(pane),
     0,
   );
-  let overflow = paneNames.reduce(
-    (total, pane) => total + heights[pane],
-    0,
-  ) - Math.max(minimumTotal, viewportHeight);
+  let overflow = displayedTotal() - viewportHeight;
   for (const pane of ['history', 'changes', 'commit'] as const) {
     if (overflow <= 0) {
-      return;
+      break;
+    }
+    if (collapsed[pane]) {
+      continue;
     }
     const available = heights[pane] - minimumHeights[pane];
     const reduction = Math.min(available, overflow);
     heights[pane] -= reduction;
     overflow -= reduction;
+  }
+  const remaining = viewportHeight - displayedTotal();
+  if (remaining <= 0) {
+    return;
+  }
+  const fillPane = [...paneNames].reverse().find((pane) => !collapsed[pane]);
+  if (fillPane !== undefined) {
+    heights[fillPane] += remaining;
   }
 }
 
@@ -77,16 +90,15 @@ export function normalizeLayoutState(
   input: unknown,
   viewportHeight: number,
 ): WorkbenchLayoutState {
-  const parsed = parseLayoutState(input);
-  if (parsed === undefined || !Number.isFinite(viewportHeight)
-    || viewportHeight <= 0) {
+  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
     return defaultLayoutState;
   }
+  const parsed = parseLayoutState(input) ?? defaultLayoutState;
   const heights = { ...parsed.heights };
   for (const pane of paneNames) {
     heights[pane] = Math.max(minimumHeights[pane], heights[pane]);
   }
-  fitToViewport(heights, viewportHeight);
+  fitToViewport(heights, parsed.collapsed, viewportHeight);
   return {
     heights,
     collapsed: { ...parsed.collapsed },
