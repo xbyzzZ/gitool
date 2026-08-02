@@ -23,28 +23,10 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.workbench-pane')).not.toMatch(/(?:^|;)\s*border\s*:/u);
   });
 
-  it('历史展开使用连续轨道且文件区不形成独立卡片', () => {
-    expect(readRule('.commit-row')).toMatch(/min-height:\s*32px/u);
+  it('不再保留已迁移到原生 TreeView 的历史列表样式', () => {
     expect(stylesheet).not.toMatch(
-      /\.commit-files\s*\{[^}]*(?:margin-left|border-left|background)/su,
+      /\.(?:history-panel|commit-row|commit-files|commit-file)(?:\b|[-:])/u,
     );
-    expect(readRule('.commit-file')).toMatch(/min-height:\s*28px/u);
-    expect(readRule('.commit-file')).toMatch(
-      /grid-template-columns:\s*28px 19px minmax\(60px, auto\) minmax\(0, 1fr\) 18px/u,
-    );
-    expect(readRule('.commit-file-graph::before')).toMatch(/width:\s*2px/u);
-    expect(readRule('.commit-file-directory')).toMatch(/min-width:\s*0/u);
-    expect(readRule('.commit-file-directory')).toMatch(/overflow:\s*hidden/u);
-    expect(readRule('.commit-file-directory')).toMatch(
-      /text-overflow:\s*ellipsis/u,
-    );
-    expect(readRule('.commit-file-status')).toMatch(/width:\s*18px/u);
-    expect(readRule('.commit-file-status')).toMatch(/grid-column:\s*5/u);
-  });
-
-  it('历史区不额外吞掉布局状态之外的剩余高度', () => {
-    expect(readRule('.history-panel')).toMatch(/min-height:\s*66px/u);
-    expect(readRule('.history-panel')).toMatch(/flex:\s*none/u);
   });
 
   it('AI 生成状态由按钮自身显示加载动画', () => {

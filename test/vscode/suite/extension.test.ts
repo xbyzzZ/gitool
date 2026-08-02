@@ -86,7 +86,7 @@ async function git(
 }
 
 suite('Gitool 扩展', () => {
-  test('可以激活并注册刷新命令', async () => {
+  test('可以激活并注册原生视图命令', async () => {
     const extension = vscode.extensions.getExtension(
       'xbyzzz.gitool-file-commit',
     );
@@ -98,6 +98,18 @@ suite('Gitool 扩展', () => {
     assert.ok(
       commands.includes('gitool.refresh'),
       '激活后应注册刷新命令',
+    );
+    assert.ok(
+      commands.includes('gitool.openHistoryChange'),
+      '激活后应注册历史文件差异命令',
+    );
+    assert.ok(
+      commands.includes('gitool.pull'),
+      '激活后应注册历史区拉取命令',
+    );
+    assert.ok(
+      commands.includes('gitool.pushAll'),
+      '激活后应注册历史区推送命令',
     );
   });
 
