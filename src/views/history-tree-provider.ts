@@ -172,7 +172,9 @@ export class HistoryTreeProvider
     }).then((details) => details.files);
     this.detailsCache.set(key, loading);
     return loading.catch((error: unknown) => {
-      this.detailsCache.delete(key);
+      if (this.detailsCache.get(key) === loading) {
+        this.detailsCache.delete(key);
+      }
       throw error;
     });
   }

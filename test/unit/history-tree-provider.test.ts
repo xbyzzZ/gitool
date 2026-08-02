@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CommitGraphNode } from '../../src/domain/history-model.js';
+import type {
+  CommitDetails,
+  CommitGraphNode,
+} from '../../src/domain/history-model.js';
 import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import type { RepositoryService } from '../../src/services/repository-service.js';
 
@@ -143,6 +146,23 @@ function historyCommitNode(provider: HistoryTreeProvider): HistoryCommitNode {
   return node;
 }
 
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+  readonly reject: (reason: unknown) => void;
+} {
+  let resolve: ((value: T) => void) | undefined;
+  let reject: ((reason: unknown) => void) | undefined;
+  const promise = new Promise<T>((fulfill, fail) => {
+    resolve = fulfill;
+    reject = fail;
+  });
+  if (resolve === undefined || reject === undefined) {
+    throw new Error('延迟 Promise 初始化失败');
+  }
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-08-02T03:00:00.000Z'));
@@ -243,5 +263,54 @@ describe('提交历史树', () => {
     expect(created.loadCommitDetails).toHaveBeenNthCalledWith(3, {
       repositoryId: '/workspace/repo', version: 7, hash: commit.hash,
     });
+  });
+
+  it('旧仓库请求失败不会删除切回后的同键详情缓存', async () => {
+    const created = createService();
+    const oldRequest = deferred<CommitDetails>();
+    const otherRepositoryRequest = deferred<CommitDetails>();
+    const currentRequest = deferred<CommitDetails>();
+    const emptyDetails = { hash: commit.hash, files: [] };
+    created.loadCommitDetails
+      .mockReturnValueOnce(oldRequest.promise)
+      .mockReturnValueOnce(otherRepositoryRequest.promise)
+      .mockReturnValueOnce(currentRequest.promise)
+      .mockResolvedValue(emptyDetails);
+    const provider = new HistoryTreeProvider({ service: created.service });
+    const oldNode = historyCommitNode(provider);
+    const oldChildren = provider.getChildren(oldNode);
+
+    created.setViewModel(viewModel({ repositoryId: '/workspace/other' }));
+    created.fireChange();
+    const otherChildren = provider.getChildren(historyCommitNode(provider));
+
+    created.setViewModel(viewModel());
+    created.fireChange();
+    const currentNode = historyCommitNode(provider);
+    const currentChildren = provider.getChildren(currentNode);
+
+    oldRequest.reject(new Error('旧请求失败'));
+    await expect(oldChildren).rejects.toThrow('旧请求失败');
+
+    const repeatedChildren = provider.getChildren(currentNode);
+    expect(created.loadCommitDetails).toHaveBeenCalledTimes(3);
+
+    otherRepositoryRequest.resolve(emptyDetails);
+    currentRequest.resolve(emptyDetails);
+    await Promise.all([otherChildren, currentChildren, repeatedChildren]);
+  });
+
+  it('普通详情请求失败后允许重新加载', async () => {
+    const created = createService();
+    created.loadCommitDetails
+      .mockRejectedValueOnce(new Error('读取失败'))
+      .mockResolvedValueOnce({ hash: commit.hash, files: [] });
+    const provider = new HistoryTreeProvider({ service: created.service });
+    const node = historyCommitNode(provider);
+
+    await expect(provider.getChildren(node)).rejects.toThrow('读取失败');
+    await expect(provider.getChildren(node)).resolves.toEqual([]);
+
+    expect(created.loadCommitDetails).toHaveBeenCalledTimes(2);
   });
 });
