@@ -24,6 +24,21 @@ export interface HistoryTreeProviderOptions {
   readonly service: RepositoryService;
 }
 
+const historyLaneColors = [
+  'charts.blue',
+  'charts.green',
+  'charts.orange',
+  'charts.purple',
+  'charts.red',
+  'charts.yellow',
+] as const;
+
+function historyLaneColor(lane: number): vscode.ThemeColor {
+  const color = historyLaneColors[lane % historyLaneColors.length]
+    ?? historyLaneColors[0];
+  return new vscode.ThemeColor(color);
+}
+
 function relativeTime(authoredAt: string, now = new Date()): string {
   const elapsed = Math.max(0, now.getTime() - Date.parse(authoredAt));
   const minutes = Math.floor(elapsed / 60_000);
@@ -90,7 +105,10 @@ export class HistoryTreeProvider
       ...(refs.length === 0 ? [] : [refs]),
     ].join(' · ');
     item.tooltip = `${node.commit.subject}\n${node.commit.author} · ${node.commit.authoredAt} · ${node.commit.hash}`;
-    item.iconPath = new vscode.ThemeIcon('git-commit');
+    item.iconPath = new vscode.ThemeIcon(
+      'git-commit',
+      historyLaneColor(node.commit.lane),
+    );
     return item;
   }
 

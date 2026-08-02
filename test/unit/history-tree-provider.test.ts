@@ -8,10 +8,17 @@ import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import type { RepositoryService } from '../../src/services/repository-service.js';
 
 const vscodeMocks = vi.hoisted(() => {
+  class ThemeColor {
+    constructor(readonly id: string) {}
+  }
+
   class ThemeIcon {
     static readonly File = new ThemeIcon('file');
 
-    constructor(readonly id: string) {}
+    constructor(
+      readonly id: string,
+      readonly color?: ThemeColor,
+    ) {}
   }
 
   return {
@@ -29,6 +36,7 @@ const vscodeMocks = vi.hoisted(() => {
         }
       }
     },
+    ThemeColor,
     ThemeIcon,
     TreeItem: class {
       resourceUri: vscode.Uri | undefined;
@@ -47,6 +55,7 @@ const vscodeMocks = vi.hoisted(() => {
 
 vi.mock('vscode', () => ({
   EventEmitter: vscodeMocks.EventEmitter,
+  ThemeColor: vscodeMocks.ThemeColor,
   ThemeIcon: vscodeMocks.ThemeIcon,
   TreeItem: vscodeMocks.TreeItem,
   TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
@@ -169,14 +178,44 @@ beforeEach(() => {
 });
 
 describe('提交历史树', () => {
-  it('提交节点在单行显示主题和元数据并使用提交图标', () => {
+  it('提交节点在单行显示主题和元数据并使用当前拓扑通道颜色', () => {
     const provider = new HistoryTreeProvider({ service: createService().service });
     const item = provider.getTreeItem(historyCommitNode(provider));
 
     expect(item.label).toBe('界面：迁移原生提交历史');
     expect(item.description).toBe('许博阳 · 5 分钟前 · abc1234 · HEAD main');
-    expect(item.iconPath).toEqual(new vscode.ThemeIcon('git-commit'));
+    expect(item.iconPath).toEqual(new vscode.ThemeIcon(
+      'git-commit',
+      new vscode.ThemeColor('charts.blue'),
+    ));
     expect(item.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Collapsed);
+  });
+
+  it('同一拓扑通道保持同色并为真实分叉通道分配不同主题色', () => {
+    const provider = new HistoryTreeProvider({ service: createService().service });
+    const node = historyCommitNode(provider);
+    const sameLane = provider.getTreeItem({
+      ...node,
+      commit: { ...node.commit, hash: 'def5678'.padEnd(40, '0') },
+    });
+    const forkLane = provider.getTreeItem({
+      ...node,
+      commit: {
+        ...node.commit,
+        hash: 'fed4321'.padEnd(40, '0'),
+        lane: 1,
+      },
+    });
+
+    expect(sameLane.iconPath).toEqual(new vscode.ThemeIcon(
+      'git-commit',
+      new vscode.ThemeColor('charts.blue'),
+    ));
+    expect(forkLane.iconPath).toEqual(new vscode.ThemeIcon(
+      'git-commit',
+      new vscode.ThemeColor('charts.green'),
+    ));
+    expect(forkLane.iconPath).not.toEqual(sameLane.iconPath);
   });
 
   it('描述当前分支与上游同步状态', () => {
