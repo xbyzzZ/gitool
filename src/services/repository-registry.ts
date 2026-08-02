@@ -411,14 +411,11 @@ export class RepositoryRegistry implements vscode.Disposable {
   }
 
   private async refreshSnapshot(state: RepositoryContext): Promise<void> {
-    const versionBeforeStatus = state.version;
     await state.repository.status();
     if (this.repositories.get(state.id) !== state) {
       throw new Error('仓库不存在或已关闭');
     }
-    if (state.version === versionBeforeStatus) {
-      this.synchronizeStateIfChanged(state, true);
-    }
+    this.synchronizeStateIfChanged(state, true);
   }
 
   private applySnapshot(

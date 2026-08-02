@@ -783,6 +783,32 @@ describe('RepositoryService', () => {
     await expect(service.refresh()).resolves.toMatchObject({ version: 0 });
   });
 
+  it('刷新期间先收到中间状态事件时仍读取 status 完成后的文件变更', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root);
+    repository.onStatus(() => {
+      repository.setHead({
+        name: 'main',
+        upstream: { remote: 'origin', name: 'main' },
+      });
+      repository.changed.fire(undefined);
+      repository.setChanges({
+        untracked: [change(root, 'new-file.ts', 7)],
+      });
+    });
+    const { service } = createService([repository]);
+
+    await expect(service.refresh()).resolves.toMatchObject({
+      version: 2,
+      upstream: 'origin/main',
+      changeCount: 1,
+      changes: [{
+        id: 'new-file.ts',
+        untracked: true,
+      }],
+    });
+  });
+
   it('切换仓库时恢复各自的选择和提交信息', () => {
     const rootA = '/workspace/repo-a';
     const rootB = '/workspace/repo-b';
