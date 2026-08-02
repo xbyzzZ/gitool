@@ -5,10 +5,7 @@ import type { BuiltinGitApi } from '../git/builtin-git-api.js';
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { RepositoryService } from '../services/repository-service.js';
 import type { PushResult } from '../services/push-service.js';
-import {
-  GitoolViewActions,
-  isReportedViewActionError,
-} from '../views/view-actions.js';
+import { isReportedViewActionError } from '../views/view-actions.js';
 import { parseWebviewMessage, type WebviewMessage } from './messages.js';
 import { renderWebviewHtml } from './render.js';
 
@@ -24,13 +21,6 @@ interface StateMessage {
   readonly acknowledgedRequestId?: string;
 }
 
-interface CommitDetailsMessage {
-  readonly type: 'commitDetails';
-  readonly repositoryId: string;
-  readonly version: number;
-  readonly details: Awaited<ReturnType<RepositoryService['loadCommitDetails']>>;
-}
-
 function errorMessage(error: unknown): string {
   return redactSensitiveText(
     error instanceof Error ? error.message : String(error),
@@ -40,39 +30,16 @@ function errorMessage(error: unknown): string {
 function messageAction(message: WebviewMessage): string {
   switch (message.type) {
     case 'ready':
-    case 'refresh':
-      return '刷新';
     case 'selectRepository':
       return '切换仓库';
-    case 'toggleFile':
-    case 'setGroup':
-      return '选择文件';
     case 'setCommitMessage':
       return '更新提交信息';
-    case 'openDiff':
-      return '打开变更';
     case 'commit':
       return '提交';
     case 'commitAndPush':
     case 'selectPushRemote':
     case 'retryPush':
       return '推送';
-    case 'trash':
-      return '舍弃未跟踪文件';
-    case 'editRemoteUrl':
-      return '修改远程 URL';
-    case 'refreshHistory':
-      return '刷新提交历史';
-    case 'fetchHistory':
-      return '刷新远程状态';
-    case 'pull':
-      return '从远程拉取';
-    case 'pushAll':
-      return '推送全部本地提交';
-    case 'loadCommitDetails':
-      return '读取提交详情';
-    case 'openCommitDiff':
-      return '打开历史改动';
     case 'generateCommitMessage':
       return '生成提交信息';
     case 'cancelCommitMessageGeneration':
@@ -111,14 +78,8 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private aiController: AbortController | undefined;
   private disposed = false;
-  private readonly viewActions: GitoolViewActions;
 
-  constructor(private readonly dependencies: GitoolViewProviderDependencies) {
-    this.viewActions = new GitoolViewActions({
-      repositoryService: dependencies.repositoryService,
-      gitApi: dependencies.gitApi,
-    });
-  }
+  constructor(private readonly dependencies: GitoolViewProviderDependencies) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.disposeView();
@@ -198,53 +159,14 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     const service = this.dependencies.repositoryService;
     switch (message.type) {
       case 'ready':
-        {
-          const model = service.getViewModel();
-          if (model.currentRepositoryId === undefined) {
-            await this.postState();
-          } else {
-            await service.refreshHistory({
-              repositoryId: model.currentRepositoryId,
-              version: model.version,
-            });
-          }
-        }
-        return;
-      case 'refresh':
-        await service.refresh();
         return;
       case 'selectRepository':
         this.aiController?.abort();
         service.selectRepository(message.repositoryId);
         return;
-      case 'toggleFile':
-        this.requireRepository(message.repositoryId);
-        service.setFileSelected(message.fileId, message.selected);
-        return;
-      case 'setGroup':
-        this.requireRepository(message.repositoryId);
-        service.setGroup(message.group, message.selected);
-        return;
       case 'setCommitMessage':
         this.requireRepository(message.repositoryId);
         service.setCommitMessage(message.message);
-        return;
-      case 'openDiff':
-        this.requireRepository(message.repositoryId);
-        {
-          const change = service.getFileChange(
-            message.repositoryId,
-            message.fileId,
-          );
-          if (change === undefined) {
-            throw new Error('文件不属于当前仓库状态');
-          }
-          await this.viewActions.openChange({
-            kind: 'file',
-            repositoryId: message.repositoryId,
-            change,
-          });
-        }
         return;
       case 'commit': {
         const model = this.requireScope(
@@ -269,59 +191,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         return;
       case 'retryPush':
         await this.retryPush(message.repositoryId, message.version);
-        return;
-      case 'trash': {
-        const model = this.requireScope(
-          message.repositoryId,
-          message.version,
-        );
-        const selected = new Set(model.selectedIds);
-        const nodes = message.fileIds.map((fileId) => {
-          const change = service.getFileChange(message.repositoryId, fileId);
-          if (
-            change === undefined
-            || !change.untracked
-            || !selected.has(fileId)
-          ) {
-            throw new Error('只能舍弃当前已选择的未跟踪文件');
-          }
-          return {
-            kind: 'file' as const,
-            repositoryId: message.repositoryId,
-            change,
-          };
-        });
-        await this.viewActions.trashUntracked(nodes);
-        return;
-      }
-      case 'editRemoteUrl':
-        this.requireScope(message.repositoryId, message.version);
-        await this.viewActions.editRemote();
-        return;
-      case 'refreshHistory':
-        this.requireScope(message.repositoryId, message.version);
-        await this.viewActions.refreshHistory();
-        return;
-      case 'fetchHistory':
-        this.requireScope(message.repositoryId, message.version);
-        await service.fetchHistory({
-          repositoryId: message.repositoryId,
-          version: message.version,
-        });
-        return;
-      case 'pull':
-        this.requireScope(message.repositoryId, message.version);
-        await this.viewActions.pull();
-        return;
-      case 'pushAll':
-        this.requireScope(message.repositoryId, message.version);
-        await this.viewActions.pushAll();
-        return;
-      case 'loadCommitDetails':
-        await this.loadCommitDetails(message);
-        return;
-      case 'openCommitDiff':
-        await this.openCommitDiff(message);
         return;
       case 'generateCommitMessage':
         await this.generateCommitMessage(message);
@@ -349,29 +218,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         };
   }
 
-  private async loadCommitDetails(
-    message: Extract<WebviewMessage, { readonly type: 'loadCommitDetails' }>,
-  ): Promise<void> {
-    this.requireScope(message.repositoryId, message.version);
-    const details = await this.dependencies.repositoryService
-      .loadCommitDetails({
-        repositoryId: message.repositoryId,
-        version: message.version,
-        hash: message.hash,
-      });
-    const webview = this.webview;
-    if (webview === undefined) {
-      return;
-    }
-    const response: CommitDetailsMessage = {
-      type: 'commitDetails',
-      repositoryId: message.repositoryId,
-      version: message.version,
-      details,
-    };
-    await webview.postMessage(response);
-  }
-
   private async generateCommitMessage(
     message: Extract<WebviewMessage, {
       readonly type: 'generateCommitMessage';
@@ -393,29 +239,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.aiController = undefined;
       }
     }
-  }
-
-  private async openCommitDiff(
-    message: Extract<WebviewMessage, { readonly type: 'openCommitDiff' }>,
-  ): Promise<void> {
-    this.requireScope(message.repositoryId, message.version);
-    const service = this.dependencies.repositoryService;
-    const details = await service.loadCommitDetails({
-      repositoryId: message.repositoryId,
-      version: message.version,
-      hash: message.hash,
-    });
-    const file = details.files.find((item) => item.path === message.path);
-    if (file === undefined) {
-      throw new Error('文件不属于所选历史提交');
-    }
-    await this.viewActions.openHistoryDiff({
-      kind: 'file',
-      repositoryId: message.repositoryId,
-      version: message.version,
-      hash: message.hash,
-      file,
-    });
   }
 
   private requireRepository(repositoryId: string): RepositoryViewModel {
