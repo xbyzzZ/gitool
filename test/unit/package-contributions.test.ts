@@ -26,6 +26,8 @@ interface Manifest {
 const manifest = JSON.parse(
   readFileSync(resolve('package.json'), 'utf8'),
 ) as Manifest;
+const vscodeIgnore = readFileSync(resolve('.vscodeignore'), 'utf8')
+  .split(/\r?\n/u);
 
 function titleCommands(viewId: string): readonly string[] {
   return (manifest.contributes.menus?.['view/title'] ?? [])
@@ -69,5 +71,10 @@ describe('扩展贡献点', () => {
       when: 'view == gitool.changesView && viewItem == gitool.untrackedFile',
       group: 'inline',
     });
+  });
+
+  it('打包时排除已经废弃的 Webview 构建产物', () => {
+    expect(vscodeIgnore).toContain('media/main.js');
+    expect(vscodeIgnore).toContain('media/history.js');
   });
 });
