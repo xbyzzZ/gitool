@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import type {
   CommitDetails,
+  CommitFile,
   CommitGraphNode,
 } from '../domain/history-model.js';
+import { basename, dirname } from 'node:path/posix';
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { BuiltinRepository } from '../git/builtin-git-api.js';
 import type { LoadCommitDetailsRequest } from '../services/repository-service.js';
@@ -22,7 +24,16 @@ export interface HistoryCommitNode {
   readonly commit: CommitGraphNode;
 }
 
-export type HistoryTreeNode = HistoryCommitNode;
+export interface HistoryFileNode {
+  readonly kind: 'file';
+  readonly repositoryId: string;
+  readonly version: number;
+  readonly hash: string;
+  readonly parentHash?: string;
+  readonly file: CommitFile;
+}
+
+export type HistoryTreeNode = HistoryCommitNode | HistoryFileNode;
 
 function relativeTime(authoredAt: string, now = new Date()): string {
   const elapsed = Math.max(0, now.getTime() - Date.parse(authoredAt));
@@ -79,20 +90,28 @@ implements vscode.TreeDataProvider<HistoryTreeNode>, vscode.Disposable {
     HistoryTreeNode | undefined
   >();
   private readonly serviceListener: vscode.Disposable;
+  private readonly details = new Map<string, CommitDetails>();
+  private cacheScope = '';
   private tree: vscode.TreeView<HistoryTreeNode> | undefined;
 
   readonly onDidChangeTreeData = this.changed.event;
 
   constructor(private readonly service: HistoryTreeService) {
     this.serviceListener = service.onDidChange(() => {
+      this.syncCacheScope();
       this.updateMetadata();
       this.changed.fire(undefined);
     });
   }
 
-  getChildren(node?: HistoryTreeNode): HistoryTreeNode[] {
+  getChildren(): HistoryTreeNode[];
+  getChildren(node: HistoryTreeNode): Promise<HistoryTreeNode[]>;
+  getChildren(
+    node?: HistoryTreeNode,
+  ): HistoryTreeNode[] | Promise<HistoryTreeNode[]> {
+    this.syncCacheScope();
     if (node !== undefined) {
-      return [];
+      return this.childrenForNode(node);
     }
     const model = this.service.getViewModel();
     const repositoryId = model.currentRepositoryId;
@@ -108,6 +127,9 @@ implements vscode.TreeDataProvider<HistoryTreeNode>, vscode.Disposable {
   }
 
   getTreeItem(node: HistoryTreeNode): vscode.TreeItem {
+    if (node.kind === 'file') {
+      return this.fileItem(node);
+    }
     const item = new vscode.TreeItem(
       node.commit.subject,
       vscode.TreeItemCollapsibleState.Collapsed,
@@ -144,8 +166,102 @@ implements vscode.TreeDataProvider<HistoryTreeNode>, vscode.Disposable {
 
   dispose(): void {
     this.tree = undefined;
+    this.details.clear();
     this.serviceListener.dispose();
     this.changed.dispose();
+  }
+
+  private async childrenForNode(
+    node: HistoryTreeNode,
+  ): Promise<HistoryTreeNode[]> {
+    if (node.kind === 'file') {
+      return [];
+    }
+    const key = this.detailsKey(
+      node.repositoryId,
+      node.version,
+      node.commit.hash,
+    );
+    let details = this.details.get(key);
+    if (details === undefined) {
+      try {
+        details = await this.service.loadCommitDetails({
+          repositoryId: node.repositoryId,
+          version: node.version,
+          hash: node.commit.hash,
+        });
+      } catch (error) {
+        this.service.reportFailure(
+          '读取提交详情',
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
+      const model = this.service.getViewModel();
+      if (model.currentRepositoryId !== node.repositoryId
+        || model.version !== node.version) {
+        throw new Error('仓库状态已变化，请重新展开提交详情');
+      }
+      this.details.set(key, details);
+    }
+    return details.files.map((file) => ({
+      kind: 'file',
+      repositoryId: node.repositoryId,
+      version: node.version,
+      hash: details.hash,
+      ...(details.parentHash === undefined
+        ? {}
+        : { parentHash: details.parentHash }),
+      file,
+    }));
+  }
+
+  private fileItem(node: HistoryFileNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      basename(node.file.path),
+      vscode.TreeItemCollapsibleState.None,
+    );
+    const directory = dirname(node.file.path);
+    item.description = [
+      ...(directory === '.' ? [] : [directory]),
+      node.file.status,
+    ].join(' · ');
+    item.tooltip = node.file.originalPath === undefined
+      ? node.file.path
+      : `${node.file.originalPath} → ${node.file.path}`;
+    const repository = this.service.getRepository(node.repositoryId);
+    if (repository !== undefined) {
+      item.resourceUri = vscode.Uri.joinPath(
+        repository.rootUri,
+        node.file.path,
+      );
+      item.iconPath = vscode.ThemeIcon.File;
+    }
+    item.contextValue = 'gitool.historyFile';
+    item.command = {
+      command: 'gitool.openHistoryChange',
+      title: '打开历史文件改动',
+      arguments: [node],
+    };
+    return item;
+  }
+
+  private syncCacheScope(): void {
+    const model = this.service.getViewModel();
+    const scope = `${model.currentRepositoryId ?? ''}\u0000${String(model.version)}`;
+    if (scope === this.cacheScope) {
+      return;
+    }
+    this.cacheScope = scope;
+    this.details.clear();
+  }
+
+  private detailsKey(
+    repositoryId: string,
+    version: number,
+    hash: string,
+  ): string {
+    return `${repositoryId}\u0000${String(version)}\u0000${hash}`;
   }
 
   private updateMetadata(): void {

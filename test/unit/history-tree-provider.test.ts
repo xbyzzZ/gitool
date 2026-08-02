@@ -1,8 +1,12 @@
 import type * as vscode from 'vscode';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CommitGraphNode } from '../../src/domain/history-model.js';
+import type {
+  CommitDetails,
+  CommitGraphNode,
+} from '../../src/domain/history-model.js';
 import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import type { BuiltinRepository } from '../../src/git/builtin-git-api.js';
+import type { LoadCommitDetailsRequest } from '../../src/services/repository-service.js';
 
 const vscodeMocks = vi.hoisted(() => {
   class ThemeColor {
@@ -125,25 +129,28 @@ class ServiceHarness implements HistoryTreeService {
   private readonly changed = new vscodeMocks.EventEmitter<void>();
   private current: RepositoryViewModel;
   readonly onDidChange = this.changed.event;
+  readonly loadCommitDetails = vi.fn<(
+    request: LoadCommitDetailsRequest,
+  ) => Promise<CommitDetails>>();
+  readonly reportFailure = vi.fn().mockReturnValue(true);
 
   constructor(initial: RepositoryViewModel) {
     this.current = initial;
+    this.loadCommitDetails.mockResolvedValue({
+      hash: 'newest',
+      parentHash: 'parent',
+      files: [{ status: 'M', path: 'src/job.py' }],
+    });
   }
 
   getViewModel(): RepositoryViewModel {
     return this.current;
   }
 
-  getRepository(): BuiltinRepository | undefined {
-    return undefined;
-  }
-
-  loadCommitDetails(): never {
-    throw new Error('本测试不读取提交详情');
-  }
-
-  reportFailure(): boolean {
-    return true;
+  getRepository(id: string): BuiltinRepository | undefined {
+    return id === this.current.currentRepositoryId
+      ? ({ rootUri: { fsPath: id } as vscode.Uri } as BuiltinRepository)
+      : undefined;
   }
 
   replaceModel(next: RepositoryViewModel): void {
@@ -194,7 +201,12 @@ describe('原生提交历史树', () => {
 
     const nodes = provider.getChildren();
 
-    expect(nodes.map((node) => node.commit.hash))
+    expect(nodes.map((node) => {
+      if (node.kind !== 'commit') {
+        throw new Error('根节点不应包含历史文件');
+      }
+      return node.commit.hash;
+    }))
       .toEqual(['newest', 'merge', 'oldest']);
     const item = provider.getTreeItem(firstNode(nodes));
     expect(item.label).toBe('修复：原生历史列表');
@@ -236,5 +248,76 @@ describe('原生提交历史树', () => {
 
     service.replaceModel(model([]));
     expect(tree.message).toBe('暂无提交记录');
+  });
+
+  it('同一仓库快照重复展开只加载一次详情', async () => {
+    const service = new ServiceHarness(model([commit('newest')]));
+    const provider = new HistoryTreeProvider(service);
+    const commitNode = firstNode(provider.getChildren());
+
+    await provider.getChildren(commitNode);
+    await provider.getChildren(commitNode);
+
+    expect(service.loadCommitDetails).toHaveBeenCalledOnce();
+    expect(service.loadCommitDetails).toHaveBeenCalledWith({
+      repositoryId: '/workspace/repo',
+      version: 7,
+      hash: 'newest',
+    });
+  });
+
+  it('仓库版本变化后丢弃旧缓存并重新加载', async () => {
+    const service = new ServiceHarness(model([commit('newest')]));
+    const provider = new HistoryTreeProvider(service);
+    await provider.getChildren(firstNode(provider.getChildren()));
+
+    service.replaceModel(model([commit('newest')], { version: 8 }));
+    await provider.getChildren(firstNode(provider.getChildren()));
+
+    expect(service.loadCommitDetails).toHaveBeenCalledTimes(2);
+    expect(service.loadCommitDetails).toHaveBeenLastCalledWith({
+      repositoryId: '/workspace/repo',
+      version: 8,
+      hash: 'newest',
+    });
+  });
+
+  it('历史文件使用当前文件图标主题并绑定历史 Diff 命令', async () => {
+    const service = new ServiceHarness(model([commit('newest')]));
+    const provider = new HistoryTreeProvider(service);
+    const files = await provider.getChildren(firstNode(provider.getChildren()));
+    const file = firstNode(files);
+
+    const item = provider.getTreeItem(file);
+
+    expect(item.label).toBe('job.py');
+    expect(item.resourceUri?.fsPath).toBe('/workspace/repo/src/job.py');
+    expect(item.iconPath).toBe(vscodeMocks.ThemeIcon.File);
+    expect(item.description).toBe('src · M');
+    expect(item.command).toEqual({
+      command: 'gitool.openHistoryChange',
+      title: '打开历史文件改动',
+      arguments: [file],
+    });
+    expect(item.collapsibleState).toBe(0);
+  });
+
+  it('详情加载失败不写缓存并允许再次展开重试', async () => {
+    const service = new ServiceHarness(model([commit('newest')]));
+    service.loadCommitDetails
+      .mockRejectedValueOnce(new Error('详情读取失败'))
+      .mockResolvedValueOnce({ hash: 'newest', files: [] });
+    const provider = new HistoryTreeProvider(service);
+    const commitNode = firstNode(provider.getChildren());
+
+    await expect(provider.getChildren(commitNode))
+      .rejects.toThrow('详情读取失败');
+    await expect(provider.getChildren(commitNode)).resolves.toEqual([]);
+
+    expect(service.loadCommitDetails).toHaveBeenCalledTimes(2);
+    expect(service.reportFailure).toHaveBeenCalledWith(
+      '读取提交详情',
+      '详情读取失败',
+    );
   });
 });
