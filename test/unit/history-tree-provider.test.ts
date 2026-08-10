@@ -89,9 +89,11 @@ function commit(
     subject: hash === 'newest' ? '修复：原生历史列表' : `提交 ${hash}`,
     refs,
     lane: 0,
+    color: 0,
     laneCount: 1,
     hasIncoming: false,
     parentLanes: [],
+    parentEdges: [],
     passingEdges: [],
   };
 }

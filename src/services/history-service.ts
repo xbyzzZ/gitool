@@ -156,36 +156,55 @@ export function parseAheadBehind(raw: string): AheadBehindCount {
 export function buildGraph(
   commits: readonly CommitSummary[],
 ): CommitGraphNode[] {
-  const lanes: string[] = [];
+  const lanes: { hash: string; color: number }[] = [];
+  let nextColor = 0;
   return commits.map((commit) => {
-    let lane = lanes.indexOf(commit.hash);
+    let lane = lanes.findIndex((item) => item.hash === commit.hash);
     const hasIncoming = lane >= 0;
     if (lane < 0) {
       lane = lanes.length;
-      lanes.push(commit.hash);
+      lanes.push({ hash: commit.hash, color: nextColor });
+      nextColor += 1;
     }
     const before = [...lanes];
+    const current = before[lane];
+    if (current === undefined) {
+      throw new Error('Git 提交拓扑轨道无效');
+    }
     lanes.splice(lane, 1);
     for (const parent of [...new Set(commit.parents)].reverse()) {
-      if (!lanes.includes(parent)) {
-        lanes.splice(lane, 0, parent);
+      if (!lanes.some((item) => item.hash === parent)) {
+        const color = parent === commit.parents[0]
+          ? current.color
+          : nextColor++;
+        lanes.splice(lane, 0, { hash: parent, color });
       }
     }
-    const passingEdges = before.flatMap((hash, fromLane) => {
-      if (hash === commit.hash) {
+    const passingEdges = before.flatMap((item, fromLane) => {
+      if (item.hash === commit.hash) {
         return [];
       }
-      const toLane = lanes.indexOf(hash);
-      return toLane < 0 ? [] : [{ fromLane, toLane }];
+      const toLane = lanes.findIndex((laneItem) => laneItem.hash === item.hash);
+      return toLane < 0 ? [] : [{ fromLane, toLane, color: item.color }];
     });
-    const parentLanes = commit.parents.map((parent) => lanes.indexOf(parent));
+    const parentEdges = commit.parents.map((parent) => {
+      const toLane = lanes.findIndex((item) => item.hash === parent);
+      const parentItem = lanes[toLane];
+      if (parentItem === undefined) {
+        throw new Error('Git 父提交拓扑轨道无效');
+      }
+      return { fromLane: lane, toLane, color: parentItem.color };
+    });
+    const parentLanes = parentEdges.map((edge) => edge.toLane);
     const laneCount = Math.max(before.length, lanes.length, 1);
     return {
       ...commit,
       lane,
+      color: current.color,
       laneCount,
       hasIncoming,
       parentLanes,
+      parentEdges,
       passingEdges,
     };
   });

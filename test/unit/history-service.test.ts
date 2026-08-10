@@ -94,26 +94,37 @@ describe('Git 历史机器输出解析', () => {
 
     expect(graph.map((node) => ({
       lane: node.lane,
+      color: node.color,
       laneCount: node.laneCount,
       hasIncoming: node.hasIncoming,
       parentLanes: node.parentLanes,
+      parentEdges: node.parentEdges,
       passingEdges: node.passingEdges,
     }))).toEqual([
       {
-        lane: 0, laneCount: 2, hasIncoming: false,
-        parentLanes: [0, 1], passingEdges: [],
+        lane: 0, color: 0, laneCount: 2, hasIncoming: false,
+        parentLanes: [0, 1],
+        parentEdges: [
+          { fromLane: 0, toLane: 0, color: 0 },
+          { fromLane: 0, toLane: 1, color: 1 },
+        ],
+        passingEdges: [],
       },
       {
-        lane: 0, laneCount: 2, hasIncoming: true,
-        parentLanes: [0], passingEdges: [{ fromLane: 1, toLane: 1 }],
+        lane: 0, color: 0, laneCount: 2, hasIncoming: true,
+        parentLanes: [0],
+        parentEdges: [{ fromLane: 0, toLane: 0, color: 0 }],
+        passingEdges: [{ fromLane: 1, toLane: 1, color: 1 }],
       },
       {
-        lane: 1, laneCount: 2, hasIncoming: true,
-        parentLanes: [0], passingEdges: [{ fromLane: 0, toLane: 0 }],
+        lane: 1, color: 1, laneCount: 2, hasIncoming: true,
+        parentLanes: [0],
+        parentEdges: [{ fromLane: 1, toLane: 0, color: 0 }],
+        passingEdges: [{ fromLane: 0, toLane: 0, color: 0 }],
       },
       {
-        lane: 0, laneCount: 1, hasIncoming: true,
-        parentLanes: [], passingEdges: [],
+        lane: 0, color: 0, laneCount: 1, hasIncoming: true,
+        parentLanes: [], parentEdges: [], passingEdges: [],
       },
     ]);
   });

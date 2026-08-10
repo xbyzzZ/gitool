@@ -91,9 +91,8 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
       }
     } catch (error) {
       const detail = redactSensitiveText(error instanceof Error ? error.message : String(error));
-      if (!this.dependencies.repositoryService.reportFailure('提交历史', detail)) {
-        await vscode.window.showErrorMessage(`Gitool：${detail}`);
-      }
+      this.dependencies.repositoryService.reportFailure('提交历史', detail);
+      await vscode.window.showErrorMessage(`Gitool：${detail}`);
     }
   }
 

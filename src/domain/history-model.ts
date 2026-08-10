@@ -17,15 +17,18 @@ export interface CommitSummary {
 
 export interface CommitGraphNode extends CommitSummary {
   readonly lane: number;
+  readonly color: number;
   readonly laneCount: number;
   readonly hasIncoming: boolean;
   readonly parentLanes: readonly number[];
+  readonly parentEdges: readonly CommitGraphEdge[];
   readonly passingEdges: readonly CommitGraphEdge[];
 }
 
 export interface CommitGraphEdge {
   readonly fromLane: number;
   readonly toLane: number;
+  readonly color: number;
 }
 
 export interface CommitFile {

@@ -20,10 +20,15 @@ function commit(overrides: Partial<CommitGraphNode> = {}): CommitGraphNode {
       { name: 'origin/main', kind: 'remote' },
     ],
     lane: 1,
+    color: 1,
     laneCount: 3,
     hasIncoming: true,
     parentLanes: [1, 2],
-    passingEdges: [{ fromLane: 0, toLane: 0 }],
+    parentEdges: [
+      { fromLane: 1, toLane: 1, color: 1 },
+      { fromLane: 1, toLane: 2, color: 2 },
+    ],
+    passingEdges: [{ fromLane: 0, toLane: 0, color: 0 }],
     ...overrides,
   };
 }

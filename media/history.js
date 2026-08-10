@@ -36,16 +36,16 @@
     const center = height / 2;
     const nodeX = laneX(commit.lane, lanePitch);
     const passing = commit.passingEdges.map(
-      (edge) => `<path class="graph-line lane-color-${String(edge.fromLane % 6)}" d="${edgePath(edge, lanePitch, height)}"></path>`
+      (edge) => `<path class="graph-line lane-color-${String(edge.color % 6)}" d="${edgePath(edge, lanePitch, height)}"></path>`
     ).join("");
-    const incoming = commit.hasIncoming ? `<path class="graph-line lane-color-${String(commit.lane % 6)}" d="M ${String(nodeX)} 0 L ${String(nodeX)} ${String(center)}"></path>` : "";
-    const parents = commit.parentLanes.map((parentLane, index) => {
-      const parentX = laneX(parentLane, lanePitch);
-      return `<path class="graph-line lane-color-${String((commit.lane + index) % 6)}" d="M ${String(nodeX)} ${String(center)} C ${String(nodeX)} ${String(center + 7)} ${String(parentX)} ${String(height - 7)} ${String(parentX)} ${String(height)}"></path>`;
+    const incoming = commit.hasIncoming ? `<path class="graph-line lane-color-${String(commit.color % 6)}" d="M ${String(nodeX)} 0 L ${String(nodeX)} ${String(center)}"></path>` : "";
+    const parents = commit.parentEdges.map((edge) => {
+      const parentX = laneX(edge.toLane, lanePitch);
+      return `<path class="graph-line lane-color-${String(edge.color % 6)}" d="M ${String(nodeX)} ${String(center)} C ${String(nodeX)} ${String(center + 7)} ${String(parentX)} ${String(height - 7)} ${String(parentX)} ${String(height)}"></path>`;
     }).join("");
     const current = commit.refs.some((ref) => ref.kind === "head");
     const merge = commit.parents.length > 1;
-    return `<svg class="commit-graph" width="${String(graphWidth)}" height="${String(height)}" viewBox="0 0 ${String(graphWidth)} ${String(height)}" aria-hidden="true">` + passing + incoming + parents + `<circle class="graph-node lane-color-${String(commit.lane % 6)}${current ? " current" : ""}${merge ? " merge" : ""}" cx="${String(nodeX)}" cy="${String(center)}" r="${merge ? "4" : "3.25"}"></circle></svg>`;
+    return `<svg class="commit-graph" width="${String(graphWidth)}" height="${String(height)}" viewBox="0 0 ${String(graphWidth)} ${String(height)}" aria-hidden="true">` + passing + incoming + parents + `<circle class="graph-node lane-color-${String(commit.color % 6)}${current ? " current" : ""}${merge ? " merge" : ""}" cx="${String(nodeX)}" cy="${String(center)}" r="${merge ? "4" : "3.25"}"></circle></svg>`;
   }
   function refMarkup(commit) {
     return commit.refs.map((ref) => {
