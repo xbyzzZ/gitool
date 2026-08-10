@@ -5,6 +5,7 @@ import {
   aiControlPresentation,
   aiModelControlPresentation,
   commitControlState,
+  densityMenuPlacement,
   densityMenuTargetIndex,
   operationFeedback,
 } from './commit-view-state.js';
@@ -110,9 +111,29 @@ function focusDensityOption(button: HTMLButtonElement): void {
   button.focus();
 }
 
+function positionDensityMenu(): void {
+  controls.aiDensityMenu.style.removeProperty('max-height');
+  const triggerRect = controls.aiDensityButton.getBoundingClientRect();
+  const menuRect = controls.aiDensityMenu.getBoundingClientRect();
+  const placement = densityMenuPlacement({
+    triggerLeft: triggerRect.left,
+    triggerTop: triggerRect.top,
+    triggerBottom: triggerRect.bottom,
+    menuWidth: menuRect.width,
+    menuHeight: menuRect.height,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
+  controls.aiDensityMenu.style.left = `${String(placement.left)}px`;
+  controls.aiDensityMenu.style.top = `${String(placement.top)}px`;
+  controls.aiDensityMenu.style.maxHeight = `${String(placement.maxHeight)}px`;
+  controls.aiDensityMenu.dataset.direction = placement.direction;
+}
+
 function openDensityMenu(): void {
   controls.aiDensityMenu.hidden = false;
   controls.aiDensityButton.setAttribute('aria-expanded', 'true');
+  positionDensityMenu();
   const selected = densityOptionButtons.find(
     (button) => densityFromButton(button) === density,
   );
@@ -392,6 +413,19 @@ controls.aiDensityButton.addEventListener('click', () => {
     closeDensityMenu(true);
   }
 });
+window.addEventListener('resize', () => {
+  if (!controls.aiDensityMenu.hidden) {
+    positionDensityMenu();
+  }
+});
+controls.aiDensityButton.closest('.commit-content')?.addEventListener(
+  'scroll',
+  () => {
+    if (!controls.aiDensityMenu.hidden) {
+      positionDensityMenu();
+    }
+  },
+);
 controls.aiModelButton.addEventListener('click', () => {
   const model = currentModel;
   if (model?.currentRepositoryId === undefined

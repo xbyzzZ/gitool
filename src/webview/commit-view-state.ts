@@ -22,6 +22,23 @@ export interface AiModelControlPresentation {
   readonly label: string;
 }
 
+export interface DensityMenuPlacementInput {
+  readonly triggerLeft: number;
+  readonly triggerTop: number;
+  readonly triggerBottom: number;
+  readonly menuWidth: number;
+  readonly menuHeight: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+}
+
+export interface DensityMenuPlacement {
+  readonly left: number;
+  readonly top: number;
+  readonly maxHeight: number;
+  readonly direction: 'above' | 'below';
+}
+
 export interface OperationFeedback {
   readonly message: string;
   readonly error: string;
@@ -86,6 +103,57 @@ export function densityMenuTargetIndex(
     default:
       return undefined;
   }
+}
+
+export function densityMenuPlacement({
+  triggerLeft,
+  triggerTop,
+  triggerBottom,
+  menuWidth,
+  menuHeight,
+  viewportWidth,
+  viewportHeight,
+}: DensityMenuPlacementInput): DensityMenuPlacement {
+  const viewportPadding = 4;
+  const triggerGap = 2;
+  const availableAbove = Math.max(
+    0,
+    triggerTop - triggerGap - viewportPadding,
+  );
+  const availableBelow = Math.max(
+    0,
+    viewportHeight - triggerBottom - triggerGap - viewportPadding,
+  );
+  const direction = availableAbove >= menuHeight
+    ? 'above'
+    : availableBelow >= menuHeight
+      ? 'below'
+      : availableAbove >= availableBelow ? 'above' : 'below';
+  const maxHeight = direction === 'above' ? availableAbove : availableBelow;
+  const displayedHeight = Math.min(menuHeight, maxHeight);
+  const displayedWidth = Math.min(
+    menuWidth,
+    Math.max(0, viewportWidth - viewportPadding * 2),
+  );
+  const maxLeft = Math.max(
+    viewportPadding,
+    viewportWidth - viewportPadding - displayedWidth,
+  );
+  const left = Math.min(Math.max(triggerLeft, viewportPadding), maxLeft);
+  const preferredTop = direction === 'above'
+    ? triggerTop - triggerGap - displayedHeight
+    : triggerBottom + triggerGap;
+  const maxTop = Math.max(
+    viewportPadding,
+    viewportHeight - viewportPadding - displayedHeight,
+  );
+
+  return {
+    left,
+    top: Math.min(Math.max(preferredTop, viewportPadding), maxTop),
+    maxHeight,
+    direction,
+  };
 }
 
 export function aiControlPresentation(

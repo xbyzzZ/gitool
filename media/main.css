@@ -340,12 +340,13 @@ input:disabled {
 }
 
 #ai-density-menu {
-  position: absolute;
-  bottom: 30px;
-  left: 0;
-  z-index: 5;
+  position: fixed;
+  top: 4px;
+  left: 4px;
+  z-index: 10;
   width: 232px;
-  max-width: calc(100vw - 18px);
+  max-width: calc(100vw - 8px);
+  overflow-y: auto;
   padding: 3px;
   border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border));
   background: var(--vscode-menu-background);

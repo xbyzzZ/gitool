@@ -67,11 +67,13 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.ai-model-name')).toMatch(/white-space:\s*nowrap/u);
   });
 
-  it('生成内容菜单为名称和说明预留稳定宽度', () => {
+  it('生成内容菜单使用视口定位且允许在高度不足时内部滚动', () => {
+    expect(readRule('#ai-density-menu')).toMatch(/position:\s*fixed/u);
     expect(readRule('#ai-density-menu')).toMatch(/width:\s*232px/u);
     expect(readRule('#ai-density-menu')).toMatch(
-      /max-width:\s*calc\(100vw - 18px\)/u,
+      /max-width:\s*calc\(100vw - 8px\)/u,
     );
+    expect(readRule('#ai-density-menu')).toMatch(/overflow-y:\s*auto/u);
     expect(readRule('.ai-density-option-copy')).toMatch(/min-width:\s*0/u);
     expect(readRule('.ai-density-option-description')).toMatch(
       /color:\s*var\(--vscode-descriptionForeground\)/u,
