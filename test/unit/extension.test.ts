@@ -5,8 +5,10 @@ import type { BuiltinGitApi } from '../../src/git/builtin-git-api.js';
 interface RegistrationState {
   readonly activeCommands: Map<string, vscode.Disposable>;
   readonly activeViews: Map<string, vscode.Disposable>;
+  readonly activeContentProviders: Map<string, vscode.Disposable>;
   readonly commandDisposals: string[];
   readonly viewDisposals: string[];
+  readonly contentProviderDisposals: string[];
   readonly registeredProviders: vscode.WebviewViewProvider[];
   readonly registeredWebviewIds: string[];
   readonly gitOpenListeners: Set<(value: unknown) => unknown>;
@@ -24,8 +26,10 @@ const mocks = vi.hoisted(() => {
   const state: RegistrationState = {
     activeCommands: new Map(),
     activeViews: new Map(),
+    activeContentProviders: new Map(),
     commandDisposals: [],
     viewDisposals: [],
+    contentProviderDisposals: [],
     registeredProviders: [],
     registeredWebviewIds: [],
     gitOpenListeners: new Set(),
@@ -93,18 +97,16 @@ const mocks = vi.hoisted(() => {
     showErrorMessage: vi.fn(),
     showWarningMessage: vi.fn(),
     deleteFile: vi.fn(),
-    contentProviderDispose: vi.fn(),
     registerTextDocumentContentProvider: vi.fn((
       scheme: string,
       provider: vscode.TextDocumentContentProvider,
     ) => {
-      void scheme;
       void provider;
-      return {
-        dispose: (): void => {
-          mocks.contentProviderDispose();
-        },
-      };
+      return register(
+        state.activeContentProviders,
+        state.contentProviderDisposals,
+        scheme,
+      );
     }),
   };
 });
@@ -211,8 +213,10 @@ beforeEach(() => {
   deactivate();
   mocks.state.activeCommands.clear();
   mocks.state.activeViews.clear();
+  mocks.state.activeContentProviders.clear();
   mocks.state.commandDisposals.length = 0;
   mocks.state.viewDisposals.length = 0;
+  mocks.state.contentProviderDisposals.length = 0;
   mocks.state.registeredProviders.length = 0;
   mocks.state.registeredWebviewIds.length = 0;
   mocks.state.gitOpenListeners.clear();
@@ -273,7 +277,8 @@ describe('扩展激活', () => {
         .provideTextDocumentContent({} as vscode.Uri, {} as never),
     ).toBe('');
     runtime.dispose();
-    expect(mocks.contentProviderDispose).toHaveBeenCalledOnce();
+    expect(mocks.state.activeContentProviders.size).toBe(0);
+    expect(mocks.state.contentProviderDisposals).toEqual(['gitool-empty']);
   });
 
   it.each([
@@ -340,6 +345,10 @@ describe('扩展激活', () => {
     expect(mocks.state.gitCloseListeners.size).toBe(0);
     expect(mocks.state.activeViews.size).toBe(2);
     expect(mocks.state.activeCommands.size).toBe(1);
+    expect([...mocks.state.activeContentProviders.keys()]).toEqual([
+      'gitool-empty',
+    ]);
+    expect(mocks.state.contentProviderDisposals).toEqual(['gitool-empty']);
 
     const html = await resolveLastProviderHtml();
     expect(html).toContain('Gitool 初始化失败');
@@ -352,5 +361,12 @@ describe('扩展激活', () => {
     expect(nextRuntime.mode).toBe('ready');
     expect(mocks.state.activeViews.size).toBe(3);
     expect(mocks.state.activeCommands.size).toBe(9);
+    expect([...mocks.state.activeContentProviders.keys()]).toEqual([
+      'gitool-empty',
+    ]);
+    expect(mocks.state.contentProviderDisposals).toEqual([
+      'gitool-empty',
+      'gitool-empty',
+    ]);
   });
 });
