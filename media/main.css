@@ -782,7 +782,7 @@ input:disabled {
   display: grid;
   width: 100%;
   min-height: 27px;
-  grid-template-columns: 12px 16px minmax(30px, auto) minmax(0, 1fr) 30px;
+  grid-template-columns: 12px 14px minmax(30px, auto) minmax(0, 1fr) 30px;
   align-items: center;
   gap: 5px;
   padding: 0 8px 0 0;
@@ -801,9 +801,9 @@ input:disabled {
 
 .history-file-icon {
   display: inline-block;
-  width: 16px;
-  height: 16px;
-  line-height: 16px;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
   text-align: center;
 }
 
@@ -832,7 +832,7 @@ input:disabled {
   }
 
   .history-file {
-    grid-template-columns: 12px 16px minmax(0, 1fr) 30px;
+    grid-template-columns: 12px 14px minmax(0, 1fr) 30px;
   }
 }
 
