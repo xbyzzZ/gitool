@@ -25,6 +25,7 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
   private readonly disposables: vscode.Disposable[] = [];
   private viewDisposables: vscode.Disposable[] = [];
   private webview: vscode.Webview | undefined;
+  private selectionSequence = 0;
 
   constructor(private readonly dependencies: HistoryViewProviderDependencies) {
     this.disposables.push(dependencies.repositoryService.onDidChange(() => {
@@ -60,6 +61,7 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
   }
 
   dispose(): void {
+    this.selectionSequence += 1;
     for (const disposable of this.viewDisposables.splice(0).reverse()) {
       disposable.dispose();
     }
@@ -89,13 +91,7 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
         return;
       }
       if (message.type === 'selectHistoryCommit') {
-        this.requireScope(message.repositoryId, message.version);
-        const details = await this.dependencies.repositoryService.loadCommitDetails(message);
-        this.dependencies.historyFilesProvider.selectCommit(
-          message.repositoryId,
-          message.version,
-          details,
-        );
+        await this.selectHistoryCommit(message);
         return;
       }
       if (message.type === 'openCommitDiff') {
@@ -113,6 +109,32 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
     if (model.currentRepositoryId !== repositoryId || model.version !== version) {
       throw new Error('仓库状态已变化，请刷新后重试');
     }
+  }
+
+  private async selectHistoryCommit(
+    message: Extract<WebviewMessage, { readonly type: 'selectHistoryCommit' }>,
+  ): Promise<void> {
+    this.requireScope(message.repositoryId, message.version);
+    const selectionSequence = ++this.selectionSequence;
+    this.dependencies.historyFilesProvider.clear();
+    let details;
+    try {
+      details = await this.dependencies.repositoryService.loadCommitDetails(message);
+    } catch (error) {
+      if (selectionSequence !== this.selectionSequence) {
+        return;
+      }
+      throw error;
+    }
+    if (selectionSequence !== this.selectionSequence) {
+      return;
+    }
+    this.requireScope(message.repositoryId, message.version);
+    this.dependencies.historyFilesProvider.selectCommit(
+      message.repositoryId,
+      message.version,
+      details,
+    );
   }
 
   private async openCommitDiff(

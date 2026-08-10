@@ -44,6 +44,12 @@ implements vscode.TreeDataProvider<HistoryFileNode>, vscode.Disposable {
     this.changed.fire(undefined);
   }
 
+  clear(): void {
+    this.selection = undefined;
+    this.updateMetadata();
+    this.changed.fire(undefined);
+  }
+
   getChildren(): HistoryFileNode[] {
     const selection = this.selection;
     if (selection === undefined || !this.selectionMatchesCurrentScope()) {

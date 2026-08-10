@@ -88,4 +88,19 @@ describe('原生提交文件视图', () => {
     onChange?.();
     expect(provider.getChildren()).toEqual([]);
   });
+
+  it('开始选择新提交时立即清空旧文件', () => {
+    const service = {
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      getViewModel: vi.fn(() => ({ currentRepositoryId: '/repo', version: 4 })),
+      getRepository: vi.fn(),
+    };
+    const provider = new HistoryFilesTreeProvider(service);
+    provider.selectCommit('/repo', 4, {
+      hash: 'a'.repeat(40),
+      files: [{ status: 'M', path: 'old.ts' }],
+    });
+    provider.clear();
+    expect(provider.getChildren()).toEqual([]);
+  });
 });

@@ -38,7 +38,7 @@ describe('提交历史 Webview Provider', () => {
       loadCommitDetails: vi.fn(() => Promise.resolve(details)),
       reportFailure: vi.fn(),
     };
-    const historyFilesProvider = { selectCommit: vi.fn() };
+    const historyFilesProvider = { clear: vi.fn(), selectCommit: vi.fn() };
     const webview = {
       cspSource: 'vscode-webview://gitool',
       options: {},
@@ -70,6 +70,7 @@ describe('提交历史 Webview Provider', () => {
     });
 
     await vi.waitFor(() => {
+      expect(historyFilesProvider.clear).toHaveBeenCalledOnce();
       expect(historyFilesProvider.selectCommit).toHaveBeenCalledWith(
         '/repo/a',
         3,
@@ -101,11 +102,12 @@ describe('提交历史 Webview Provider', () => {
         return { dispose: vi.fn() };
       }),
     };
+    const historyFilesProvider = { clear: vi.fn(), selectCommit: vi.fn() };
     const provider = new HistoryViewProvider({
       extensionUri: extensionUri(),
       gitApi: {} as never,
       repositoryService: service as never,
-      historyFilesProvider: { selectCommit: vi.fn() } as never,
+      historyFilesProvider: historyFilesProvider as never,
     });
     provider.resolveWebviewView({
       webview,
@@ -113,7 +115,7 @@ describe('提交历史 Webview Provider', () => {
     } as unknown as vscode.WebviewView);
 
     receive?.({
-      type: 'loadCommitDetails',
+      type: 'selectHistoryCommit',
       repositoryId: '/repo/a',
       version: 3,
       hash: 'a'.repeat(40),
@@ -121,9 +123,67 @@ describe('提交历史 Webview Provider', () => {
     });
 
     await vi.waitFor(() => {
+      expect(historyFilesProvider.clear).toHaveBeenCalledOnce();
+      expect(historyFilesProvider.selectCommit).not.toHaveBeenCalled();
       expect(service.reportFailure).toHaveBeenCalledWith('提交历史', '对象不存在');
       expect(mocks.showErrorMessage).toHaveBeenCalledWith('Gitool：对象不存在');
     });
+    provider.dispose();
+  });
+
+  it('快速选择时只允许最新详情写入原生文件视图', async () => {
+    let receive: ((message: unknown) => void) | undefined;
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    let resolveSecond: ((value: unknown) => void) | undefined;
+    const first = new Promise((resolve) => { resolveFirst = resolve; });
+    const second = new Promise((resolve) => { resolveSecond = resolve; });
+    const service = {
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      getViewModel: vi.fn(() => ({ currentRepositoryId: '/repo/a', version: 3 })),
+      loadCommitDetails: vi.fn((message: { readonly hash: string }) =>
+        message.hash.startsWith('a') ? first : second),
+      reportFailure: vi.fn(),
+    };
+    const historyFilesProvider = { clear: vi.fn(), selectCommit: vi.fn() };
+    const webview = {
+      cspSource: 'vscode-webview://gitool',
+      options: {},
+      html: '',
+      asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
+      postMessage: vi.fn(() => Promise.resolve(true)),
+      onDidReceiveMessage: vi.fn((listener: (message: unknown) => void) => {
+        receive = listener;
+        return { dispose: vi.fn() };
+      }),
+    };
+    const provider = new HistoryViewProvider({
+      extensionUri: extensionUri(),
+      gitApi: {} as never,
+      repositoryService: service as never,
+      historyFilesProvider: historyFilesProvider as never,
+    });
+    provider.resolveWebviewView({
+      webview,
+      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+    } as unknown as vscode.WebviewView);
+    const hashA = 'a'.repeat(40);
+    const hashB = 'b'.repeat(40);
+    receive?.({ type: 'selectHistoryCommit', repositoryId: '/repo/a', version: 3,
+      hash: hashA, requestId: 'select-a' });
+    receive?.({ type: 'selectHistoryCommit', repositoryId: '/repo/a', version: 3,
+      hash: hashB, requestId: 'select-b' });
+
+    resolveSecond?.({ hash: hashB, files: [{ status: 'M', path: 'b.ts' }] });
+    await vi.waitFor(() => {
+      expect(historyFilesProvider.selectCommit).toHaveBeenCalledOnce();
+    });
+    resolveFirst?.({ hash: hashA, files: [{ status: 'M', path: 'a.ts' }] });
+    await Promise.resolve();
+    expect(historyFilesProvider.clear).toHaveBeenCalledTimes(2);
+    expect(historyFilesProvider.selectCommit).toHaveBeenCalledOnce();
+    expect(historyFilesProvider.selectCommit).toHaveBeenCalledWith(
+      '/repo/a', 3, expect.objectContaining({ hash: hashB }),
+    );
     provider.dispose();
   });
 });
