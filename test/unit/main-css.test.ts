@@ -32,8 +32,18 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.history-commit-copy')).toMatch(/align-items:\s*center/u);
     expect(readRule('.history-refs')).toMatch(/max-width:\s*min\(38%, 220px\)/u);
     expect(readRule('.commit-ref.local')).toMatch(/max-width:\s*112px/u);
-    expect(stylesheet).toContain('@media (max-width: 520px)');
-    expect(stylesheet).toContain('.history-author');
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 520px\)[\s\S]*?\.history-author\s*\{[^}]*display:\s*none/u,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 520px\)[\s\S]*?\.history-author \+ span::before\s*\{[^}]*display:\s*none/u,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 360px\)[\s\S]*?\.history-time\s*\{[^}]*display:\s*none/u,
+    );
+    expect(stylesheet).toMatch(
+      /@media \(max-width: 360px\)[\s\S]*?\.history-time \+ span::before\s*\{[^}]*display:\s*none/u,
+    );
     expect(readRule('.history-list')).toMatch(/overflow:\s*auto/u);
     expect(stylesheet).toContain('.graph-line');
     expect(stylesheet).toContain('.commit-ref.remote');
