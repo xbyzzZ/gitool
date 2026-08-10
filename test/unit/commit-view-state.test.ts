@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import {
   aiControlPresentation,
+  aiModelSelectionLabel,
   commitControlState,
   operationFeedback,
 } from '../../src/webview/commit-view-state.js';
@@ -61,6 +62,16 @@ describe('提交信息展示状态', () => {
       generateLabel: '取消 AI 生成',
       densityLabel: '选择 AI 信息密度（详细）',
     });
+  });
+
+  it('展示自动、显式模型和选择中的按钮文案', () => {
+    expect(aiModelSelectionLabel(undefined, false)).toBe(
+      '选择 AI 模型（自动选择）',
+    );
+    expect(aiModelSelectionLabel({ id: 'model-1', name: '模型一' }, false))
+      .toBe('选择 AI 模型（模型一）');
+    expect(aiModelSelectionLabel({ id: 'model-1', name: '模型一' }, true))
+      .toBe('选择 AI 模型（正在选择）');
   });
 
   it('完整提交成功不显示成功文字', () => {

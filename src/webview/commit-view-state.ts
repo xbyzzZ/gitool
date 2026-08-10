@@ -3,6 +3,7 @@ import type {
   RepositoryViewModel,
 } from '../domain/view-model.js';
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
+import type { AiModelSelection } from '../services/ai-model-selection-store.js';
 
 export interface AiControlPresentation {
   readonly density: CommitMessageDensity;
@@ -58,6 +59,14 @@ export function aiControlPresentation(
       : `使用 AI 生成提交信息（${label}）`,
     densityLabel: `选择 AI 信息密度（${label}）`,
   };
+}
+
+export function aiModelSelectionLabel(
+  selection: AiModelSelection | undefined,
+  selecting: boolean,
+): string {
+  const name = selecting ? '正在选择' : (selection?.name ?? '自动选择');
+  return `选择 AI 模型（${name}）`;
 }
 
 export function operationFeedback(

@@ -3,6 +3,7 @@ import type { CommitMessageDensity } from '../services/commit-message-ai-service
 import type { AiModelSelection } from '../services/ai-model-selection-store.js';
 import {
   aiControlPresentation,
+  aiModelSelectionLabel,
   commitControlState,
   densityLabel,
   operationFeedback,
@@ -182,10 +183,10 @@ function render(model: RepositoryViewModel): void {
   controls.aiGenerateButton.title = aiPresentation.generateLabel;
   controls.aiDensityButton.setAttribute('aria-label', aiPresentation.densityLabel);
   controls.aiDensityButton.title = aiPresentation.densityLabel;
-  const selectedModelName = modelSelectionRequestId === undefined
-    ? (currentAiModelSelection?.name ?? '自动选择')
-    : '正在选择';
-  const modelLabel = `选择 AI 模型（${selectedModelName}）`;
+  const modelLabel = aiModelSelectionLabel(
+    currentAiModelSelection,
+    modelSelectionRequestId !== undefined,
+  );
   controls.aiModelButton.setAttribute('aria-label', modelLabel);
   controls.aiModelButton.title = modelLabel;
 

@@ -545,6 +545,55 @@ describe('GitoolViewProvider', () => {
     expect(store.get('/workspace/repo')).toBeUndefined();
   });
 
+  it('没有可用模型时仍允许清除失效的显式选择', async () => {
+    const created = createServiceDouble();
+    created.listAiModels.mockResolvedValue([]);
+    vscodeMocks.showQuickPick.mockImplementation(
+      (items: readonly unknown[]) => Promise.resolve(items[0]),
+    );
+    const store = createSelectionStore({
+      '/workspace/repo': { id: 'missing-model', name: '已失效模型' },
+    });
+    const provider = createProvider(created.service, store);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'selectAiModel',
+      repositoryId: '/workspace/repo',
+      requestId: 'select-model-empty',
+    });
+
+    await vi.waitFor(() => {
+      expect(vscodeMocks.showQuickPick).toHaveBeenCalledWith([
+        expect.objectContaining({ label: '自动选择（推荐）' }),
+      ], expect.any(Object));
+      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        acknowledgedRequestId: 'select-model-empty',
+      }));
+    });
+    expect(store.get('/workspace/repo')).toBeUndefined();
+  });
+
+  it('重建 Webview 后从工作区状态恢复当前仓库模型', async () => {
+    const created = createServiceDouble();
+    const store = createSelectionStore({
+      '/workspace/repo': { id: 'model-1', name: '模型一' },
+    });
+    const provider = createProvider(created.service, store);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({ type: 'ready' });
+
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'state',
+        aiModelSelection: { id: 'model-1', name: '模型一' },
+      }));
+    });
+  });
+
   it('选择远程后继续推送原提交且不再次提交', async () => {
     const created = createServiceDouble();
     created.commitAndPush.mockResolvedValue({

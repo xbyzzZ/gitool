@@ -359,23 +359,18 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   private async selectAiModel(repositoryId: string): Promise<void> {
     this.requireRepository(repositoryId);
     const models = await this.dependencies.repositoryService.listAiModels();
-    if (models.length === 0) {
-      throw new Error('VS Code 当前没有可用的 AI 模型');
-    }
     const current = this.dependencies.aiModelSelectionStore.get(repositoryId);
     const items: readonly AiModelQuickPickItem[] = [
       {
-        label: '自动选择（推荐）',
+        label: `${current === undefined ? '$(check) ' : ''}自动选择（推荐）`,
         description: '优先使用 Copilot，否则使用首个可用模型',
-        picked: current === undefined,
       },
       ...models.map((model): AiModelQuickPickItem => ({
-        label: model.name,
+        label: `${current?.id === model.id ? '$(check) ' : ''}${model.name}`,
         description: [model.vendor, model.family, model.version]
           .filter((value) => value.length > 0)
           .join(' · '),
         detail: `模型 ID：${model.id}`,
-        picked: current?.id === model.id,
         selection: { id: model.id, name: model.name },
       })),
     ];
