@@ -76,7 +76,6 @@ function messageAction(message: WebviewMessage): string {
     case 'pushAll':
       return '推送全部本地提交';
     case 'loadCommitDetails':
-    case 'selectHistoryCommit':
       return '读取提交详情';
     case 'openCommitDiff':
       return '打开历史改动';
@@ -310,7 +309,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.requireScope(message.repositoryId, message.version);
         await this.viewActions.pushAll();
         return;
-      case 'selectHistoryCommit':
       case 'loadCommitDetails':
       case 'openCommitDiff':
         throw new Error('提交信息视图不支持历史操作');

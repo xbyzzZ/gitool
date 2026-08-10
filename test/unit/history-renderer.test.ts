@@ -65,16 +65,22 @@ describe('提交历史图渲染', () => {
     expect(html).not.toContain(' style=');
   });
 
-  it('选中提交时显示选中状态且不再内联展开文件', () => {
+  it('展开提交时显示箭头、主题文件图标和可点击文件', () => {
     const html = renderCommitRowMarkup(commit(), {
-      selected: true,
+      expanded: true,
+      files: [{
+        file: { status: 'M', path: 'src/app.ts' },
+        iconClass: 'gitool-file-icon-7',
+      }],
       graphWidth: 40,
       lanePitch: 12,
     });
-    expect(html).toContain('history-entry selected');
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).not.toContain('history-chevron');
-    expect(html).not.toContain('history-files');
+    expect(html).toContain('history-entry expanded');
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('codicon-chevron-down history-chevron');
+    expect(html).toContain('history-files');
+    expect(html).toContain('history-file-icon gitool-file-icon-7');
+    expect(html).toContain('data-path="src/app.ts"');
   });
 
   it('无引用提交不生成空标签容器占用主题空间', () => {

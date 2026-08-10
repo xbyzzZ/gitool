@@ -116,6 +116,18 @@ describe('独立 Webview 壳页面', () => {
     expect(html).not.toContain('id="commit-message"');
   });
 
+  it('历史文件图标主题使用 nonce 样式且不放宽内联脚本策略', () => {
+    const html = renderHistoryWebviewHtml(
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
+      '.gitool-file-icon-1::before { content: "x"; }',
+    );
+    expect(html).toContain('<style nonce="nonce-123">');
+    expect(html).toContain('img-src vscode-webview://gitool');
+    expect(html).not.toContain("'unsafe-inline'");
+  });
+
   it('不再生成由原生视图标题栏承载的内部工具栏', () => {
     const html = renderCommitWebviewHtml(
       createWebview(),

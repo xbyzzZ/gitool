@@ -42,12 +42,11 @@ describe('扩展贡献点', () => {
     expect(manifest.icon).toBe('media/logo.png');
   });
 
-  it('贡献提交信息、当前变更、提交历史和原生提交文件四个独立视图', () => {
+  it('贡献提交信息、当前变更和提交历史三个独立视图', () => {
     expect(manifest.contributes.views.gitool).toEqual([
       { type: 'webview', id: 'gitool.commitView', name: '提交信息' },
       { id: 'gitool.changesView', name: '当前变更' },
       { type: 'webview', id: 'gitool.historyView', name: '提交历史' },
-      { id: 'gitool.historyFilesView', name: '提交文件' },
     ]);
   });
 

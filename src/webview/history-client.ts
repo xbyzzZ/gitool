@@ -11,6 +11,14 @@ interface StateMessage {
   readonly model: RepositoryViewModel;
 }
 
+interface CommitDetailsMessage {
+  readonly type: 'commitDetails';
+  readonly repositoryId: string;
+  readonly version: number;
+  readonly details: CommitDetails;
+  readonly fileIconClasses: readonly (string | null)[];
+}
+
 declare function acquireVsCodeApi(): VsCodeApi;
 
 function requiredElement(id: string): HTMLElement {
@@ -30,9 +38,14 @@ const layout = layoutElement;
 const syncSummary = requiredElement('sync-summary');
 const historyStatus = requiredElement('history-status');
 const historyList = requiredElement('history-list');
+const expandedCommits = new Set<string>();
+const commitDetails = new Map<string, readonly {
+  readonly file: CommitDetails['files'][number];
+  readonly iconClass?: string;
+}[]>();
+let currentModel: RepositoryViewModel | undefined;
 let currentScope = '';
 let sequence = 0;
-let selectedCommitHash: string | undefined;
 
 function post(message: WebviewMessage): void {
   vscode.postMessage(message);
@@ -42,8 +55,10 @@ function render(model: RepositoryViewModel): void {
   const nextScope = `${model.currentRepositoryId ?? ''}:${String(model.version)}`;
   if (nextScope !== currentScope) {
     currentScope = nextScope;
-    selectedCommitHash = undefined;
+    expandedCommits.clear();
+    commitDetails.clear();
   }
+  currentModel = model;
   layout.setAttribute('aria-busy', String(model.history.kind === 'loading'));
   syncSummary.textContent = model.sync.kind === 'ready'
     ? `${model.sync.upstream} · ↑${String(model.sync.ahead)} ↓${String(model.sync.behind)}`
@@ -56,20 +71,37 @@ function render(model: RepositoryViewModel): void {
   historyStatus.textContent = status;
   historyStatus.hidden = status.length === 0;
   historyStatus.classList.toggle('error-status', model.history.kind === 'failed');
-  renderHistory(historyList, model.history.commits, selectedCommitHash, {
-    selectCommit: (hash) => {
+  renderHistory(historyList, model.history.commits, expandedCommits, commitDetails, {
+    toggleCommit: (hash, expanded) => {
+      if (expanded) {
+        expandedCommits.add(hash);
+        if (!commitDetails.has(hash) && model.currentRepositoryId !== undefined) {
+          sequence += 1;
+          post({
+            type: 'loadCommitDetails',
+            repositoryId: model.currentRepositoryId,
+            version: model.version,
+            hash,
+            requestId: `details-${String(sequence)}`,
+          });
+        }
+      } else {
+        expandedCommits.delete(hash);
+      }
+      render(model);
+    },
+    openCommitDiff: (hash, path) => {
       if (model.currentRepositoryId === undefined) {
         return;
       }
-      selectedCommitHash = hash;
-      render(model);
       sequence += 1;
       post({
-        type: 'selectHistoryCommit',
+        type: 'openCommitDiff',
         repositoryId: model.currentRepositoryId,
         version: model.version,
         hash,
-        requestId: `history-select-${String(sequence)}`,
+        path,
+        requestId: `history-diff-${String(sequence)}`,
       });
     },
   });
@@ -80,9 +112,25 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
   if (typeof message !== 'object' || message === null || !('type' in message)) {
     return;
   }
+  if (message.type === 'commitDetails') {
+    const response = message as CommitDetailsMessage;
+    if (currentModel?.currentRepositoryId === response.repositoryId
+      && currentModel.version === response.version) {
+      commitDetails.set(response.details.hash, response.details.files.map((file, index) => {
+        const iconClass = response.fileIconClasses[index];
+        return {
+          file,
+          ...(iconClass === null || iconClass === undefined ? {} : { iconClass }),
+        };
+      }));
+      render(currentModel);
+    }
+    return;
+  }
   if (message.type === 'state' && 'model' in message) {
     render((message as StateMessage).model);
   }
 });
 
 post({ type: 'ready' });
+import type { CommitDetails } from '../domain/history-model.js';

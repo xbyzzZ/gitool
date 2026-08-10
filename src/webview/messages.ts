@@ -77,13 +77,6 @@ export type WebviewMessage =
     readonly requestId: string;
   }
   | {
-    readonly type: 'selectHistoryCommit';
-    readonly repositoryId: string;
-    readonly version: number;
-    readonly hash: string;
-    readonly requestId: string;
-  }
-  | {
     readonly type: 'loadCommitDetails';
     readonly repositoryId: string;
     readonly version: number;
@@ -387,7 +380,6 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
     case 'pull':
     case 'pushAll':
       return parseVersionMessage(input, input.type);
-    case 'selectHistoryCommit':
     case 'loadCommitDetails':
       requireExactKeys(input, [
         'type', 'repositoryId', 'version', 'hash', 'requestId',

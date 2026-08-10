@@ -41,6 +41,7 @@ function documentShell(
   title: string,
   scriptName: string,
   content: string,
+  additionalCss = '',
 ): string {
   const styleUri = escapeAttribute(mediaUri(webview, extensionUri, 'main.css'));
   const codiconStyleUri = escapeAttribute(mediaUri(
@@ -60,9 +61,10 @@ function documentShell(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${safeCspSource}; font-src ${safeCspSource}; script-src 'nonce-${safeNonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${safeCspSource} 'nonce-${safeNonce}'; font-src ${safeCspSource}; img-src ${safeCspSource}; script-src 'nonce-${safeNonce}';">
   <link rel="stylesheet" href="${codiconStyleUri}">
   <link rel="stylesheet" href="${styleUri}">
+  ${additionalCss.length === 0 ? '' : `<style nonce="${safeNonce}">${additionalCss}</style>`}
   <title>${title}</title>
 </head>
 <body>
@@ -133,6 +135,7 @@ export function renderHistoryWebviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
   nonce: string,
+  fileIconThemeCss = '',
 ): string {
   return documentShell(
     webview,
@@ -147,5 +150,6 @@ export function renderHistoryWebviewHtml(
         <div id="history-list" class="history-list" role="list" aria-label="提交历史列表"></div>
       </section>
     </main>`,
+    fileIconThemeCss,
   );
 }

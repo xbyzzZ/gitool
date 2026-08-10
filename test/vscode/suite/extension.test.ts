@@ -39,6 +39,7 @@ interface RepositoryState {
   };
   readonly operation: {
     readonly kind: string;
+    readonly action?: string;
     readonly commitHash?: string;
   };
 }
@@ -115,6 +116,12 @@ suite('Gitool 扩展', () => {
       vscode.Uri.parse('gitool-empty:/test/new-file.ts'),
     );
     assert.equal(emptyDocument.getText(), '');
+    await vscode.commands.executeCommand('gitool.historyView.focus');
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+    const viewState = await vscode.commands.executeCommand<RepositoryState>(
+      'gitool.test.getState',
+    );
+    assert.notEqual(viewState.operation.action, '读取文件图标主题');
   });
 
   test('真实双仓库默认选择安全且刷新后保持', async () => {

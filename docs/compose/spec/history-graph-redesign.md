@@ -1,9 +1,9 @@
 ---
 feature: history-graph-redesign
-status: delivered
+status: in-progress
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: 2c52141..13084cd
+commits: 9fc8631..待交付
 ---
 
 # 提交历史图改版
@@ -36,7 +36,7 @@ commits: 2c52141..13084cd
 
 引用标签使用 VS Code 主题变量：HEAD 为主要强调，本地分支为分支标签，远程分支为低强调远程标签。长标题和长引用单行省略，完整内容保留在 title。提交行支持键盘焦点和选择；文件列表由 S8 定义的原生视图承载，点击文件继续打开历史 Diff。
 
-加载、空数据和失败状态保留；仓库切换或版本变化时清理选中提交。标题栏的拉取、推送和刷新命令保持不变。主题图标试用版本升级到 0.2.10，VSIX 输出到主项目目录供人工比较，但不合并到 main。
+加载、空数据和失败状态保留；仓库切换或版本变化时清理展开状态和详情。标题栏的拉取、推送和刷新命令保持不变。行内主题图标修复版本升级到 0.2.11，VSIX 输出到主项目目录供人工比较，但不合并到 main。
 
 ## [S3] 范围外
 
@@ -61,9 +61,11 @@ commits: 2c52141..13084cd
 
 正常运行模式必须注册 `gitool-empty` 文本文档内容提供器，并将其 Disposable 纳入 Runtime 生命周期。新增文件使用空左侧、删除文件使用空右侧时，VS Code 必须能够解析虚拟 URI；Extension Host 测试必须实际打开该 scheme，而不只检查 URI 构造。
 
-## [S8] 原生提交文件视图
+## [S8] 行内展开与主题文件图标
 
-历史 Webview 只负责拓扑和提交选择，不再内联展开文件。点击提交后应保留明确的选中状态，并把提交详情交给同一 Gitool 容器下独立的原生“提交文件”视图。文件节点必须设置真实工作区 `resourceUri` 和 `ThemeIcon.File`，由当前 VS Code 文件图标主题解析图标；点击节点继续使用既有历史 Diff 命令。仓库或版本变化时必须清空旧选择，避免操作过期提交。
+提交历史必须保留行内展开：提交行显示可辨识的展开箭头，点击后在该提交下方显示文件，点击文件继续打开既有历史 Diff。文件图标必须读取当前 `workbench.iconTheme` 对应的 VS Code 文件图标主题贡献，支持主题的文件名、复合扩展名、默认文件、亮色覆盖、字体图标和图片图标；动态主题 CSS 使用 nonce，不放宽 Webview CSP。主题资源无法解析时明确降级为 Codicon 文件图标，不得影响历史读取和 Diff。
+
+原生“提交文件”试验视图取消，避免同一提交文件在两个区域重复出现。快速展开多个提交时，详情按提交哈希分别缓存；仓库或版本变化时清空展开状态与详情。
 
 ## Tasks
 
@@ -75,4 +77,4 @@ commits: 2c52141..13084cd
 - [x] T6: 将历史记录与分支引用压缩为单行 — acceptance: 行高为 28px，主题、引用和元数据同排；长引用省略且完整信息可通过 title 获取；窄宽度按作者、时间顺序降级（covers: S5; depends: T5）
 - [x] T7: 取消无引用提交的空标签占位 — acceptance: refs 为空时不生成引用容器且主题使用释放后的空间；有 refs 时标签结构保持（covers: S6; depends: T6）
 - [x] T8: 注册正常运行时历史空文档提供器 — acceptance: ready runtime 注册并释放 `gitool-empty`；Extension Host 可打开虚拟空文档（covers: S7; depends: T3）
-- [x] T9: 将提交文件迁移到原生主题图标视图 — acceptance: 提交行支持单选状态且不再内联展开；原生文件节点使用 `resourceUri + ThemeIcon.File`，可打开历史 Diff，切换仓库后清空（covers: S8; depends: T8）
+- [ ] T9: 恢复行内展开并接入当前文件图标主题 — acceptance: 提交行可展开/收起文件，主题文件名与扩展映射生成安全图标类，文件可打开历史 Diff；清单不再贡献重复原生文件视图（covers: S8; depends: T8）

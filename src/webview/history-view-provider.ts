@@ -4,7 +4,10 @@ import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { BuiltinGitApi } from '../git/builtin-git-api.js';
 import { redactSensitiveText } from '../git/git-runner.js';
 import type { RepositoryService } from '../services/repository-service.js';
-import type { HistoryFilesTreeProvider } from '../views/history-files-tree-provider.js';
+import {
+  loadCurrentFileIconTheme,
+  type LoadedFileIconTheme,
+} from './file-icon-theme-loader.js';
 import { parseWebviewMessage, type WebviewMessage } from './messages.js';
 import { renderHistoryWebviewHtml } from './render.js';
 
@@ -12,7 +15,7 @@ export interface HistoryViewProviderDependencies {
   readonly extensionUri: vscode.Uri;
   readonly gitApi: BuiltinGitApi;
   readonly repositoryService: RepositoryService;
-  readonly historyFilesProvider: HistoryFilesTreeProvider;
+  readonly loadFileIconTheme?: typeof loadCurrentFileIconTheme;
 }
 
 interface StateMessage {
@@ -25,7 +28,9 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
   private readonly disposables: vscode.Disposable[] = [];
   private viewDisposables: vscode.Disposable[] = [];
   private webview: vscode.Webview | undefined;
-  private selectionSequence = 0;
+  private fileIconTheme: Pick<LoadedFileIconTheme, 'classForPath'> = {
+    classForPath: () => undefined,
+  };
 
   constructor(private readonly dependencies: HistoryViewProviderDependencies) {
     this.disposables.push(dependencies.repositoryService.onDidChange(() => {
@@ -33,20 +38,11 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
     }));
   }
 
-  resolveWebviewView(view: vscode.WebviewView): void {
+  async resolveWebviewView(view: vscode.WebviewView): Promise<void> {
     for (const disposable of this.viewDisposables.splice(0)) {
       disposable.dispose();
     }
     this.webview = view.webview;
-    view.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [this.dependencies.extensionUri],
-    };
-    view.webview.html = renderHistoryWebviewHtml(
-      view.webview,
-      this.dependencies.extensionUri,
-      randomBytes(18).toString('base64url'),
-    );
     this.viewDisposables.push(
       view.webview.onDidReceiveMessage((input: unknown) => {
         void this.handleMessage(input);
@@ -58,10 +54,39 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
         }
       }),
     );
+    let fileIconTheme: LoadedFileIconTheme;
+    try {
+      fileIconTheme = await (this.dependencies.loadFileIconTheme
+        ?? loadCurrentFileIconTheme)(view.webview);
+    } catch (error) {
+      const detail = redactSensitiveText(error instanceof Error ? error.message : String(error));
+      this.dependencies.repositoryService.reportFailure('读取文件图标主题', detail);
+      fileIconTheme = {
+        css: '',
+        classForPath: () => undefined,
+        localResourceRoots: [],
+      };
+    }
+    if (this.webview !== view.webview) {
+      return;
+    }
+    this.fileIconTheme = fileIconTheme;
+    view.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        this.dependencies.extensionUri,
+        ...fileIconTheme.localResourceRoots,
+      ],
+    };
+    view.webview.html = renderHistoryWebviewHtml(
+      view.webview,
+      this.dependencies.extensionUri,
+      randomBytes(18).toString('base64url'),
+      fileIconTheme.css,
+    );
   }
 
   dispose(): void {
-    this.selectionSequence += 1;
     for (const disposable of this.viewDisposables.splice(0).reverse()) {
       disposable.dispose();
     }
@@ -87,11 +112,9 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
           repositoryId: message.repositoryId,
           version: message.version,
           details,
+          fileIconClasses: details.files.map((file) =>
+            this.fileIconTheme.classForPath(file.path) ?? null),
         });
-        return;
-      }
-      if (message.type === 'selectHistoryCommit') {
-        await this.selectHistoryCommit(message);
         return;
       }
       if (message.type === 'openCommitDiff') {
@@ -109,32 +132,6 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
     if (model.currentRepositoryId !== repositoryId || model.version !== version) {
       throw new Error('仓库状态已变化，请刷新后重试');
     }
-  }
-
-  private async selectHistoryCommit(
-    message: Extract<WebviewMessage, { readonly type: 'selectHistoryCommit' }>,
-  ): Promise<void> {
-    this.requireScope(message.repositoryId, message.version);
-    const selectionSequence = ++this.selectionSequence;
-    this.dependencies.historyFilesProvider.clear();
-    let details;
-    try {
-      details = await this.dependencies.repositoryService.loadCommitDetails(message);
-    } catch (error) {
-      if (selectionSequence !== this.selectionSequence) {
-        return;
-      }
-      throw error;
-    }
-    if (selectionSequence !== this.selectionSequence) {
-      return;
-    }
-    this.requireScope(message.repositoryId, message.version);
-    this.dependencies.historyFilesProvider.selectCommit(
-      message.repositoryId,
-      message.version,
-      details,
-    );
   }
 
   private async openCommitDiff(

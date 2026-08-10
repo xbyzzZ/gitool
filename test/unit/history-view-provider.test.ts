@@ -24,17 +24,40 @@ function extensionUri(path = '/extensions/gitool'): vscode.Uri {
   } as vscode.Uri;
 }
 
+function webviewHarness(): {
+  readonly webview: vscode.Webview;
+  readonly postMessage: ReturnType<typeof vi.fn>;
+  readonly receive: () => ((message: unknown) => void) | undefined;
+} {
+  let listener: ((message: unknown) => void) | undefined;
+  const postMessage = vi.fn(() => Promise.resolve(true));
+  const webview = {
+    cspSource: 'vscode-webview://gitool',
+    options: {},
+    html: '',
+    asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
+    postMessage,
+    onDidReceiveMessage: vi.fn((value: (message: unknown) => void) => {
+      listener = value;
+      return { dispose: vi.fn() };
+    }),
+  } as unknown as vscode.Webview;
+  return { webview, postMessage, receive: () => listener };
+}
+
 describe('提交历史 Webview Provider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('选择提交后把详情交给原生提交文件视图', async () => {
-    let receive: ((message: unknown) => void) | undefined;
+  it('展开详情时回传当前主题文件图标类', async () => {
     const details = {
       hash: 'a'.repeat(40),
       parentHash: 'b'.repeat(40),
-      files: [{ status: 'M' as const, path: 'src/app.ts' }],
+      files: [
+        { status: 'M' as const, path: 'src/app.ts' },
+        { status: 'A' as const, path: 'README' },
+      ],
     };
     const service = {
       onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
@@ -42,84 +65,75 @@ describe('提交历史 Webview Provider', () => {
       loadCommitDetails: vi.fn(() => Promise.resolve(details)),
       reportFailure: vi.fn(),
     };
-    const historyFilesProvider = { clear: vi.fn(), selectCommit: vi.fn() };
-    const webview = {
-      cspSource: 'vscode-webview://gitool',
-      options: {},
-      html: '',
-      asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
-      postMessage: vi.fn(() => Promise.resolve(true)),
-      onDidReceiveMessage: vi.fn((listener: (message: unknown) => void) => {
-        receive = listener;
-        return { dispose: vi.fn() };
-      }),
-    };
+    const harness = webviewHarness();
+    const themeRoot = extensionUri('/extensions/theme');
     const provider = new HistoryViewProvider({
       extensionUri: extensionUri(),
       gitApi: {} as never,
       repositoryService: service as never,
-      historyFilesProvider: historyFilesProvider as never,
+      loadFileIconTheme: vi.fn(() => Promise.resolve({
+        css: '.gitool-file-icon-1::before { content: "x"; }',
+        classForPath: (path: string) => path.endsWith('.ts')
+          ? 'gitool-file-icon-1'
+          : undefined,
+        localResourceRoots: [themeRoot],
+      })),
     });
-    provider.resolveWebviewView({
-      webview,
+    await provider.resolveWebviewView({
+      webview: harness.webview,
       onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
     } as unknown as vscode.WebviewView);
 
-    receive?.({
-      type: 'selectHistoryCommit',
+    harness.receive()?.({
+      type: 'loadCommitDetails',
       repositoryId: '/repo/a',
       version: 3,
       hash: details.hash,
-      requestId: 'select-1',
+      requestId: 'details-1',
     });
 
     await vi.waitFor(() => {
-      expect(historyFilesProvider.clear).toHaveBeenCalledOnce();
-      expect(historyFilesProvider.selectCommit).toHaveBeenCalledWith(
-        '/repo/a',
-        3,
+      expect(harness.postMessage).toHaveBeenCalledWith({
+        type: 'commitDetails',
+        repositoryId: '/repo/a',
+        version: 3,
         details,
-      );
+        fileIconClasses: ['gitool-file-icon-1', null],
+      });
     });
+    expect(harness.webview.options.localResourceRoots?.map((value) => value.path)).toEqual([
+      '/extensions/gitool',
+      '/extensions/theme',
+    ]);
+    expect(harness.webview.html).toContain('gitool-file-icon-1');
+    expect(harness.webview.html).toMatch(/<style nonce="[^"]+">/u);
     provider.dispose();
   });
 
   it('详情读取失败时在当前操作位置明确提示错误', async () => {
-    let receive: ((message: unknown) => void) | undefined;
     const service = {
       onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
-      getViewModel: vi.fn(() => ({
-        currentRepositoryId: '/repo/a',
-        version: 3,
-      })),
+      getViewModel: vi.fn(() => ({ currentRepositoryId: '/repo/a', version: 3 })),
       loadCommitDetails: vi.fn(() => Promise.reject(new Error('对象不存在'))),
       reportFailure: vi.fn(() => true),
     };
-    const webview = {
-      cspSource: 'vscode-webview://gitool',
-      options: {},
-      html: '',
-      asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
-      postMessage: vi.fn(() => Promise.resolve(true)),
-      onDidReceiveMessage: vi.fn((listener: (message: unknown) => void) => {
-        receive = listener;
-        return { dispose: vi.fn() };
-      }),
-    };
-    const historyFilesProvider = { clear: vi.fn(), selectCommit: vi.fn() };
+    const harness = webviewHarness();
     const provider = new HistoryViewProvider({
       extensionUri: extensionUri(),
       gitApi: {} as never,
       repositoryService: service as never,
-      historyFilesProvider: historyFilesProvider as never,
+      loadFileIconTheme: vi.fn(() => Promise.resolve({
+        css: '',
+        classForPath: () => undefined,
+        localResourceRoots: [],
+      })),
     });
-    provider.resolveWebviewView({
-      webview,
+    await provider.resolveWebviewView({
+      webview: harness.webview,
       onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
     } as unknown as vscode.WebviewView);
-
-    receive?.({
-      type: 'selectHistoryCommit',
+    harness.receive()?.({
+      type: 'loadCommitDetails',
       repositoryId: '/repo/a',
       version: 3,
       hash: 'a'.repeat(40),
@@ -127,121 +141,9 @@ describe('提交历史 Webview Provider', () => {
     });
 
     await vi.waitFor(() => {
-      expect(historyFilesProvider.clear).toHaveBeenCalledOnce();
-      expect(historyFilesProvider.selectCommit).not.toHaveBeenCalled();
       expect(service.reportFailure).toHaveBeenCalledWith('提交历史', '对象不存在');
       expect(mocks.showErrorMessage).toHaveBeenCalledWith('Gitool：对象不存在');
     });
-    provider.dispose();
-  });
-
-  it('快速选择时只允许最新详情写入原生文件视图', async () => {
-    let receive: ((message: unknown) => void) | undefined;
-    let resolveFirst: ((value: unknown) => void) | undefined;
-    let resolveSecond: ((value: unknown) => void) | undefined;
-    const first = new Promise((resolve) => { resolveFirst = resolve; });
-    const second = new Promise((resolve) => { resolveSecond = resolve; });
-    const service = {
-      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
-      getViewModel: vi.fn(() => ({ currentRepositoryId: '/repo/a', version: 3 })),
-      loadCommitDetails: vi.fn((message: { readonly hash: string }) =>
-        message.hash.startsWith('a') ? first : second),
-      reportFailure: vi.fn(),
-    };
-    const historyFilesProvider = { clear: vi.fn(), selectCommit: vi.fn() };
-    const webview = {
-      cspSource: 'vscode-webview://gitool',
-      options: {},
-      html: '',
-      asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
-      postMessage: vi.fn(() => Promise.resolve(true)),
-      onDidReceiveMessage: vi.fn((listener: (message: unknown) => void) => {
-        receive = listener;
-        return { dispose: vi.fn() };
-      }),
-    };
-    const provider = new HistoryViewProvider({
-      extensionUri: extensionUri(),
-      gitApi: {} as never,
-      repositoryService: service as never,
-      historyFilesProvider: historyFilesProvider as never,
-    });
-    provider.resolveWebviewView({
-      webview,
-      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
-    } as unknown as vscode.WebviewView);
-    const hashA = 'a'.repeat(40);
-    const hashB = 'b'.repeat(40);
-    receive?.({ type: 'selectHistoryCommit', repositoryId: '/repo/a', version: 3,
-      hash: hashA, requestId: 'select-a' });
-    receive?.({ type: 'selectHistoryCommit', repositoryId: '/repo/a', version: 3,
-      hash: hashB, requestId: 'select-b' });
-
-    resolveSecond?.({ hash: hashB, files: [{ status: 'M', path: 'b.ts' }] });
-    await vi.waitFor(() => {
-      expect(historyFilesProvider.selectCommit).toHaveBeenCalledOnce();
-    });
-    resolveFirst?.({ hash: hashA, files: [{ status: 'M', path: 'a.ts' }] });
-    await Promise.resolve();
-    expect(historyFilesProvider.clear).toHaveBeenCalledTimes(2);
-    expect(historyFilesProvider.selectCommit).toHaveBeenCalledOnce();
-    expect(historyFilesProvider.selectCommit).toHaveBeenCalledWith(
-      '/repo/a', 3, expect.objectContaining({ hash: hashB }),
-    );
-    provider.dispose();
-  });
-
-  it('旧选择延迟失败时不覆盖新选择也不显示过期错误', async () => {
-    let receive: ((message: unknown) => void) | undefined;
-    let rejectFirst: ((reason: Error) => void) | undefined;
-    const first = new Promise((_resolve, reject) => { rejectFirst = reject; });
-    const hashA = 'a'.repeat(40);
-    const hashB = 'b'.repeat(40);
-    const detailsB = { hash: hashB, files: [{ status: 'M' as const, path: 'b.ts' }] };
-    const service = {
-      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
-      getViewModel: vi.fn(() => ({ currentRepositoryId: '/repo/a', version: 3 })),
-      loadCommitDetails: vi.fn((message: { readonly hash: string }) =>
-        message.hash === hashA ? first : Promise.resolve(detailsB)),
-      reportFailure: vi.fn(),
-    };
-    const historyFilesProvider = { clear: vi.fn(), selectCommit: vi.fn() };
-    const webview = {
-      cspSource: 'vscode-webview://gitool',
-      options: {},
-      html: '',
-      asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
-      postMessage: vi.fn(() => Promise.resolve(true)),
-      onDidReceiveMessage: vi.fn((listener: (message: unknown) => void) => {
-        receive = listener;
-        return { dispose: vi.fn() };
-      }),
-    };
-    const provider = new HistoryViewProvider({
-      extensionUri: extensionUri(),
-      gitApi: {} as never,
-      repositoryService: service as never,
-      historyFilesProvider: historyFilesProvider as never,
-    });
-    provider.resolveWebviewView({
-      webview,
-      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
-    } as unknown as vscode.WebviewView);
-    receive?.({ type: 'selectHistoryCommit', repositoryId: '/repo/a', version: 3,
-      hash: hashA, requestId: 'select-a' });
-    receive?.({ type: 'selectHistoryCommit', repositoryId: '/repo/a', version: 3,
-      hash: hashB, requestId: 'select-b' });
-    await vi.waitFor(() => {
-      expect(historyFilesProvider.selectCommit).toHaveBeenCalledWith('/repo/a', 3, detailsB);
-    });
-
-    rejectFirst?.(new Error('旧提交对象不存在'));
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(service.loadCommitDetails).toHaveBeenCalledTimes(2);
-    expect(historyFilesProvider.selectCommit).toHaveBeenCalledOnce();
-    expect(service.reportFailure).not.toHaveBeenCalled();
-    expect(mocks.showErrorMessage).not.toHaveBeenCalled();
     provider.dispose();
   });
 });
