@@ -28,14 +28,25 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
   private readonly disposables: vscode.Disposable[] = [];
   private viewDisposables: vscode.Disposable[] = [];
   private webview: vscode.Webview | undefined;
+  private themeLoadSequence = 0;
   private fileIconTheme: Pick<LoadedFileIconTheme, 'classForPath'> = {
     classForPath: () => undefined,
   };
 
   constructor(private readonly dependencies: HistoryViewProviderDependencies) {
-    this.disposables.push(dependencies.repositoryService.onDidChange(() => {
-      void this.postState();
-    }));
+    this.disposables.push(
+      dependencies.repositoryService.onDidChange(() => {
+        void this.postState();
+      }),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('workbench.iconTheme')) {
+          void this.reloadFileIconTheme();
+        }
+      }),
+      vscode.window.onDidChangeActiveColorTheme(() => {
+        void this.reloadFileIconTheme();
+      }),
+    );
   }
 
   async resolveWebviewView(view: vscode.WebviewView): Promise<void> {
@@ -48,17 +59,30 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
         void this.handleMessage(input);
       }),
       view.onDidDispose(() => {
+        this.themeLoadSequence += 1;
         this.webview = undefined;
         for (const disposable of this.viewDisposables.splice(0)) {
           disposable.dispose();
         }
       }),
     );
+    await this.reloadFileIconTheme();
+  }
+
+  private async reloadFileIconTheme(): Promise<void> {
+    const webview = this.webview;
+    if (webview === undefined) {
+      return;
+    }
+    const sequence = ++this.themeLoadSequence;
     let fileIconTheme: LoadedFileIconTheme;
     try {
       fileIconTheme = await (this.dependencies.loadFileIconTheme
-        ?? loadCurrentFileIconTheme)(view.webview);
+        ?? loadCurrentFileIconTheme)(webview);
     } catch (error) {
+      if (sequence !== this.themeLoadSequence || this.webview !== webview) {
+        return;
+      }
       const detail = redactSensitiveText(error instanceof Error ? error.message : String(error));
       this.dependencies.repositoryService.reportFailure('读取文件图标主题', detail);
       fileIconTheme = {
@@ -67,19 +91,19 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
         localResourceRoots: [],
       };
     }
-    if (this.webview !== view.webview) {
+    if (sequence !== this.themeLoadSequence || this.webview !== webview) {
       return;
     }
     this.fileIconTheme = fileIconTheme;
-    view.webview.options = {
+    webview.options = {
       enableScripts: true,
       localResourceRoots: [
         this.dependencies.extensionUri,
         ...fileIconTheme.localResourceRoots,
       ],
     };
-    view.webview.html = renderHistoryWebviewHtml(
-      view.webview,
+    webview.html = renderHistoryWebviewHtml(
+      webview,
       this.dependencies.extensionUri,
       randomBytes(18).toString('base64url'),
       fileIconTheme.css,
@@ -87,6 +111,7 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
   }
 
   dispose(): void {
+    this.themeLoadSequence += 1;
     for (const disposable of this.viewDisposables.splice(0).reverse()) {
       disposable.dispose();
     }

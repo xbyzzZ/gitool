@@ -6,7 +6,7 @@ describe('Webview 文件图标主题', () => {
     const theme = compileFileIconTheme({
       fonts: [{ id: 'seti', src: [{ path: 'theme://seti.woff', format: 'woff' }] }],
       iconDefinitions: {
-        default: { fontCharacter: '\uE001', fontColor: '#cccccc' },
+        default: { fontCharacter: '\\E001', fontColor: '#cccccc' },
         config: { fontCharacter: '\uE002', fontColor: '#6d8086' },
         test: { fontCharacter: '\uE003', fontColor: '#519aba' },
       },
@@ -20,6 +20,7 @@ describe('Webview 文件图标主题', () => {
     expect(theme.classForPath('README')).toBe(theme.classForPath('unknown'));
     expect(theme.css).toContain('@font-face');
     expect(theme.css).toContain('content: "\\e003"');
+    expect(theme.css).toContain('content: "\\e001"');
   });
 
   it('应用亮色映射并为图片图标生成受控资源规则', () => {

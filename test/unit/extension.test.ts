@@ -94,6 +94,8 @@ const mocks = vi.hoisted(() => {
       }
       return { dispose: vi.fn() };
     }),
+    onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
     showErrorMessage: vi.fn(),
     showWarningMessage: vi.fn(),
     deleteFile: vi.fn(),
@@ -132,11 +134,13 @@ vi.mock('vscode', () => ({
     registerWebviewViewProvider: mocks.registerWebviewViewProvider,
     showErrorMessage: mocks.showErrorMessage,
     showWarningMessage: mocks.showWarningMessage,
+    onDidChangeActiveColorTheme: mocks.onDidChangeActiveColorTheme,
   },
   workspace: {
     fs: { delete: mocks.deleteFile },
     isTrusted: true,
     onDidGrantWorkspaceTrust: mocks.onDidGrantWorkspaceTrust,
+    onDidChangeConfiguration: mocks.onDidChangeConfiguration,
     registerTextDocumentContentProvider:
       mocks.registerTextDocumentContentProvider,
   },

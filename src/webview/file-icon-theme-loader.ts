@@ -143,7 +143,11 @@ async function readTheme(
   visited.add(key);
   const errors: ParseError[] = [];
   const bytes = await vscode.workspace.fs.readFile(themeUri);
-  const parsed = parse(new TextDecoder().decode(bytes), errors) as unknown;
+  const parsed = parse(
+    new TextDecoder().decode(bytes),
+    errors,
+    { allowTrailingComma: true },
+  ) as unknown;
   if (errors.length > 0 || typeof parsed !== 'object' || parsed === null) {
     throw new Error('文件图标主题 JSON 无效');
   }

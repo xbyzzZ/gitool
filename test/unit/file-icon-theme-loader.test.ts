@@ -70,7 +70,7 @@ describe('当前文件图标主题加载', () => {
         "vue": { "iconPath": "./vue.svg" }
       },
       "fileExtensions": { "ts": "ts", "vue": "ts" },
-      "light": { "fileExtensions": { "vue": "vue" } }
+      "light": { "fileExtensions": { "vue": "vue" } },
     }`);
     const webview = {
       asWebviewUri: (value: vscode.Uri) => ({
@@ -88,5 +88,35 @@ describe('当前文件图标主题加载', () => {
     const vueClass = loaded.classForPath('src/App.vue');
     expect(vueClass).toBeDefined();
     expect(loaded.css).toContain(`.${vueClass ?? ''} { background-image: url("webview:/extensions/theme/icons/vue.svg")`);
+  });
+
+  it('继承父主题时分别按父子文件位置解析资源并合并映射', async () => {
+    state.files.set('/extensions/theme/icons/theme.json', `{
+      "extends": "../base/base.json",
+      "iconDefinitions": {
+        "vue": { "iconPath": "./child/vue.svg" }
+      },
+      "fileExtensions": { "vue": "vue" }
+    }`);
+    state.files.set('/extensions/theme/base/base.json', `{
+      "iconDefinitions": {
+        "ts": { "iconPath": "./parent/typescript.svg" }
+      },
+      "fileExtensions": { "ts": "ts" }
+    }`);
+    const webview = {
+      asWebviewUri: (value: vscode.Uri) => ({
+        toString: () => `webview:${value.path}`,
+      }),
+    } as vscode.Webview;
+
+    const loaded = await loadCurrentFileIconTheme(webview);
+    const tsClass = loaded.classForPath('src/app.ts');
+    const vueClass = loaded.classForPath('src/App.vue');
+
+    expect(tsClass).toBeDefined();
+    expect(vueClass).toBeDefined();
+    expect(loaded.css).toContain(`.${tsClass ?? ''} { background-image: url("webview:/extensions/theme/base/parent/typescript.svg")`);
+    expect(loaded.css).toContain(`.${vueClass ?? ''} { background-image: url("webview:/extensions/theme/icons/child/vue.svg")`);
   });
 });

@@ -47,6 +47,9 @@ function cssString(value: string): string {
 }
 
 function cssCharacter(value: string): string {
+  if (/^\\[0-9a-f]{1,6}$/iu.test(value)) {
+    return value.toLocaleLowerCase('en-US');
+  }
   return Array.from(value).map((character) =>
     `\\${character.codePointAt(0)?.toString(16) ?? '0'}`).join(' ');
 }

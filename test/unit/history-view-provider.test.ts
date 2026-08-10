@@ -3,10 +3,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   showErrorMessage: vi.fn(() => Promise.resolve(undefined)),
+  configurationListeners: [] as ((event: { affectsConfiguration(section: string): boolean }) => void)[],
+  colorThemeListeners: [] as (() => void)[],
 }));
 
 vi.mock('vscode', () => ({
-  window: { showErrorMessage: mocks.showErrorMessage },
+  window: {
+    showErrorMessage: mocks.showErrorMessage,
+    onDidChangeActiveColorTheme: vi.fn((listener: () => void) => {
+      mocks.colorThemeListeners.push(listener);
+      return { dispose: vi.fn() };
+    }),
+  },
+  workspace: {
+    onDidChangeConfiguration: vi.fn((listener: (event: { affectsConfiguration(section: string): boolean }) => void) => {
+      mocks.configurationListeners.push(listener);
+      return { dispose: vi.fn() };
+    }),
+  },
   Uri: {
     joinPath: vi.fn(),
     from: vi.fn(),
@@ -48,6 +62,50 @@ function webviewHarness(): {
 describe('提交历史 Webview Provider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.configurationListeners.length = 0;
+    mocks.colorThemeListeners.length = 0;
+  });
+
+  it('主题变化时重载图标并阻止较慢的旧结果覆盖新主题', async () => {
+    const service = {
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      getViewModel: vi.fn(() => ({ currentRepositoryId: '/repo/a', version: 3 })),
+      reportFailure: vi.fn(),
+    };
+    const harness = webviewHarness();
+    let finishSlowLoad: ((theme: LoadedTheme) => void) | undefined;
+    type LoadedTheme = Awaited<ReturnType<typeof import('../../src/webview/file-icon-theme-loader.js').loadCurrentFileIconTheme>>;
+    const loadTheme = vi.fn()
+      .mockResolvedValueOnce({ css: '.initial {}', classForPath: () => undefined, localResourceRoots: [] })
+      .mockImplementationOnce(() => new Promise<LoadedTheme>((resolve) => {
+        finishSlowLoad = resolve;
+      }))
+      .mockResolvedValueOnce({ css: '.latest {}', classForPath: () => undefined, localResourceRoots: [] });
+    const provider = new HistoryViewProvider({
+      extensionUri: extensionUri(),
+      gitApi: {} as never,
+      repositoryService: service as never,
+      loadFileIconTheme: loadTheme,
+    });
+    await provider.resolveWebviewView({
+      webview: harness.webview,
+      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+    } as unknown as vscode.WebviewView);
+
+    mocks.configurationListeners[0]?.({
+      affectsConfiguration: (section) => section === 'workbench.iconTheme',
+    });
+    mocks.colorThemeListeners[0]?.();
+    await vi.waitFor(() => {
+      expect(harness.webview.html).toContain('.latest {}');
+    });
+    finishSlowLoad?.({ css: '.stale {}', classForPath: () => undefined, localResourceRoots: [] });
+    await Promise.resolve();
+
+    expect(loadTheme).toHaveBeenCalledTimes(3);
+    expect(harness.webview.html).toContain('.latest {}');
+    expect(harness.webview.html).not.toContain('.stale {}');
+    provider.dispose();
   });
 
   it('展开详情时回传当前主题文件图标类', async () => {
