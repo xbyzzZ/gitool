@@ -145,10 +145,23 @@ describe('提交信息展示状态', () => {
     });
   });
 
-  it('生成中或工作区不可写时禁止切换档位', () => {
+  it('生成中、操作忙碌或工作区不可写时禁止切换档位', () => {
     expect(commitControlState(model(true), {
       locallyBusy: false,
       aiGenerating: true,
+      message: '',
+    }).canSelectAiDensity).toBe(false);
+    expect(commitControlState(model(true), {
+      locallyBusy: true,
+      aiGenerating: false,
+      message: '',
+    }).canSelectAiDensity).toBe(false);
+    expect(commitControlState({
+      ...model(true),
+      operation: { kind: 'running', action: 'commit' },
+    }, {
+      locallyBusy: false,
+      aiGenerating: false,
       message: '',
     }).canSelectAiDensity).toBe(false);
     expect(commitControlState({
