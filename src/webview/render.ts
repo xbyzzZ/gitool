@@ -144,7 +144,7 @@ export function renderHistoryWebviewHtml(
       <p id="sync-summary" class="visually-hidden">正在读取同步状态…</p>
       <section class="history-panel" aria-label="提交历史">
         <p id="history-status" class="history-status" role="status">正在读取提交历史…</p>
-        <div id="history-list" class="history-list" role="tree" aria-label="提交历史列表"></div>
+        <div id="history-list" class="history-list" role="list" aria-label="提交历史列表"></div>
       </section>
     </main>`,
   );

@@ -133,8 +133,8 @@ export function renderCommitRowMarkup(
   const files = expanded
     ? `<div class="history-files">${(options.files ?? []).map(fileMarkup).join('')}</div>`
     : '';
-  return `<article class="history-entry${expanded ? ' expanded' : ''}" data-hash="${commit.hash}" style="--graph-width:${String(options.graphWidth)}px">`
-    + `<button class="history-commit-row" type="button" role="treeitem" aria-expanded="${String(expanded)}" title="${escapeHtml(title)}">`
+  return `<article class="history-entry${expanded ? ' expanded' : ''}" role="listitem" data-hash="${commit.hash}" style="--graph-width:${String(options.graphWidth)}px">`
+    + `<button class="history-commit-row" type="button" aria-expanded="${String(expanded)}" title="${escapeHtml(title)}">`
     + renderGraphMarkup(commit, options.graphWidth, options.lanePitch)
     + `<span class="codicon codicon-chevron-${expanded ? 'down' : 'right'} history-chevron" aria-hidden="true"></span>`
     + '<span class="history-commit-copy">'

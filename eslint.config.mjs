@@ -7,6 +7,7 @@ export default defineConfig(
       'dist/**',
       'media/main.js',
       'media/commit.js',
+      'media/history.js',
       'coverage/**',
       '.vscode-test/**',
       '.worktrees/**',
