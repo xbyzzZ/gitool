@@ -1,6 +1,6 @@
 ---
 feature: pycharm-commit-workbench-0.3
-status: delivered
+status: in-progress
 updated: 2026-08-10
 branch: codex/pycharm-commit-0.3
 commits: c4763cb..f6e2d76
@@ -88,6 +88,10 @@ Gitool 活动栏仅贡献一个名为“提交”的 Webview View，移除“当
 
 AI 生成主按钮不再绘制星形图标，直接显示当前“精简”“标准”或“详细”；点击文字仍生成当前档位内容，右侧箭头继续调用 VS Code 原生档位选择器。生成过程中保留当前档位文字并显示紧凑加载指示，不改变 AI 模型选择流程。
 
+## [S8] 档位可用状态
+
+右侧档位选择按钮只负责选择“精简”“标准”或“详细”，不依赖当前是否已勾选文件；工作区可写且未执行其他操作时始终可用。左侧生成按钮仍必须至少勾选一个文件，生成期间的圆弧仅表示加载并可通过主按钮取消，不作为独立操作入口。
+
 ## Tasks
 
 - [x] T1: 合并视图贡献与运行时 — acceptance: 清单只贡献“提交”Webview，扩展不再注册当前变更 TreeView、提交历史 Webview及历史命令（covers: S2, S6）
@@ -99,3 +103,5 @@ AI 生成主按钮不再绘制星形图标，直接显示当前“精简”“�
 - [x] T7: 增加提交区拖动分隔条 — acceptance: 指针拖动、键盘调整、视口边界和 Webview 状态持久化均有自动化测试，低高度下文件区和提交按钮仍可用（covers: S2, S5, S7; depends: T2）
 - [x] T8: 将生成密度改为文字控件 — acceptance: 主按钮按当前档位显示精简/标准/详细并保持生成、选择和取消语义，HTML/CSS/展示状态测试不再依赖星形图标（covers: S4, S5, S7; depends: T5）
 - [x] T9: 重新完成 0.3.0 交付 — acceptance: 完整检查、构建、Extension Host、独立审查和最终 VSIX 哈希复核通过（covers: S6, S7; depends: T7, T8）
+- [ ] T10: 修复档位按钮可用状态 — acceptance: 未勾选文件时仍可打开档位选择，生成按钮保持禁用，忙碌或不可写状态仍正确禁用（covers: S8; depends: T8）
+- [ ] T11: 重新生成 0.3.0 安装包 — acceptance: 定向回归、完整检查、构建、独立审查及 VSIX 哈希复核通过（covers: S6, S8; depends: T10）

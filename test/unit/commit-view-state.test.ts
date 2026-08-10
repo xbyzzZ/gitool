@@ -112,6 +112,7 @@ describe('提交信息展示状态', () => {
   it('没有远程时只允许本地提交', () => {
     expect(commitControlState(model(false), {
       locallyBusy: false,
+      aiGenerating: false,
       message: '功能：测试推送状态',
     })).toMatchObject({
       canCommit: true,
@@ -122,10 +123,41 @@ describe('提交信息展示状态', () => {
   it('配置远程后允许提交并推送', () => {
     expect(commitControlState(model(true), {
       locallyBusy: false,
+      aiGenerating: false,
       message: '功能：测试推送状态',
     })).toMatchObject({
       canCommit: true,
       canCommitAndPush: true,
     });
+  });
+
+  it('未选择文件时允许预先选择生成档位但不允许生成', () => {
+    expect(commitControlState({
+      ...model(true),
+      selectedIds: [],
+    }, {
+      locallyBusy: false,
+      aiGenerating: false,
+      message: '',
+    })).toMatchObject({
+      canGenerateCommitMessage: false,
+      canSelectAiDensity: true,
+    });
+  });
+
+  it('生成中或工作区不可写时禁止切换档位', () => {
+    expect(commitControlState(model(true), {
+      locallyBusy: false,
+      aiGenerating: true,
+      message: '',
+    }).canSelectAiDensity).toBe(false);
+    expect(commitControlState({
+      ...model(true),
+      trusted: false,
+    }, {
+      locallyBusy: false,
+      aiGenerating: false,
+      message: '',
+    }).canSelectAiDensity).toBe(false);
   });
 });

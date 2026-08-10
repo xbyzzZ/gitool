@@ -32,6 +32,7 @@ export interface OperationFeedback {
 
 export interface CommitControlInput {
   readonly locallyBusy: boolean;
+  readonly aiGenerating: boolean;
   readonly message: string;
 }
 
@@ -39,6 +40,8 @@ export interface CommitControlState {
   readonly canWrite: boolean;
   readonly canCommit: boolean;
   readonly canCommitAndPush: boolean;
+  readonly canGenerateCommitMessage: boolean;
+  readonly canSelectAiDensity: boolean;
 }
 
 const actionLabels: Readonly<Record<
@@ -140,5 +143,9 @@ export function commitControlState(
     canWrite,
     canCommit,
     canCommitAndPush: canCommit && model.hasRemote && !model.detached,
+    canGenerateCommitMessage: canWrite
+      && !input.aiGenerating
+      && model.selectedIds.length > 0,
+    canSelectAiDensity: canWrite && !input.aiGenerating,
   };
 }

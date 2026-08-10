@@ -253,16 +253,19 @@ function render(model: RepositoryViewModel): void {
   const locallyBusy = pendingRequestId !== undefined
     || modelSelectionRequestId !== undefined
     || densitySelectionRequestId !== undefined;
+  const aiGenerating = model.ai.kind === 'generating'
+    || pendingPresentation === 'ai-button';
   const {
     canWrite,
     canCommit,
     canCommitAndPush,
+    canGenerateCommitMessage,
+    canSelectAiDensity,
   } = commitControlState(model, {
     locallyBusy,
+    aiGenerating,
     message: controls.commitMessage.value,
   });
-  const aiGenerating = model.ai.kind === 'generating'
-    || pendingPresentation === 'ai-button';
 
   controls.repositorySelect.disabled = running || locallyBusy
     || model.repositories.length < 2;
@@ -271,8 +274,8 @@ function render(model: RepositoryViewModel): void {
   controls.commitPushButton.disabled = !canCommitAndPush;
   controls.aiGenerateButton.disabled = aiGenerating
     ? false
-    : !canWrite || model.selectedIds.length === 0;
-  controls.aiDensityButton.disabled = !canWrite || model.selectedIds.length === 0;
+    : !canGenerateCommitMessage;
+  controls.aiDensityButton.disabled = !canSelectAiDensity;
   controls.aiModelButton.disabled = !canWrite || locallyBusy || aiGenerating;
   controls.refreshButton.disabled = running || locallyBusy;
   controls.selectAllButton.disabled = !canWrite || model.changeCount === 0;
