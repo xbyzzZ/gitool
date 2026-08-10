@@ -1,6 +1,6 @@
 ---
 feature: pycharm-commit-workbench-0.3
-status: complete
+status: in-progress
 updated: 2026-08-10
 branch: codex/pycharm-commit-0.3
 commits: c4763cb, b509ba4
@@ -18,6 +18,7 @@ commits: c4763cb, b509ba4
 - 独立审查：已修复低高度裁切、极窄侧栏隐藏推送和推送可用状态遗漏；主题竞态与变更列表 DOM 绑定测试已补齐。
 - 安装包：`gitool-file-commit-0.3.0.vsix` 共 15 个文件，不含 `history.js`；包内 `main.css`、`commit.js`、`extension.js` 与最终构建 SHA-256 完全一致。
 - 人工验收边界：尚未在用户真实主题和实际侧栏尺寸下目测最终 VSIX，也未自动驱动 Webview 顶部与底部按钮的浏览器 DOM 点击；由本地安装包试用验收。
+- 本次修订：正在增加文件列表与提交区之间的可拖动分隔条，并将 AI 密度星形图标替换为当前档位文字。
 
 ## [S1] 问题
 
@@ -68,6 +69,12 @@ Gitool 活动栏仅贡献一个名为“提交”的 Webview View，移除“当
 - 不改变精确按路径提交、未跟踪文件安全选择、多仓库、AI 模型选择和推送失败重试语义。
 - 不在本轮发布到 Marketplace；只生成 0.3.0 VSIX 供人工验收。
 
+## [S7] 可调提交区与文字档位
+
+文件列表与底部提交区之间增加水平分隔条。鼠标或触控笔上下拖动时实时调整提交区高度，键盘聚焦后支持方向键微调；高度必须按当前 Webview 可用空间限制，始终保留文件区与提交操作按钮。调整结果由 Webview 状态记忆，重新渲染和切换主题后保持。
+
+AI 生成主按钮不再绘制星形图标，直接显示当前“精简”“标准”或“详细”；点击文字仍生成当前档位内容，右侧箭头继续调用 VS Code 原生档位选择器。生成过程中保留当前档位文字并显示紧凑加载指示，不改变 AI 模型选择流程。
+
 ## Tasks
 
 - [x] T1: 合并视图贡献与运行时 — acceptance: 清单只贡献“提交”Webview，扩展不再注册当前变更 TreeView、提交历史 Webview及历史命令（covers: S2, S6）
@@ -76,3 +83,6 @@ Gitool 活动栏仅贡献一个名为“提交”的 Webview View，移除“当
 - [x] T4: 接入当前文件图标主题 — acceptance: 变更文件获得安全主题图标类，主题切换无过期覆盖，资源根和 CSP 保持严格（covers: S3, S5; depends: T2）
 - [x] T5: 迁移工具栏与提交操作 — acceptance: 刷新、全选、清空、舍弃、拉取、推送、远程、AI、提交、提交并推送及重试均从统一面板可达且状态正确（covers: S4; depends: T2, T3）
 - [x] T6: 完成 0.3.0 交付 — acceptance: 版本、README、CHANGELOG、完整检查、构建、Extension Host、VSIX 清单和独立审查均通过（covers: S1, S6; depends: T1, T2, T3, T4, T5）
+- [ ] T7: 增加提交区拖动分隔条 — acceptance: 指针拖动、键盘调整、视口边界和 Webview 状态持久化均有自动化测试，低高度下文件区和提交按钮仍可用（covers: S2, S5, S7; depends: T2）
+- [ ] T8: 将生成密度改为文字控件 — acceptance: 主按钮按当前档位显示精简/标准/详细并保持生成、选择和取消语义，HTML/CSS/展示状态测试不再依赖星形图标（covers: S4, S5, S7; depends: T5）
+- [ ] T9: 重新完成 0.3.0 交付 — acceptance: 完整检查、构建、Extension Host、独立审查和最终 VSIX 哈希复核通过（covers: S6, S7; depends: T7, T8）
