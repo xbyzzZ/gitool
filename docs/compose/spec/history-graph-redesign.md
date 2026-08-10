@@ -1,20 +1,25 @@
 ---
 feature: history-graph-redesign
-status: in-progress
+status: delivered
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: f77f786..待交付
+commits: f77f786..51fa64e
 ---
 
 # 提交历史图改版
 
 ## Report
 
-- 实现：历史视图迁移为独立 Webview，使用稳定路径颜色绘制多轨分叉、合并与穿越边；HEAD、本地和远程引用分别展示，提交详情继续支持文件展开与第一父提交 Diff。
-- 兼容性：完整对象 ID 仅接受 SHA-1 的 40 位或 SHA-256 的 64 位；远程符号引用 `*/HEAD` 被过滤。
-- 验证：`npm run check` 通过 32 个测试文件、327 条测试；`npm run build`、`npm run package` 和真实 Extension Host 3 个场景通过。
-- 审查：独立复审范围 `4bf652c..ae16685`；修复构建产物 ESLint 清单、SHA-256 消息校验、历史操作错误反馈和轨道压缩换色后通过。
-- 交付：版本 `0.2.5`，VSIX 输出到主项目目录；源码仍位于隔离分支，未合并到 `main`。
+**完成内容** — 历史视图使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示 HEAD、本地与远程引用，并保留文件展开和第一父提交 Diff。CSP 修正移除了动态历史行的内联样式，改由 SVG 固有宽度和 `max-content` 网格分配图轨与正文空间。
+
+**验证** — `npm run check` 通过 32 个测试文件、327 条测试；`npm run build` 通过；`env -u ELECTRON_RUN_AS_NODE npm run test:vscode` 通过 3 个真实场景；`npm run package -- --out .../gitool-file-commit-0.2.5.vsix` 通过。独立审查范围 `f77f786..51fa64e`，规格符合性、正确性和代码库一致性均通过。
+
+**过程记录**
+
+- 初版用 `style="--graph-width:…"` 传递动态图宽，严格 CSP 拒绝内联样式后导致 Grid 列定义整体失效。
+- SVG 的 `width` 本身可作为 Grid 第一列固有宽度，无需放宽 CSP 或注入动态样式。
+- 回归测试同时锁定渲染结果不含 `style=`，以及 CSS 不再依赖 `--graph-width`。
+- 版本仍为 `0.2.5`，VSIX 输出到主项目目录；源码位于隔离分支，未合并到 `main`。
 
 ## [S1] 问题
 
@@ -47,4 +52,4 @@ commits: f77f786..待交付
 - [x] T2: 实现历史图渲染与交互 — acceptance: 多轨 SVG、引用标签、双层提交信息、展开文件和 Diff 消息均有渲染或协议测试（covers: S2; depends: T1）
 - [x] T3: 将历史视图迁移为独立 Webview — acceptance: package 和扩展只为 historyView 注册 Webview Provider，标题命令及状态反馈保持（covers: S2; depends: T2）
 - [x] T4: 完成 0.2.5 预览交付 — acceptance: 完整检查、构建、Extension Host、VSIX 清单和独立审查通过，主分支不变化（covers: S2, S3; depends: T3）
-- [ ] T5: 修复严格 CSP 下历史正文不可见 — acceptance: 历史行不输出内联样式，网格不依赖自定义属性且渲染测试覆盖正文可见结构（covers: S4; depends: T2）
+- [x] T5: 修复严格 CSP 下历史正文不可见 — acceptance: 历史行不输出内联样式，网格不依赖自定义属性且渲染测试覆盖正文可见结构（covers: S4; depends: T2）
