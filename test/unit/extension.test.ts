@@ -93,6 +93,19 @@ const mocks = vi.hoisted(() => {
     showErrorMessage: vi.fn(),
     showWarningMessage: vi.fn(),
     deleteFile: vi.fn(),
+    contentProviderDispose: vi.fn(),
+    registerTextDocumentContentProvider: vi.fn((
+      scheme: string,
+      provider: vscode.TextDocumentContentProvider,
+    ) => {
+      void scheme;
+      void provider;
+      return {
+        dispose: (): void => {
+          mocks.contentProviderDispose();
+        },
+      };
+    }),
   };
 });
 
@@ -122,7 +135,8 @@ vi.mock('vscode', () => ({
     fs: { delete: mocks.deleteFile },
     isTrusted: true,
     onDidGrantWorkspaceTrust: mocks.onDidGrantWorkspaceTrust,
-    registerTextDocumentContentProvider: vi.fn(() => ({ dispose: vi.fn() })),
+    registerTextDocumentContentProvider:
+      mocks.registerTextDocumentContentProvider,
   },
 }));
 
@@ -241,6 +255,25 @@ describe('扩展激活', () => {
 
     expect(runtime.mode).toBe('git-unavailable');
     expect(await resolveLastProviderHtml()).toContain('请启用内置 Git');
+  });
+
+  it('正常运行时注册并释放历史差异空文档提供器', async () => {
+    mocks.state.gitExtension = gitExtension(() => ({
+      getAPI: () => gitApi(),
+    }));
+
+    const runtime = await activate(context());
+
+    expect(mocks.registerTextDocumentContentProvider).toHaveBeenCalledOnce();
+    expect(
+      mocks.registerTextDocumentContentProvider.mock.calls[0]?.[0],
+    ).toBe('gitool-empty');
+    expect(
+      mocks.registerTextDocumentContentProvider.mock.calls[0]?.[1]
+        .provideTextDocumentContent({} as vscode.Uri, {} as never),
+    ).toBe('');
+    runtime.dispose();
+    expect(mocks.contentProviderDispose).toHaveBeenCalledOnce();
   });
 
   it.each([

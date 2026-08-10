@@ -111,6 +111,10 @@ suite('Gitool 扩展', () => {
       commands.includes('gitool.pushAll'),
       '激活后应注册历史区推送命令',
     );
+    const emptyDocument = await vscode.workspace.openTextDocument(
+      vscode.Uri.parse('gitool-empty:/test/new-file.ts'),
+    );
+    assert.equal(emptyDocument.getText(), '');
   });
 
   test('真实双仓库默认选择安全且刷新后保持', async () => {

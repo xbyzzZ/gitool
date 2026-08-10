@@ -2,7 +2,7 @@
   "name": "gitool-file-commit",
   "displayName": "Gitool 文件提交",
   "description": "像 PyCharm 一样按文件选择、提交和推送 Git 变更",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "publisher": "gitool",
   "license": "MIT",
   "icon": "media/logo.png",

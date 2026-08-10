@@ -491,6 +491,10 @@ function registerReadyRuntime(
       HistoryViewProvider.viewType,
       historyProvider,
     ));
+    disposables.push(vscode.workspace.registerTextDocumentContentProvider(
+      'gitool-empty',
+      { provideTextDocumentContent: () => '' },
+    ));
     const viewActions = new GitoolViewActions({
       service: repositoryService,
       gitApi,
