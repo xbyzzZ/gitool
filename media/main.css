@@ -618,8 +618,8 @@ input:disabled {
 .history-commit-row {
   display: grid;
   width: 100%;
-  height: 42px;
-  min-height: 42px;
+  height: 28px;
+  min-height: 28px;
   grid-template-columns: max-content 14px minmax(0, 1fr);
   align-items: center;
   padding: 0 7px 0 0;
@@ -675,20 +675,11 @@ input:disabled {
   font-size: 12px;
 }
 
-.history-commit-copy,
-.history-commit-primary {
+.history-commit-copy {
   min-width: 0;
 }
 
 .history-commit-copy {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  overflow: hidden;
-}
-
-.history-commit-primary {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -698,6 +689,7 @@ input:disabled {
 .history-subject {
   min-width: 28px;
   overflow: hidden;
+  flex: 1 1 auto;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -706,9 +698,10 @@ input:disabled {
 .history-refs {
   display: flex;
   min-width: 0;
+  max-width: min(38%, 220px);
   gap: 3px;
   overflow: hidden;
-  flex: 0 1 auto;
+  flex: 0 1 220px;
 }
 
 .commit-ref {
@@ -725,6 +718,25 @@ input:disabled {
   line-height: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.commit-ref-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-ref.head {
+  max-width: 76px;
+}
+
+.commit-ref.local {
+  max-width: 112px;
+}
+
+.commit-ref.remote {
+  max-width: 86px;
 }
 
 .commit-ref .codicon {
@@ -747,11 +759,19 @@ input:disabled {
 }
 
 .history-meta {
+  display: flex;
+  align-items: center;
+  gap: 0;
   overflow: hidden;
+  flex: none;
   color: var(--vscode-descriptionForeground);
   font-size: 11px;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.history-meta > span + span::before {
+  margin: 0 3px;
+  content: "·";
 }
 
 .history-files {
@@ -805,5 +825,29 @@ input:disabled {
 
   .history-file {
     grid-template-columns: 12px 16px minmax(0, 1fr) 30px;
+  }
+}
+
+@media (max-width: 520px) {
+  .history-author {
+    display: none;
+  }
+
+  .history-author + span::before {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .history-time {
+    display: none;
+  }
+
+  .history-time + span::before {
+    display: none;
+  }
+
+  .history-refs {
+    max-width: 36%;
   }
 }

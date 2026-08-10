@@ -23,12 +23,17 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.workbench-pane')).not.toMatch(/(?:^|;)\s*border\s*:/u);
   });
 
-  it('历史列表按多轨图、双行摘要和分支标签布局', () => {
+  it('历史列表按多轨图、单行摘要和紧凑分支标签布局', () => {
     expect(readRule('.history-commit-row')).toMatch(
       /grid-template-columns:\s*max-content 14px minmax\(0, 1fr\)/u,
     );
     expect(readRule('.history-commit-row')).not.toContain('--graph-width');
-    expect(readRule('.history-commit-copy')).toMatch(/flex-direction:\s*column/u);
+    expect(readRule('.history-commit-row')).toMatch(/height:\s*28px/u);
+    expect(readRule('.history-commit-copy')).toMatch(/align-items:\s*center/u);
+    expect(readRule('.history-refs')).toMatch(/max-width:\s*min\(38%, 220px\)/u);
+    expect(readRule('.commit-ref.local')).toMatch(/max-width:\s*112px/u);
+    expect(stylesheet).toContain('@media (max-width: 520px)');
+    expect(stylesheet).toContain('.history-author');
     expect(readRule('.history-list')).toMatch(/overflow:\s*auto/u);
     expect(stylesheet).toContain('.graph-line');
     expect(stylesheet).toContain('.commit-ref.remote');

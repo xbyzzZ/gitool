@@ -65,7 +65,7 @@ export function renderGraphMarkup(
   graphWidth: number,
   lanePitch: number,
 ): string {
-  const height = 42;
+  const height = 28;
   const center = height / 2;
   const nodeX = laneX(commit.lane, lanePitch);
   const passing = commit.passingEdges.map((edge) =>
@@ -90,9 +90,10 @@ export function renderGraphMarkup(
 
 function refMarkup(commit: CommitGraphNode): string {
   return commit.refs.map((ref) => {
-    const label = ref.kind === 'head' ? `HEAD  ${ref.name}` : ref.name;
+    const label = ref.name;
+    const title = ref.kind === 'head' ? `HEAD · ${ref.name}` : ref.name;
     const icon = ref.kind === 'remote' ? 'cloud' : 'git-branch';
-    return `<span class="commit-ref ${ref.kind}" title="${escapeHtml(label)}"><span class="codicon codicon-${icon}" aria-hidden="true"></span>${escapeHtml(label)}</span>`;
+    return `<span class="commit-ref ${ref.kind}" title="${escapeHtml(title)}"><span class="codicon codicon-${icon}" aria-hidden="true"></span><span class="commit-ref-label">${escapeHtml(label)}</span></span>`;
   }).join('');
 }
 
@@ -125,11 +126,15 @@ export function renderCommitRowMarkup(
   options: CommitRowRenderOptions,
 ): string {
   const expanded = options.expanded === true;
-  const meta = `${commit.author} · ${relativeTime(
-    commit.authoredAt,
-    options.now,
-  )} · ${commit.shortHash}`;
-  const title = `${commit.subject}\n${commit.author} · ${commit.authoredAt}\n${commit.hash}`;
+  const time = relativeTime(commit.authoredAt, options.now);
+  const refs = commit.refs.map((ref) => ref.kind === 'head'
+    ? `HEAD · ${ref.name}`
+    : ref.name).join(' · ');
+  const title = [
+    commit.subject,
+    `${commit.author} · ${commit.authoredAt} · ${commit.hash}`,
+    refs,
+  ].filter((value) => value.length > 0).join('\n');
   const files = expanded
     ? `<div class="history-files">${(options.files ?? []).map(fileMarkup).join('')}</div>`
     : '';
@@ -138,11 +143,13 @@ export function renderCommitRowMarkup(
     + renderGraphMarkup(commit, options.graphWidth, options.lanePitch)
     + `<span class="codicon codicon-chevron-${expanded ? 'down' : 'right'} history-chevron" aria-hidden="true"></span>`
     + '<span class="history-commit-copy">'
-    + '<span class="history-commit-primary">'
     + `<span class="history-subject">${escapeHtml(commit.subject)}</span>`
     + `<span class="history-refs">${refMarkup(commit)}</span>`
+    + '<span class="history-meta">'
+    + `<span class="history-author">${escapeHtml(commit.author)}</span>`
+    + `<span class="history-time">${escapeHtml(time)}</span>`
+    + `<span class="history-hash">${escapeHtml(commit.shortHash)}</span>`
     + '</span>'
-    + `<span class="history-meta">${escapeHtml(meta)}</span>`
     + '</span>'
     + '</button>'
     + files

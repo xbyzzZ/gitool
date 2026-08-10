@@ -32,7 +32,7 @@
     return `M ${String(from)} 0 C ${String(from)} ${String(height * 0.35)} ${String(to)} ${String(height * 0.65)} ${String(to)} ${String(height)}`;
   }
   function renderGraphMarkup(commit, graphWidth, lanePitch) {
-    const height = 42;
+    const height = 28;
     const center = height / 2;
     const nodeX = laneX(commit.lane, lanePitch);
     const passing = commit.passingEdges.map(
@@ -49,9 +49,10 @@
   }
   function refMarkup(commit) {
     return commit.refs.map((ref) => {
-      const label = ref.kind === "head" ? `HEAD  ${ref.name}` : ref.name;
+      const label = ref.name;
+      const title = ref.kind === "head" ? `HEAD \xB7 ${ref.name}` : ref.name;
       const icon = ref.kind === "remote" ? "cloud" : "git-branch";
-      return `<span class="commit-ref ${ref.kind}" title="${escapeHtml(label)}"><span class="codicon codicon-${icon}" aria-hidden="true"></span>${escapeHtml(label)}</span>`;
+      return `<span class="commit-ref ${ref.kind}" title="${escapeHtml(title)}"><span class="codicon codicon-${icon}" aria-hidden="true"></span><span class="commit-ref-label">${escapeHtml(label)}</span></span>`;
     }).join("");
   }
   function splitFilePath(path) {
@@ -67,15 +68,15 @@
   }
   function renderCommitRowMarkup(commit, options) {
     const expanded = options.expanded === true;
-    const meta = `${commit.author} \xB7 ${relativeTime(
-      commit.authoredAt,
-      options.now
-    )} \xB7 ${commit.shortHash}`;
-    const title = `${commit.subject}
-${commit.author} \xB7 ${commit.authoredAt}
-${commit.hash}`;
+    const time = relativeTime(commit.authoredAt, options.now);
+    const refs = commit.refs.map((ref) => ref.kind === "head" ? `HEAD \xB7 ${ref.name}` : ref.name).join(" \xB7 ");
+    const title = [
+      commit.subject,
+      `${commit.author} \xB7 ${commit.authoredAt} \xB7 ${commit.hash}`,
+      refs
+    ].filter((value) => value.length > 0).join("\n");
     const files = expanded ? `<div class="history-files">${(options.files ?? []).map(fileMarkup).join("")}</div>` : "";
-    return `<article class="history-entry${expanded ? " expanded" : ""}" role="listitem" data-hash="${commit.hash}"><button class="history-commit-row" type="button" aria-expanded="${String(expanded)}" title="${escapeHtml(title)}">` + renderGraphMarkup(commit, options.graphWidth, options.lanePitch) + `<span class="codicon codicon-chevron-${expanded ? "down" : "right"} history-chevron" aria-hidden="true"></span><span class="history-commit-copy"><span class="history-commit-primary"><span class="history-subject">${escapeHtml(commit.subject)}</span><span class="history-refs">${refMarkup(commit)}</span></span><span class="history-meta">${escapeHtml(meta)}</span></span></button>` + files + "</article>";
+    return `<article class="history-entry${expanded ? " expanded" : ""}" role="listitem" data-hash="${commit.hash}"><button class="history-commit-row" type="button" aria-expanded="${String(expanded)}" title="${escapeHtml(title)}">` + renderGraphMarkup(commit, options.graphWidth, options.lanePitch) + `<span class="codicon codicon-chevron-${expanded ? "down" : "right"} history-chevron" aria-hidden="true"></span><span class="history-commit-copy"><span class="history-subject">${escapeHtml(commit.subject)}</span><span class="history-refs">${refMarkup(commit)}</span><span class="history-meta"><span class="history-author">${escapeHtml(commit.author)}</span><span class="history-time">${escapeHtml(time)}</span><span class="history-hash">${escapeHtml(commit.shortHash)}</span></span></span></button>` + files + "</article>";
   }
   function graphMetrics(commits) {
     const laneCount = Math.max(1, ...commits.map((commit) => commit.laneCount));

@@ -46,17 +46,22 @@ describe('提交历史图渲染', () => {
     expect(graphMetrics([commit({ laneCount: 20 })]).width).toBe(92);
   });
 
-  it('双行显示主题、引用、作者时间哈希，并转义动态内容', () => {
+  it('单行显示主题、紧凑引用、作者时间哈希，并转义动态内容', () => {
     const html = renderCommitRowMarkup(commit({ subject: '<修复>' }), {
       graphWidth: 40,
       lanePitch: 12,
       now: new Date('2026-08-10T09:00:00.000Z'),
     });
     expect(html).toContain('&lt;修复&gt;');
-    expect(html).toContain('HEAD  main');
+    expect(html).toContain('title="HEAD · main"');
+    expect(html).toContain('commit-ref-label">main');
+    expect(html).not.toContain('commit-ref-label">HEAD');
     expect(html).toContain('commit-ref local');
     expect(html).toContain('commit-ref remote');
-    expect(html).toContain('测试作者 · 1 小时前 · aaaaaaa');
+    expect(html).toContain('history-author">测试作者');
+    expect(html).toContain('history-time">1 小时前');
+    expect(html).toContain('history-hash">aaaaaaa');
+    expect(html).not.toContain('history-commit-primary');
     expect(html).not.toContain(' style=');
   });
 
