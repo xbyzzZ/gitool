@@ -2,7 +2,7 @@
   "name": "gitool-file-commit",
   "displayName": "Gitool 文件提交",
   "description": "像 PyCharm 一样按文件选择、提交和推送 Git 变更",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "publisher": "gitool",
   "license": "MIT",
   "icon": "media/logo.png",
@@ -24,6 +24,7 @@
     "onView:gitool.commitView",
     "onView:gitool.changesView",
     "onView:gitool.historyView",
+    "onView:gitool.historyFilesView",
     "onCommand:gitool.refresh"
   ],
   "main": "./dist/extension.js",
@@ -52,6 +53,10 @@
           "type": "webview",
           "id": "gitool.historyView",
           "name": "提交历史"
+        },
+        {
+          "id": "gitool.historyFilesView",
+          "name": "提交文件"
         }
       ]
     },

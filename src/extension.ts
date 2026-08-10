@@ -30,6 +30,8 @@ import {
   registerViewCommands,
 } from './views/view-actions.js';
 import { PushAvailabilityContext } from './views/push-availability-context.js';
+import { HistoryFilesTreeProvider } from './views/history-files-tree-provider.js';
+import type { HistoryFileNode } from './views/history-tree-provider.js';
 
 interface BuiltinGitExtensionExports {
   getAPI(version: 1): unknown;
@@ -449,10 +451,13 @@ function registerReadyRuntime(
       aiModelSelectionStore,
     });
     disposables.push(provider);
+    const historyFilesProvider = new HistoryFilesTreeProvider(repositoryService);
+    disposables.push(historyFilesProvider);
     const historyProvider = new HistoryViewProvider({
       extensionUri: context.extensionUri,
       gitApi,
       repositoryService,
+      historyFilesProvider,
     });
     disposables.push(historyProvider);
     const changeProvider = new ChangeTreeProvider(repositoryService);
@@ -491,6 +496,15 @@ function registerReadyRuntime(
       HistoryViewProvider.viewType,
       historyProvider,
     ));
+    const historyFilesTree = vscode.window.createTreeView<HistoryFileNode>(
+      'gitool.historyFilesView',
+      {
+        treeDataProvider: historyFilesProvider,
+        showCollapseAll: false,
+      },
+    );
+    disposables.push(historyFilesTree);
+    disposables.push(historyFilesProvider.bindView(historyFilesTree));
     disposables.push(vscode.workspace.registerTextDocumentContentProvider(
       'gitool-empty',
       { provideTextDocumentContent: () => '' },

@@ -25,6 +25,60 @@ function extensionUri(path = '/extensions/gitool'): vscode.Uri {
 }
 
 describe('提交历史 Webview Provider', () => {
+  it('选择提交后把详情交给原生提交文件视图', async () => {
+    let receive: ((message: unknown) => void) | undefined;
+    const details = {
+      hash: 'a'.repeat(40),
+      parentHash: 'b'.repeat(40),
+      files: [{ status: 'M' as const, path: 'src/app.ts' }],
+    };
+    const service = {
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      getViewModel: vi.fn(() => ({ currentRepositoryId: '/repo/a', version: 3 })),
+      loadCommitDetails: vi.fn(() => Promise.resolve(details)),
+      reportFailure: vi.fn(),
+    };
+    const historyFilesProvider = { selectCommit: vi.fn() };
+    const webview = {
+      cspSource: 'vscode-webview://gitool',
+      options: {},
+      html: '',
+      asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
+      postMessage: vi.fn(() => Promise.resolve(true)),
+      onDidReceiveMessage: vi.fn((listener: (message: unknown) => void) => {
+        receive = listener;
+        return { dispose: vi.fn() };
+      }),
+    };
+    const provider = new HistoryViewProvider({
+      extensionUri: extensionUri(),
+      gitApi: {} as never,
+      repositoryService: service as never,
+      historyFilesProvider: historyFilesProvider as never,
+    });
+    provider.resolveWebviewView({
+      webview,
+      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+    } as unknown as vscode.WebviewView);
+
+    receive?.({
+      type: 'selectHistoryCommit',
+      repositoryId: '/repo/a',
+      version: 3,
+      hash: details.hash,
+      requestId: 'select-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(historyFilesProvider.selectCommit).toHaveBeenCalledWith(
+        '/repo/a',
+        3,
+        details,
+      );
+    });
+    provider.dispose();
+  });
+
   it('详情读取失败时在当前操作位置明确提示错误', async () => {
     let receive: ((message: unknown) => void) | undefined;
     const service = {
@@ -51,6 +105,7 @@ describe('提交历史 Webview Provider', () => {
       extensionUri: extensionUri(),
       gitApi: {} as never,
       repositoryService: service as never,
+      historyFilesProvider: { selectCommit: vi.fn() } as never,
     });
     provider.resolveWebviewView({
       webview,

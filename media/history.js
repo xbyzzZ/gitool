@@ -55,19 +55,8 @@
       return `<span class="commit-ref ${ref.kind}" title="${escapeHtml(title)}"><span class="codicon codicon-${icon}" aria-hidden="true"></span><span class="commit-ref-label">${escapeHtml(label)}</span></span>`;
     }).join("");
   }
-  function splitFilePath(path) {
-    const segments = path.split("/");
-    return {
-      name: segments.pop() ?? path,
-      directory: segments.join("/")
-    };
-  }
-  function fileMarkup(file) {
-    const path = splitFilePath(file.path);
-    return `<button class="history-file" type="button" data-path="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}"><span class="history-file-guide" aria-hidden="true"></span><span class="codicon codicon-file history-file-icon" aria-hidden="true"></span><span class="history-file-name">${escapeHtml(path.name)}</span>` + (path.directory.length === 0 ? "" : `<span class="history-file-directory">${escapeHtml(path.directory)}</span>`) + `<span class="history-file-status status-${escapeHtml(file.status.at(0) ?? "M")}">${escapeHtml(file.status)}</span></button>`;
-  }
   function renderCommitRowMarkup(commit, options) {
-    const expanded = options.expanded === true;
+    const selected = options.selected === true;
     const time = relativeTime(commit.authoredAt, options.now);
     const refs = commit.refs.map((ref) => ref.kind === "head" ? `HEAD \xB7 ${ref.name}` : ref.name).join(" \xB7 ");
     const title = [
@@ -75,9 +64,8 @@
       `${commit.author} \xB7 ${commit.authoredAt} \xB7 ${commit.hash}`,
       refs
     ].filter((value) => value.length > 0).join("\n");
-    const files = expanded ? `<div class="history-files">${(options.files ?? []).map(fileMarkup).join("")}</div>` : "";
     const refsMarkup = commit.refs.length === 0 ? "" : `<span class="history-refs">${refMarkup(commit)}</span>`;
-    return `<article class="history-entry${expanded ? " expanded" : ""}" role="listitem" data-hash="${commit.hash}"><button class="history-commit-row" type="button" aria-expanded="${String(expanded)}" title="${escapeHtml(title)}">` + renderGraphMarkup(commit, options.graphWidth, options.lanePitch) + `<span class="codicon codicon-chevron-${expanded ? "down" : "right"} history-chevron" aria-hidden="true"></span><span class="history-commit-copy"><span class="history-subject">${escapeHtml(commit.subject)}</span>` + refsMarkup + `<span class="history-meta"><span class="history-author">${escapeHtml(commit.author)}</span><span class="history-time">${escapeHtml(time)}</span><span class="history-hash">${escapeHtml(commit.shortHash)}</span></span></span></button>` + files + "</article>";
+    return `<article class="history-entry${selected ? " selected" : ""}" role="listitem" data-hash="${commit.hash}"><button class="history-commit-row" type="button" aria-pressed="${String(selected)}" title="${escapeHtml(title)}">` + renderGraphMarkup(commit, options.graphWidth, options.lanePitch) + `<span class="history-commit-copy"><span class="history-subject">${escapeHtml(commit.subject)}</span>` + refsMarkup + `<span class="history-meta"><span class="history-author">${escapeHtml(commit.author)}</span><span class="history-time">${escapeHtml(time)}</span><span class="history-hash">${escapeHtml(commit.shortHash)}</span></span></span></button></article>`;
   }
   function graphMetrics(commits) {
     const laneCount = Math.max(1, ...commits.map((commit) => commit.laneCount));
@@ -87,13 +75,12 @@
       pitch: laneCount === 1 ? 12 : (width - 16) / (laneCount - 1)
     };
   }
-  function renderHistory(container, commits, expandedHashes, details, callbacks) {
+  function renderHistory(container, commits, selectedHash, callbacks) {
     const metrics = graphMetrics(commits);
     container.innerHTML = commits.map((commit) => renderCommitRowMarkup(commit, {
-      expanded: expandedHashes.has(commit.hash),
+      selected: selectedHash === commit.hash,
       graphWidth: metrics.width,
-      lanePitch: metrics.pitch,
-      ...details.get(commit.hash) === void 0 ? {} : { files: details.get(commit.hash) ?? [] }
+      lanePitch: metrics.pitch
     })).join("");
     for (const entry of container.querySelectorAll(".history-entry")) {
       const hash = entry.dataset.hash;
@@ -101,16 +88,8 @@
         continue;
       }
       entry.querySelector(".history-commit-row")?.addEventListener("click", () => {
-        callbacks.toggleCommit(hash, !expandedHashes.has(hash));
+        callbacks.selectCommit(hash);
       });
-      for (const file of entry.querySelectorAll(".history-file")) {
-        const path = file.dataset.path;
-        if (path !== void 0) {
-          file.addEventListener("click", () => {
-            callbacks.openCommitDiff(hash, path);
-          });
-        }
-      }
     }
   }
 
@@ -131,11 +110,9 @@
   var syncSummary = requiredElement("sync-summary");
   var historyStatus = requiredElement("history-status");
   var historyList = requiredElement("history-list");
-  var expandedCommits = /* @__PURE__ */ new Set();
-  var commitDetails = /* @__PURE__ */ new Map();
-  var currentModel;
   var currentScope = "";
   var sequence = 0;
+  var selectedCommitHash;
   function post(message) {
     vscode.postMessage(message);
   }
@@ -143,47 +120,28 @@
     const nextScope = `${model.currentRepositoryId ?? ""}:${String(model.version)}`;
     if (nextScope !== currentScope) {
       currentScope = nextScope;
-      expandedCommits.clear();
-      commitDetails.clear();
+      selectedCommitHash = void 0;
     }
-    currentModel = model;
     layout.setAttribute("aria-busy", String(model.history.kind === "loading"));
     syncSummary.textContent = model.sync.kind === "ready" ? `${model.sync.upstream} \xB7 \u2191${String(model.sync.ahead)} \u2193${String(model.sync.behind)}` : model.sync.kind === "detached" ? "\u6E38\u79BB HEAD" : "\u672A\u8BBE\u7F6E\u4E0A\u6E38";
     const status = model.history.kind === "loading" ? "\u6B63\u5728\u8BFB\u53D6\u63D0\u4EA4\u5386\u53F2\u2026" : model.history.kind === "failed" ? model.history.message : model.history.commits.length === 0 ? "\u6682\u65E0\u63D0\u4EA4\u8BB0\u5F55" : "";
     historyStatus.textContent = status;
     historyStatus.hidden = status.length === 0;
     historyStatus.classList.toggle("error-status", model.history.kind === "failed");
-    renderHistory(historyList, model.history.commits, expandedCommits, commitDetails, {
-      toggleCommit: (hash, expanded) => {
-        if (expanded) {
-          expandedCommits.add(hash);
-          if (!commitDetails.has(hash) && model.currentRepositoryId !== void 0) {
-            sequence += 1;
-            post({
-              type: "loadCommitDetails",
-              repositoryId: model.currentRepositoryId,
-              version: model.version,
-              hash,
-              requestId: `details-${String(sequence)}`
-            });
-          }
-        } else {
-          expandedCommits.delete(hash);
-        }
-        render(model);
-      },
-      openCommitDiff: (hash, path) => {
+    renderHistory(historyList, model.history.commits, selectedCommitHash, {
+      selectCommit: (hash) => {
         if (model.currentRepositoryId === void 0) {
           return;
         }
+        selectedCommitHash = hash;
+        render(model);
         sequence += 1;
         post({
-          type: "openCommitDiff",
+          type: "selectHistoryCommit",
           repositoryId: model.currentRepositoryId,
           version: model.version,
           hash,
-          path,
-          requestId: `history-diff-${String(sequence)}`
+          requestId: `history-select-${String(sequence)}`
         });
       }
     });
@@ -191,14 +149,6 @@
   window.addEventListener("message", (event) => {
     const message = event.data;
     if (typeof message !== "object" || message === null || !("type" in message)) {
-      return;
-    }
-    if (message.type === "commitDetails") {
-      const details = message;
-      if (currentModel?.currentRepositoryId === details.repositoryId && currentModel.version === details.version) {
-        commitDetails.set(details.details.hash, details.details.files);
-        render(currentModel);
-      }
       return;
     }
     if (message.type === "state" && "model" in message) {

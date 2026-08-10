@@ -620,7 +620,7 @@ input:disabled {
   width: 100%;
   height: 28px;
   min-height: 28px;
-  grid-template-columns: max-content 14px minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
   padding: 0 7px 0 0;
   overflow: hidden;
@@ -631,13 +631,11 @@ input:disabled {
   text-align: left;
 }
 
-.history-commit-row:hover,
-.history-file:hover {
+.history-commit-row:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
-.history-commit-row:focus-visible,
-.history-file:focus-visible {
+.history-commit-row:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
@@ -670,9 +668,9 @@ input:disabled {
 .lane-color-4 { color: var(--vscode-charts-yellow, #cca700); }
 .lane-color-5 { color: var(--vscode-charts-red, #f14c4c); }
 
-.history-chevron {
-  color: var(--vscode-icon-foreground);
-  font-size: 12px;
+.history-entry.selected .history-commit-row {
+  color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground));
+  background: var(--vscode-list-inactiveSelectionBackground);
 }
 
 .history-commit-copy {
@@ -772,60 +770,6 @@ input:disabled {
 .history-meta > span + span::before {
   margin: 0 3px;
   content: "·";
-}
-
-.history-files {
-  padding-left: 30px;
-}
-
-.history-file {
-  display: grid;
-  width: 100%;
-  min-height: 27px;
-  grid-template-columns: 12px 16px minmax(30px, auto) minmax(0, 1fr) 30px;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px 0 0;
-  overflow: hidden;
-  border: 0;
-  border-radius: 0;
-  color: var(--vscode-foreground);
-  background: transparent;
-  text-align: left;
-}
-
-.history-file-guide {
-  align-self: stretch;
-  border-left: 1px solid var(--vscode-tree-indentGuidesStroke);
-}
-
-.history-file-name,
-.history-file-directory {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-file-directory {
-  color: var(--vscode-descriptionForeground);
-  font-size: 11px;
-}
-
-.history-file-status {
-  color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-descriptionForeground));
-  font-size: 10px;
-  font-weight: 600;
-  text-align: right;
-}
-
-@media (max-width: 300px) {
-  .history-file-directory {
-    display: none;
-  }
-
-  .history-file {
-    grid-template-columns: 12px 16px minmax(0, 1fr) 30px;
-  }
 }
 
 @media (max-width: 520px) {

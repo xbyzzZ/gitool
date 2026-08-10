@@ -1,20 +1,14 @@
-import type {
-  CommitFile,
-  CommitGraphEdge,
-  CommitGraphNode,
-} from '../domain/history-model.js';
+import type { CommitGraphEdge, CommitGraphNode } from '../domain/history-model.js';
 
 export interface CommitRowRenderOptions {
-  readonly expanded?: boolean;
-  readonly files?: readonly CommitFile[];
+  readonly selected?: boolean;
   readonly graphWidth: number;
   readonly lanePitch: number;
   readonly now?: Date;
 }
 
 export interface HistoryRendererCallbacks {
-  readonly toggleCommit: (hash: string, expanded: boolean) => void;
-  readonly openCommitDiff: (hash: string, path: string) => void;
+  readonly selectCommit: (hash: string) => void;
 }
 
 function escapeHtml(value: string): string {
@@ -97,35 +91,11 @@ function refMarkup(commit: CommitGraphNode): string {
   }).join('');
 }
 
-function splitFilePath(path: string): {
-  readonly name: string;
-  readonly directory: string;
-} {
-  const segments = path.split('/');
-  return {
-    name: segments.pop() ?? path,
-    directory: segments.join('/'),
-  };
-}
-
-function fileMarkup(file: CommitFile): string {
-  const path = splitFilePath(file.path);
-  return `<button class="history-file" type="button" data-path="${escapeHtml(file.path)}" title="${escapeHtml(file.path)}">`
-    + '<span class="history-file-guide" aria-hidden="true"></span>'
-    + '<span class="codicon codicon-file history-file-icon" aria-hidden="true"></span>'
-    + `<span class="history-file-name">${escapeHtml(path.name)}</span>`
-    + (path.directory.length === 0
-      ? ''
-      : `<span class="history-file-directory">${escapeHtml(path.directory)}</span>`)
-    + `<span class="history-file-status status-${escapeHtml(file.status.at(0) ?? 'M')}">${escapeHtml(file.status)}</span>`
-    + '</button>';
-}
-
 export function renderCommitRowMarkup(
   commit: CommitGraphNode,
   options: CommitRowRenderOptions,
 ): string {
-  const expanded = options.expanded === true;
+  const selected = options.selected === true;
   const time = relativeTime(commit.authoredAt, options.now);
   const refs = commit.refs.map((ref) => ref.kind === 'head'
     ? `HEAD · ${ref.name}`
@@ -135,16 +105,12 @@ export function renderCommitRowMarkup(
     `${commit.author} · ${commit.authoredAt} · ${commit.hash}`,
     refs,
   ].filter((value) => value.length > 0).join('\n');
-  const files = expanded
-    ? `<div class="history-files">${(options.files ?? []).map(fileMarkup).join('')}</div>`
-    : '';
   const refsMarkup = commit.refs.length === 0
     ? ''
     : `<span class="history-refs">${refMarkup(commit)}</span>`;
-  return `<article class="history-entry${expanded ? ' expanded' : ''}" role="listitem" data-hash="${commit.hash}">`
-    + `<button class="history-commit-row" type="button" aria-expanded="${String(expanded)}" title="${escapeHtml(title)}">`
+  return `<article class="history-entry${selected ? ' selected' : ''}" role="listitem" data-hash="${commit.hash}">`
+    + `<button class="history-commit-row" type="button" aria-pressed="${String(selected)}" title="${escapeHtml(title)}">`
     + renderGraphMarkup(commit, options.graphWidth, options.lanePitch)
-    + `<span class="codicon codicon-chevron-${expanded ? 'down' : 'right'} history-chevron" aria-hidden="true"></span>`
     + '<span class="history-commit-copy">'
     + `<span class="history-subject">${escapeHtml(commit.subject)}</span>`
     + refsMarkup
@@ -155,7 +121,6 @@ export function renderCommitRowMarkup(
     + '</span>'
     + '</span>'
     + '</button>'
-    + files
     + '</article>';
 }
 
@@ -174,18 +139,14 @@ export function graphMetrics(commits: readonly CommitGraphNode[]): {
 export function renderHistory(
   container: HTMLElement,
   commits: readonly CommitGraphNode[],
-  expandedHashes: ReadonlySet<string>,
-  details: ReadonlyMap<string, readonly CommitFile[]>,
+  selectedHash: string | undefined,
   callbacks: HistoryRendererCallbacks,
 ): void {
   const metrics = graphMetrics(commits);
   container.innerHTML = commits.map((commit) => renderCommitRowMarkup(commit, {
-    expanded: expandedHashes.has(commit.hash),
+    selected: selectedHash === commit.hash,
     graphWidth: metrics.width,
     lanePitch: metrics.pitch,
-    ...(details.get(commit.hash) === undefined
-      ? {}
-      : { files: details.get(commit.hash) ?? [] }),
   })).join('');
   for (const entry of container.querySelectorAll<HTMLElement>('.history-entry')) {
     const hash = entry.dataset.hash;
@@ -194,15 +155,7 @@ export function renderHistory(
     }
     entry.querySelector<HTMLButtonElement>('.history-commit-row')
       ?.addEventListener('click', () => {
-        callbacks.toggleCommit(hash, !expandedHashes.has(hash));
+        callbacks.selectCommit(hash);
       });
-    for (const file of entry.querySelectorAll<HTMLButtonElement>('.history-file')) {
-      const path = file.dataset.path;
-      if (path !== undefined) {
-        file.addEventListener('click', () => {
-          callbacks.openCommitDiff(hash, path);
-        });
-      }
-    }
   }
 }

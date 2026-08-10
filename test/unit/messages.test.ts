@@ -223,6 +223,22 @@ describe('parseWebviewMessage', () => {
     ],
     [
       {
+        type: 'selectHistoryCommit',
+        repositoryId: '/repo/a',
+        version: 7,
+        hash: 'd'.repeat(40),
+        requestId: 'request-select-history',
+      },
+      {
+        type: 'selectHistoryCommit',
+        repositoryId: '/repo/a',
+        version: 7,
+        hash: 'd'.repeat(40),
+        requestId: 'request-select-history',
+      },
+    ],
+    [
+      {
         type: 'loadCommitDetails',
         repositoryId: '/repo/sha256',
         version: 7,

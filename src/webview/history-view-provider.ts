@@ -4,6 +4,7 @@ import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { BuiltinGitApi } from '../git/builtin-git-api.js';
 import { redactSensitiveText } from '../git/git-runner.js';
 import type { RepositoryService } from '../services/repository-service.js';
+import type { HistoryFilesTreeProvider } from '../views/history-files-tree-provider.js';
 import { parseWebviewMessage, type WebviewMessage } from './messages.js';
 import { renderHistoryWebviewHtml } from './render.js';
 
@@ -11,6 +12,7 @@ export interface HistoryViewProviderDependencies {
   readonly extensionUri: vscode.Uri;
   readonly gitApi: BuiltinGitApi;
   readonly repositoryService: RepositoryService;
+  readonly historyFilesProvider: HistoryFilesTreeProvider;
 }
 
 interface StateMessage {
@@ -84,6 +86,16 @@ export class HistoryViewProvider implements vscode.WebviewViewProvider, vscode.D
           version: message.version,
           details,
         });
+        return;
+      }
+      if (message.type === 'selectHistoryCommit') {
+        this.requireScope(message.repositoryId, message.version);
+        const details = await this.dependencies.repositoryService.loadCommitDetails(message);
+        this.dependencies.historyFilesProvider.selectCommit(
+          message.repositoryId,
+          message.version,
+          details,
+        );
         return;
       }
       if (message.type === 'openCommitDiff') {

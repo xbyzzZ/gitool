@@ -1,4 +1,3 @@
-import type { CommitDetails } from '../domain/history-model.js';
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { WebviewMessage } from './messages.js';
 import { renderHistory } from './history-renderer.js';
@@ -10,13 +9,6 @@ interface VsCodeApi {
 interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
-}
-
-interface CommitDetailsMessage {
-  readonly type: 'commitDetails';
-  readonly repositoryId: string;
-  readonly version: number;
-  readonly details: CommitDetails;
 }
 
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -38,11 +30,9 @@ const layout = layoutElement;
 const syncSummary = requiredElement('sync-summary');
 const historyStatus = requiredElement('history-status');
 const historyList = requiredElement('history-list');
-const expandedCommits = new Set<string>();
-const commitDetails = new Map<string, readonly CommitDetails['files'][number][]>();
-let currentModel: RepositoryViewModel | undefined;
 let currentScope = '';
 let sequence = 0;
+let selectedCommitHash: string | undefined;
 
 function post(message: WebviewMessage): void {
   vscode.postMessage(message);
@@ -52,10 +42,8 @@ function render(model: RepositoryViewModel): void {
   const nextScope = `${model.currentRepositoryId ?? ''}:${String(model.version)}`;
   if (nextScope !== currentScope) {
     currentScope = nextScope;
-    expandedCommits.clear();
-    commitDetails.clear();
+    selectedCommitHash = undefined;
   }
-  currentModel = model;
   layout.setAttribute('aria-busy', String(model.history.kind === 'loading'));
   syncSummary.textContent = model.sync.kind === 'ready'
     ? `${model.sync.upstream} · ↑${String(model.sync.ahead)} ↓${String(model.sync.behind)}`
@@ -68,37 +56,20 @@ function render(model: RepositoryViewModel): void {
   historyStatus.textContent = status;
   historyStatus.hidden = status.length === 0;
   historyStatus.classList.toggle('error-status', model.history.kind === 'failed');
-  renderHistory(historyList, model.history.commits, expandedCommits, commitDetails, {
-    toggleCommit: (hash, expanded) => {
-      if (expanded) {
-        expandedCommits.add(hash);
-        if (!commitDetails.has(hash) && model.currentRepositoryId !== undefined) {
-          sequence += 1;
-          post({
-            type: 'loadCommitDetails',
-            repositoryId: model.currentRepositoryId,
-            version: model.version,
-            hash,
-            requestId: `details-${String(sequence)}`,
-          });
-        }
-      } else {
-        expandedCommits.delete(hash);
-      }
-      render(model);
-    },
-    openCommitDiff: (hash, path) => {
+  renderHistory(historyList, model.history.commits, selectedCommitHash, {
+    selectCommit: (hash) => {
       if (model.currentRepositoryId === undefined) {
         return;
       }
+      selectedCommitHash = hash;
+      render(model);
       sequence += 1;
       post({
-        type: 'openCommitDiff',
+        type: 'selectHistoryCommit',
         repositoryId: model.currentRepositoryId,
         version: model.version,
         hash,
-        path,
-        requestId: `history-diff-${String(sequence)}`,
+        requestId: `history-select-${String(sequence)}`,
       });
     },
   });
@@ -107,15 +78,6 @@ function render(model: RepositoryViewModel): void {
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
   const message = event.data;
   if (typeof message !== 'object' || message === null || !('type' in message)) {
-    return;
-  }
-  if (message.type === 'commitDetails') {
-    const details = message as CommitDetailsMessage;
-    if (currentModel?.currentRepositoryId === details.repositoryId
-      && currentModel.version === details.version) {
-      commitDetails.set(details.details.hash, details.details.files);
-      render(currentModel);
-    }
     return;
   }
   if (message.type === 'state' && 'model' in message) {

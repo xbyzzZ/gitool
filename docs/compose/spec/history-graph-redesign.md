@@ -1,9 +1,9 @@
 ---
 feature: history-graph-redesign
-status: delivered
+status: in-progress
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: dc7833a..1b68b84
+commits: 2c52141..待交付
 ---
 
 # 提交历史图改版
@@ -32,9 +32,9 @@ commits: dc7833a..1b68b84
 
 历史服务输出每个提交行的顶部轨道、底部轨道、穿越边和父提交边。引用读取必须从完整 ref 名称区分 `refs/heads/*` 与 `refs/remotes/*`，当前本地分支标记为 HEAD，其他本地分支和所有远程分支分别标记，过滤远程符号引用 `*/HEAD`。
 
-引用标签使用 VS Code 主题变量：HEAD 为主要强调，本地分支为分支标签，远程分支为低强调远程标签。长标题和长引用单行省略，完整内容保留在 title。提交行支持键盘焦点和展开；展开后按文件名、目录和状态显示文件，点击文件继续打开历史 Diff。
+引用标签使用 VS Code 主题变量：HEAD 为主要强调，本地分支为分支标签，远程分支为低强调远程标签。长标题和长引用单行省略，完整内容保留在 title。提交行支持键盘焦点和选择；文件列表由 S8 定义的原生视图承载，点击文件继续打开历史 Diff。
 
-加载、空数据和失败状态保留；仓库切换或版本变化时清理展开详情。标题栏的拉取、推送和刷新命令保持不变。空文档运行时修复版本升级到 0.2.9，VSIX 输出到主项目目录供人工比较，但不合并到 main。
+加载、空数据和失败状态保留；仓库切换或版本变化时清理选中提交。标题栏的拉取、推送和刷新命令保持不变。主题图标试用版本升级到 0.2.10，VSIX 输出到主项目目录供人工比较，但不合并到 main。
 
 ## [S3] 范围外
 
@@ -59,6 +59,10 @@ commits: dc7833a..1b68b84
 
 正常运行模式必须注册 `gitool-empty` 文本文档内容提供器，并将其 Disposable 纳入 Runtime 生命周期。新增文件使用空左侧、删除文件使用空右侧时，VS Code 必须能够解析虚拟 URI；Extension Host 测试必须实际打开该 scheme，而不只检查 URI 构造。
 
+## [S8] 原生提交文件视图
+
+历史 Webview 只负责拓扑和提交选择，不再内联展开文件。点击提交后应保留明确的选中状态，并把提交详情交给同一 Gitool 容器下独立的原生“提交文件”视图。文件节点必须设置真实工作区 `resourceUri` 和 `ThemeIcon.File`，由当前 VS Code 文件图标主题解析图标；点击节点继续使用既有历史 Diff 命令。仓库或版本变化时必须清空旧选择，避免操作过期提交。
+
 ## Tasks
 
 - [x] T1: 修正引用分类并扩展拓扑行模型 — acceptance: 本地、远程、HEAD 分类准确，合并提交输出可连续绘制的行边且有单元测试（covers: S2）
@@ -69,3 +73,4 @@ commits: dc7833a..1b68b84
 - [x] T6: 将历史记录与分支引用压缩为单行 — acceptance: 行高为 28px，主题、引用和元数据同排；长引用省略且完整信息可通过 title 获取；窄宽度按作者、时间顺序降级（covers: S5; depends: T5）
 - [x] T7: 取消无引用提交的空标签占位 — acceptance: refs 为空时不生成引用容器且主题使用释放后的空间；有 refs 时标签结构保持（covers: S6; depends: T6）
 - [x] T8: 注册正常运行时历史空文档提供器 — acceptance: ready runtime 注册并释放 `gitool-empty`；Extension Host 可打开虚拟空文档（covers: S7; depends: T3）
+- [ ] T9: 将提交文件迁移到原生主题图标视图 — acceptance: 提交行支持单选状态且不再内联展开；原生文件节点使用 `resourceUri + ThemeIcon.File`，可打开历史 Diff，切换仓库后清空（covers: S8; depends: T8）

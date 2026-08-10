@@ -227,7 +227,7 @@ beforeEach(() => {
 });
 
 describe('扩展激活', () => {
-  it('正常激活注册提交与历史 Webview，并保留当前变更原生树', async () => {
+  it('正常激活注册提交与历史 Webview，并注册两个原生树视图', async () => {
     mocks.state.gitExtension = gitExtension(() => ({
       getAPI: () => gitApi(),
     }));
@@ -239,6 +239,7 @@ describe('扩展激活', () => {
       'gitool.commitView',
       'gitool.changesView',
       'gitool.historyView',
+      'gitool.historyFilesView',
     ]);
     expect(mocks.state.registeredWebviewIds).toEqual([
       'gitool.commitView',
@@ -246,6 +247,7 @@ describe('扩展激活', () => {
     ]);
     expect(mocks.createTreeView.mock.calls.map(([id]) => id)).toEqual([
       'gitool.changesView',
+      'gitool.historyFilesView',
     ]);
     expect(mocks.executeCommand).toHaveBeenCalledWith(
       'setContext',
@@ -326,6 +328,7 @@ describe('扩展激活', () => {
 
     expect(runtime.mode).toBe('initialization-failed');
     expect(mocks.state.viewDisposals).toEqual([
+      'gitool.historyFilesView',
       'gitool.historyView',
       'gitool.changesView',
       'gitool.commitView',
@@ -359,7 +362,7 @@ describe('扩展激活', () => {
 
     const nextRuntime: GitoolRuntime = await activate(context());
     expect(nextRuntime.mode).toBe('ready');
-    expect(mocks.state.activeViews.size).toBe(3);
+    expect(mocks.state.activeViews.size).toBe(4);
     expect(mocks.state.activeCommands.size).toBe(9);
     expect([...mocks.state.activeContentProviders.keys()]).toEqual([
       'gitool-empty',

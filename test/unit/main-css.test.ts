@@ -25,7 +25,7 @@ describe('工作台紧凑布局样式', () => {
 
   it('历史列表按多轨图、单行摘要和紧凑分支标签布局', () => {
     expect(readRule('.history-commit-row')).toMatch(
-      /grid-template-columns:\s*max-content 14px minmax\(0, 1fr\)/u,
+      /grid-template-columns:\s*max-content minmax\(0, 1fr\)/u,
     );
     expect(readRule('.history-commit-row')).not.toContain('--graph-width');
     expect(readRule('.history-commit-row')).toMatch(/height:\s*28px/u);
