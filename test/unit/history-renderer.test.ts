@@ -76,4 +76,14 @@ describe('提交历史图渲染', () => {
     expect(html).toContain('data-path="src/history.ts"');
     expect(html).toContain('history-file-name">history.ts');
   });
+
+  it('无引用提交不生成空标签容器占用主题空间', () => {
+    const html = renderCommitRowMarkup(commit({ refs: [] }), {
+      graphWidth: 40,
+      lanePitch: 12,
+    });
+    expect(html).toContain('class="history-subject"');
+    expect(html).not.toContain('class="history-refs"');
+    expect(html).toContain('class="history-hash"');
+  });
 });

@@ -1,9 +1,9 @@
 ---
 feature: history-graph-redesign
-status: delivered
+status: in-progress
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: 5885036..d976caa
+commits: 7b6f4d2..待交付
 ---
 
 # 提交历史图改版
@@ -51,6 +51,10 @@ commits: 5885036..d976caa
 
 提交行压缩为 28px 单行：主题优先占用可用宽度，随后显示有最大宽度和省略号的引用标签，末尾显示作者、相对时间与短哈希。约 520px 以下隐藏可见作者，约 360px 以下继续隐藏可见时间，但完整主题、作者、时间、哈希和引用必须保留在行悬停提示中。HEAD 标签只显示当前分支名，通过强调色和分支图标表达当前位置，不重复显示 `HEAD` 文本。
 
+## [S6] 引用按需占位
+
+只有实际包含 HEAD、本地或远程引用的提交才渲染引用容器。无引用提交不得保留空的引用弹性基准，主题应扩展到右侧元数据之前；有引用提交继续使用既定的标签最大宽度和省略规则。
+
 ## Tasks
 
 - [x] T1: 修正引用分类并扩展拓扑行模型 — acceptance: 本地、远程、HEAD 分类准确，合并提交输出可连续绘制的行边且有单元测试（covers: S2）
@@ -59,3 +63,4 @@ commits: 5885036..d976caa
 - [x] T4: 完成 0.2.7 优化包交付 — acceptance: 完整检查、构建、VSIX 清单和独立审查通过，主分支不变化（covers: S2, S3; depends: T3）
 - [x] T5: 修复严格 CSP 下历史正文不可见 — acceptance: 历史行不输出内联样式，网格不依赖自定义属性且渲染测试覆盖正文可见结构（covers: S4; depends: T2）
 - [x] T6: 将历史记录与分支引用压缩为单行 — acceptance: 行高为 28px，主题、引用和元数据同排；长引用省略且完整信息可通过 title 获取；窄宽度按作者、时间顺序降级（covers: S5; depends: T5）
+- [ ] T7: 取消无引用提交的空标签占位 — acceptance: refs 为空时不生成引用容器且主题使用释放后的空间；有 refs 时标签结构保持（covers: S6; depends: T6）
