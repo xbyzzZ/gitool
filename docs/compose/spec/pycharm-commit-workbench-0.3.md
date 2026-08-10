@@ -1,9 +1,9 @@
 ---
 feature: pycharm-commit-workbench-0.3
-status: in-progress
+status: delivered
 updated: 2026-08-10
 branch: codex/pycharm-commit-0.3
-commits: c4763cb..f6e2d76
+commits: c4763cb..ab419cb
 ---
 
 # 0.3 PyCharm 风格提交工作台
@@ -17,13 +17,14 @@ commits: c4763cb..f6e2d76
 - 已交付：领先/落后计算从历史刷新拆入同步服务，移除历史功能后仍能正确控制拉取和推送全部。
 - 本次修订：文件区与提交区之间支持指针拖动和键盘调节；普通视口至少保留 48px 文件区，紧凑视口至少保留 24px，拖动完成后保存偏好，取消或丢失指针捕获时回滚。
 - 本次修订：AI 密度主按钮改为直接显示“精简”“标准”或“详细”，生成时保留档位文字并显示加载状态，档位与提交区高度互不覆盖持久化状态。
+- 本次修订：档位下拉不再依赖已选文件数，`0 / N` 时也能预先选择档位；生成按钮仍要求至少选择一个文件，生成中档位选择保持禁用。
 
 **验证**
 
-- 自动验证：`npm run check` 通过，33 个测试文件共 322 项；`npm run build` 与 `git diff --check` 通过。
+- 自动验证：`npm run check` 通过，33 个测试文件共 324 项；`npm run build` 与 `git diff --check` 通过。
 - Extension Host：VS Code 1.132.0 的 3 项真实双仓库回归通过，覆盖统一命令注册、安全默认选择、精确提交、远程修改、失败重试、领先计数与推送全部。
 - 独立审查：已修复低高度裁切、极窄侧栏隐藏推送和推送可用状态遗漏；主题竞态与变更列表 DOM 绑定测试已补齐。
-- 安装包：`gitool-file-commit-0.3.0.vsix` 共 15 个文件，不含 `history.js`；最终 SHA-256 为 `fb5671a88d9861e0fc96a4604cb1a5083902ca990dcba3b50d81fda48dce895b`。
+- 安装包：`gitool-file-commit-0.3.0.vsix` 共 15 个文件，不含 `history.js`；最终 SHA-256 为 `e5040f7300671e822b50514b0b831480addb94492d0a44c4e647ccf92b3197c2`。
 - 人工验收边界：尚未在用户真实主题和实际侧栏尺寸下目测最终 VSIX，也未自动驱动 Webview 顶部与底部按钮的浏览器 DOM 点击；由本地安装包试用验收。
 
 **过程记录**
@@ -32,6 +33,7 @@ commits: c4763cb..f6e2d76
 - 首版最小提交区高度小于内部控件所需空间；最终按常态 156px、紧凑 112px 建立一致的 JavaScript、CSS 和 ARIA 契约。
 - 指针取消最初会保存中间高度；最终仅在 `pointerup` 保存，`pointercancel` 与丢失捕获均恢复拖动前高度。
 - 独立复审确认 300px 与 360px 视口拖到最大后仍保留一行文件区，全部阻断项已关闭。
+- 用户截图确认 `0 / 27` 时档位下拉被错误禁用；将“选择档位”和“开始生成”的可用条件拆开，并为生成中、本地忙碌、宿主操作中和未信任状态补齐回归断言。
 
 ## [S1] 问题
 
@@ -103,5 +105,5 @@ AI 生成主按钮不再绘制星形图标，直接显示当前“精简”“�
 - [x] T7: 增加提交区拖动分隔条 — acceptance: 指针拖动、键盘调整、视口边界和 Webview 状态持久化均有自动化测试，低高度下文件区和提交按钮仍可用（covers: S2, S5, S7; depends: T2）
 - [x] T8: 将生成密度改为文字控件 — acceptance: 主按钮按当前档位显示精简/标准/详细并保持生成、选择和取消语义，HTML/CSS/展示状态测试不再依赖星形图标（covers: S4, S5, S7; depends: T5）
 - [x] T9: 重新完成 0.3.0 交付 — acceptance: 完整检查、构建、Extension Host、独立审查和最终 VSIX 哈希复核通过（covers: S6, S7; depends: T7, T8）
-- [ ] T10: 修复档位按钮可用状态 — acceptance: 未勾选文件时仍可打开档位选择，生成按钮保持禁用，忙碌或不可写状态仍正确禁用（covers: S8; depends: T8）
-- [ ] T11: 重新生成 0.3.0 安装包 — acceptance: 定向回归、完整检查、构建、独立审查及 VSIX 哈希复核通过（covers: S6, S8; depends: T10）
+- [x] T10: 修复档位按钮可用状态 — acceptance: 未勾选文件时仍可打开档位选择，生成按钮保持禁用，忙碌或不可写状态仍正确禁用（covers: S8; depends: T8）
+- [x] T11: 重新生成 0.3.0 安装包 — acceptance: 定向回归、完整检查、构建、独立审查及 VSIX 哈希复核通过（covers: S6, S8; depends: T10）
