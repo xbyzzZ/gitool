@@ -1,24 +1,37 @@
 ---
 feature: pycharm-commit-workbench-0.3
-status: in-progress
+status: delivered
 updated: 2026-08-10
 branch: codex/pycharm-commit-0.3
-commits: c4763cb, b509ba4
+commits: c4763cb..f6e2d76
 ---
 
 # 0.3 PyCharm 风格提交工作台
 
 ## Report
 
+**已构建**
+
 - 已交付：0.3.0 只贡献一个“提交”Webview；当前变更与提交历史视图、历史命令、历史脚本和 `gitool-empty` 文档提供器均已移除。
 - 已交付：统一工作台包含顶部操作栏、分组文件列表、当前主题文件图标、固定底部 AI/提交区和低高度/极窄侧栏降级。
 - 已交付：领先/落后计算从历史刷新拆入同步服务，移除历史功能后仍能正确控制拉取和推送全部。
-- 自动验证：`npm run check` 通过，32 个测试文件共 316 项；`npm run build` 与 `git diff --check` 通过。
+- 本次修订：文件区与提交区之间支持指针拖动和键盘调节；普通视口至少保留 48px 文件区，紧凑视口至少保留 24px，拖动完成后保存偏好，取消或丢失指针捕获时回滚。
+- 本次修订：AI 密度主按钮改为直接显示“精简”“标准”或“详细”，生成时保留档位文字并显示加载状态，档位与提交区高度互不覆盖持久化状态。
+
+**验证**
+
+- 自动验证：`npm run check` 通过，33 个测试文件共 322 项；`npm run build` 与 `git diff --check` 通过。
 - Extension Host：VS Code 1.132.0 的 3 项真实双仓库回归通过，覆盖统一命令注册、安全默认选择、精确提交、远程修改、失败重试、领先计数与推送全部。
 - 独立审查：已修复低高度裁切、极窄侧栏隐藏推送和推送可用状态遗漏；主题竞态与变更列表 DOM 绑定测试已补齐。
-- 安装包：`gitool-file-commit-0.3.0.vsix` 共 15 个文件，不含 `history.js`；包内 `main.css`、`commit.js`、`extension.js` 与最终构建 SHA-256 完全一致。
+- 安装包：`gitool-file-commit-0.3.0.vsix` 共 15 个文件，不含 `history.js`；最终 SHA-256 为 `fb5671a88d9861e0fc96a4604cb1a5083902ca990dcba3b50d81fda48dce895b`。
 - 人工验收边界：尚未在用户真实主题和实际侧栏尺寸下目测最终 VSIX，也未自动驱动 Webview 顶部与底部按钮的浏览器 DOM 点击；由本地安装包试用验收。
-- 本次修订：正在增加文件列表与提交区之间的可拖动分隔条，并将 AI 密度星形图标替换为当前档位文字。
+
+**过程记录**
+
+- 首版高度上限只预留固定工具栏，未完整保留文件区；最终将常态和紧凑视口的保留高度分别统一为 113px 与 89px。
+- 首版最小提交区高度小于内部控件所需空间；最终按常态 156px、紧凑 112px 建立一致的 JavaScript、CSS 和 ARIA 契约。
+- 指针取消最初会保存中间高度；最终仅在 `pointerup` 保存，`pointercancel` 与丢失捕获均恢复拖动前高度。
+- 独立复审确认 300px 与 360px 视口拖到最大后仍保留一行文件区，全部阻断项已关闭。
 
 ## [S1] 问题
 
@@ -83,6 +96,6 @@ AI 生成主按钮不再绘制星形图标，直接显示当前“精简”“�
 - [x] T4: 接入当前文件图标主题 — acceptance: 变更文件获得安全主题图标类，主题切换无过期覆盖，资源根和 CSP 保持严格（covers: S3, S5; depends: T2）
 - [x] T5: 迁移工具栏与提交操作 — acceptance: 刷新、全选、清空、舍弃、拉取、推送、远程、AI、提交、提交并推送及重试均从统一面板可达且状态正确（covers: S4; depends: T2, T3）
 - [x] T6: 完成 0.3.0 交付 — acceptance: 版本、README、CHANGELOG、完整检查、构建、Extension Host、VSIX 清单和独立审查均通过（covers: S1, S6; depends: T1, T2, T3, T4, T5）
-- [ ] T7: 增加提交区拖动分隔条 — acceptance: 指针拖动、键盘调整、视口边界和 Webview 状态持久化均有自动化测试，低高度下文件区和提交按钮仍可用（covers: S2, S5, S7; depends: T2）
-- [ ] T8: 将生成密度改为文字控件 — acceptance: 主按钮按当前档位显示精简/标准/详细并保持生成、选择和取消语义，HTML/CSS/展示状态测试不再依赖星形图标（covers: S4, S5, S7; depends: T5）
-- [ ] T9: 重新完成 0.3.0 交付 — acceptance: 完整检查、构建、Extension Host、独立审查和最终 VSIX 哈希复核通过（covers: S6, S7; depends: T7, T8）
+- [x] T7: 增加提交区拖动分隔条 — acceptance: 指针拖动、键盘调整、视口边界和 Webview 状态持久化均有自动化测试，低高度下文件区和提交按钮仍可用（covers: S2, S5, S7; depends: T2）
+- [x] T8: 将生成密度改为文字控件 — acceptance: 主按钮按当前档位显示精简/标准/详细并保持生成、选择和取消语义，HTML/CSS/展示状态测试不再依赖星形图标（covers: S4, S5, S7; depends: T5）
+- [x] T9: 重新完成 0.3.0 交付 — acceptance: 完整检查、构建、Extension Host、独立审查和最终 VSIX 哈希复核通过（covers: S6, S7; depends: T7, T8）
