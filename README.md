@@ -21,7 +21,7 @@ Gitool 是一个面向桌面版 VS Code 的独立 Git 提交工作台。它把�
 
 ## 安装
 
-1. 获取 `gitool-file-commit-0.2.5.vsix`。
+1. 获取 `gitool-file-commit-0.2.6.vsix`。
 2. 在桌面版 VS Code 中打开“扩展”视图。
 3. 在扩展视图右上角菜单中选择“从 VSIX 安装…”。
 4. 选择 VSIX，按提示重新加载窗口。
@@ -29,7 +29,7 @@ Gitool 是一个面向桌面版 VS Code 的独立 Git 提交工作台。它把�
 也可以在终端执行：
 
 ```bash
-code --install-extension gitool-file-commit-0.2.5.vsix
+code --install-extension gitool-file-commit-0.2.6.vsix
 ```
 
 ## 使用
