@@ -1,26 +1,26 @@
 ---
 feature: history-graph-redesign
-status: in-progress
+status: delivered
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: 7b6f4d2..待交付
+commits: 7b6f4d2..2015142
 ---
 
 # 提交历史图改版
 
 ## Report
 
-**完成内容** — 历史视图使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示当前、本地与远程引用，并保留文件展开和第一父提交 Diff。0.2.7 将历史行压缩为 28px 单行，长引用独立省略，窄侧栏按作者、时间顺序降级，完整信息保留在悬停提示中。
+**完成内容** — 历史视图使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示当前、本地与远程引用，并保留文件展开和第一父提交 Diff。0.2.8 仅为实际带引用的提交渲染标签容器，无引用行的主题会使用释放后的整段空间。
 
-**验证** — `npm run check` 通过 32 个测试文件、327 条测试；`npm run build` 通过；`npm run package -- --out .../gitool-file-commit-0.2.7.vsix` 通过。单行布局独立审查范围 `5885036..d5734a4`，复审范围 `d5734a4..d976caa`；规格符合性、正确性和代码库一致性均通过。
+**验证** — `npm run check` 通过 32 个测试文件、328 条测试；`npm run build` 通过；`npm run package -- --out .../gitool-file-commit-0.2.8.vsix` 通过。按需引用布局独立审查范围 `7b6f4d2..2015142`；规格符合性、正确性和代码库一致性均通过。
 
 **过程记录**
 
 - 初版用 `style="--graph-width:…"` 传递动态图宽，严格 CSP 拒绝内联样式后导致 Grid 列定义整体失效。
 - SVG 的 `width` 本身可作为 Grid 第一列固有宽度，无需放宽 CSP 或注入动态样式。
-- 回归测试同时锁定渲染结果不含 `style=`，以及 CSS 不再依赖 `--graph-width`。
 - 分支名称可能远长于侧栏，标签必须同时具备容器级收缩、标签级最大宽度和完整 title。
-- 单行优化包升级为 `0.2.7`；VSIX 输出到主项目目录，源码位于隔离分支，未合并到 `main`。
+- 空的弹性容器仍会保留 `flex-basis`；可选区域应在无数据时不生成 DOM，而不是只清空内容。
+- 按需占位修复包升级为 `0.2.8`；VSIX 输出到主项目目录，源码位于隔离分支，未合并到 `main`。
 
 ## [S1] 问题
 
@@ -34,7 +34,7 @@ commits: 7b6f4d2..待交付
 
 引用标签使用 VS Code 主题变量：HEAD 为主要强调，本地分支为分支标签，远程分支为低强调远程标签。长标题和长引用单行省略，完整内容保留在 title。提交行支持键盘焦点和展开；展开后按文件名、目录和状态显示文件，点击文件继续打开历史 Diff。
 
-加载、空数据和失败状态保留；仓库切换或版本变化时清理展开详情。标题栏的拉取、推送和刷新命令保持不变。单行优化版本升级到 0.2.7，VSIX 输出到主项目目录供人工比较，但不合并到 main。
+加载、空数据和失败状态保留；仓库切换或版本变化时清理展开详情。标题栏的拉取、推送和刷新命令保持不变。按需占位修复版本升级到 0.2.8，VSIX 输出到主项目目录供人工比较，但不合并到 main。
 
 ## [S3] 范围外
 
@@ -60,7 +60,7 @@ commits: 7b6f4d2..待交付
 - [x] T1: 修正引用分类并扩展拓扑行模型 — acceptance: 本地、远程、HEAD 分类准确，合并提交输出可连续绘制的行边且有单元测试（covers: S2）
 - [x] T2: 实现历史图渲染与交互 — acceptance: 多轨 SVG、引用标签、双层提交信息、展开文件和 Diff 消息均有渲染或协议测试（covers: S2; depends: T1）
 - [x] T3: 将历史视图迁移为独立 Webview — acceptance: package 和扩展只为 historyView 注册 Webview Provider，标题命令及状态反馈保持（covers: S2; depends: T2）
-- [x] T4: 完成 0.2.7 优化包交付 — acceptance: 完整检查、构建、VSIX 清单和独立审查通过，主分支不变化（covers: S2, S3; depends: T3）
+- [x] T4: 完成 0.2.8 修复包交付 — acceptance: 完整检查、构建、VSIX 清单和独立审查通过，主分支不变化（covers: S2, S3; depends: T3）
 - [x] T5: 修复严格 CSP 下历史正文不可见 — acceptance: 历史行不输出内联样式，网格不依赖自定义属性且渲染测试覆盖正文可见结构（covers: S4; depends: T2）
 - [x] T6: 将历史记录与分支引用压缩为单行 — acceptance: 行高为 28px，主题、引用和元数据同排；长引用省略且完整信息可通过 title 获取；窄宽度按作者、时间顺序降级（covers: S5; depends: T5）
-- [ ] T7: 取消无引用提交的空标签占位 — acceptance: refs 为空时不生成引用容器且主题使用释放后的空间；有 refs 时标签结构保持（covers: S6; depends: T6）
+- [x] T7: 取消无引用提交的空标签占位 — acceptance: refs 为空时不生成引用容器且主题使用释放后的空间；有 refs 时标签结构保持（covers: S6; depends: T6）
