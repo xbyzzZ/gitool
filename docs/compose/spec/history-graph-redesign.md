@@ -3,16 +3,16 @@ feature: history-graph-redesign
 status: delivered
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: 9fc8631..4ad79cd
+commits: 9fc8631..9a7b529
 ---
 
 # 提交历史图改版
 
 ## Report
 
-**完成内容** — 历史视图继续使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示当前、本地与远程引用。0.2.11 恢复提交行内展开和收起，文件直接显示在对应提交下方并保留第一父提交 Diff。文件图标读取当前 `workbench.iconTheme` 的主题贡献，支持字体、图片、文件名、复合扩展名、默认文件、继承与明暗覆盖；切换文件或颜色主题时自动重载，并用异步序号防止旧主题覆盖新主题。原生“提交文件”试验视图已移除，避免重复区域。
+**完成内容** — 历史视图继续使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示当前、本地与远程引用。0.2.11 恢复提交行内展开和收起，文件直接显示在对应提交下方并保留第一父提交 Diff。文件图标读取当前 `workbench.iconTheme` 的主题贡献，支持字体、图片、文件名、复合扩展名、默认文件、继承与明暗覆盖；切换文件或颜色主题时自动重载，并用异步序号防止旧主题覆盖新主题。原生“提交文件”试验视图已移除，避免重复区域。0.2.12 将提交标题从中等字重恢复为 VS Code 原生列表接近的常规字重。
 
-**验证** — `npm run check` 通过 34 个测试文件、337 条测试；`npm run build` 通过；`npm run test:vscode` 通过 3 个真实 Extension Host 场景；`npm run package -- --out .../gitool-file-commit-0.2.11.vsix` 通过，最终包仅含 16 个发布文件，SHA-256 为 `cf39f830ff5dcce87d963c14373e33087d98893c43b9bb009956a3df17e5b0f0`。独立审查确认真实 Seti 字体转义、JSONC 尾逗号、父子主题资源、主题动态切换和竞态处理均已覆盖，未发现剩余阻断。
+**验证** — `npm run check` 通过 34 个测试文件、337 条测试；`npm run build` 通过；`npm run test:vscode` 通过 3 个真实 Extension Host 场景；`npm run package -- --out .../gitool-file-commit-0.2.12.vsix` 通过，最终包仅含 16 个发布文件，SHA-256 为 `a35505faebe1dcb3f92c05bbb875cf5a8ae5c721f1691b0b2dfc289c3ec36828`。包内样式确认 `.history-subject` 为 `font-weight: 400`。独立审查确认真实 Seti 字体转义、JSONC 尾逗号、父子主题资源、主题动态切换和竞态处理均已覆盖，未发现剩余阻断。
 
 **过程记录**
 
@@ -81,3 +81,4 @@ commits: 9fc8631..4ad79cd
 - [x] T7: 取消无引用提交的空标签占位 — acceptance: refs 为空时不生成引用容器且主题使用释放后的空间；有 refs 时标签结构保持（covers: S6; depends: T6）
 - [x] T8: 注册正常运行时历史空文档提供器 — acceptance: ready runtime 注册并释放 `gitool-empty`；Extension Host 可打开虚拟空文档（covers: S7; depends: T3）
 - [x] T9: 恢复行内展开并接入当前文件图标主题 — acceptance: 提交行可展开/收起文件，主题文件名与扩展映射生成安全图标类，文件可打开历史 Diff；清单不再贡献重复原生文件视图（covers: S8; depends: T8）
+- [x] T10: 恢复提交标题常规字重 — acceptance: 提交标题使用 `font-weight: 400`，字号继续继承 VS Code 主题变量，样式回归测试与包内检查通过（covers: S5; depends: T9）
