@@ -17,7 +17,15 @@ export interface CommitSummary {
 
 export interface CommitGraphNode extends CommitSummary {
   readonly lane: number;
+  readonly laneCount: number;
+  readonly hasIncoming: boolean;
   readonly parentLanes: readonly number[];
+  readonly passingEdges: readonly CommitGraphEdge[];
+}
+
+export interface CommitGraphEdge {
+  readonly fromLane: number;
+  readonly toLane: number;
 }
 
 export interface CommitFile {

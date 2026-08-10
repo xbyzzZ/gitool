@@ -77,18 +77,36 @@ export function parseRefs(
   const refs = new Map<string, CommitRef[]>();
   for (let index = 0; index < fields.length; index += 2) {
     const hash = fields[index]?.trimStart() ?? '';
-    const name = fields[index + 1] ?? '';
+    const fullName = fields[index + 1] ?? '';
     validateHash(hash, 'Git 引用提交哈希无效');
-    if (name.length === 0) {
+    if (fullName.length === 0) {
       throw new Error('Git 引用名称为空');
     }
-    const kind: CommitRef['kind'] = name === head
+    const localPrefix = 'refs/heads/';
+    const remotePrefix = 'refs/remotes/';
+    if (fullName.startsWith(remotePrefix) && fullName.endsWith('/HEAD')) {
+      continue;
+    }
+    const local = fullName.startsWith(localPrefix);
+    const remote = fullName.startsWith(remotePrefix);
+    if (!local && !remote) {
+      throw new Error('Git 引用命名空间无效');
+    }
+    const name = fullName.slice((local ? localPrefix : remotePrefix).length);
+    const kind: CommitRef['kind'] = local && name === head
       ? 'head'
-      : name === upstream
-        ? 'remote'
-        : 'local';
+      : remote ? 'remote' : 'local';
     const current = refs.get(hash) ?? [];
     current.push({ name, kind });
+    current.sort((left, right) => {
+      const priority = (ref: CommitRef): number => ref.kind === 'head'
+        ? 0
+        : ref.kind === 'local'
+          ? 1
+          : ref.name === upstream ? 2 : 3;
+      return priority(left) - priority(right)
+        || left.name.localeCompare(right.name);
+    });
     refs.set(hash, current);
   }
   return refs;
@@ -135,33 +153,40 @@ export function parseAheadBehind(raw: string): AheadBehindCount {
   return { ahead: Number(match[1]), behind: Number(match[2]) };
 }
 
-function buildGraph(
+export function buildGraph(
   commits: readonly CommitSummary[],
 ): CommitGraphNode[] {
   const lanes: string[] = [];
   return commits.map((commit) => {
     let lane = lanes.indexOf(commit.hash);
+    const hasIncoming = lane >= 0;
     if (lane < 0) {
       lane = lanes.length;
       lanes.push(commit.hash);
     }
-    if (commit.parents.length === 0) {
-      lanes.splice(lane, 1);
-      return { ...commit, lane, parentLanes: [] };
-    }
-    const [firstParent, ...otherParents] = commit.parents;
-    if (firstParent !== undefined) {
-      lanes[lane] = firstParent;
-    }
-    for (const parent of otherParents) {
+    const before = [...lanes];
+    lanes.splice(lane, 1);
+    for (const parent of [...new Set(commit.parents)].reverse()) {
       if (!lanes.includes(parent)) {
-        lanes.splice(lane + 1, 0, parent);
+        lanes.splice(lane, 0, parent);
       }
     }
+    const passingEdges = before.flatMap((hash, fromLane) => {
+      if (hash === commit.hash) {
+        return [];
+      }
+      const toLane = lanes.indexOf(hash);
+      return toLane < 0 ? [] : [{ fromLane, toLane }];
+    });
+    const parentLanes = commit.parents.map((parent) => lanes.indexOf(parent));
+    const laneCount = Math.max(before.length, lanes.length, 1);
     return {
       ...commit,
       lane,
-      parentLanes: commit.parents.map((parent) => lanes.indexOf(parent)),
+      laneCount,
+      hasIncoming,
+      parentLanes,
+      passingEdges,
     };
   });
 }
@@ -182,7 +207,7 @@ export class HistoryService {
       ], { allowFailure: true }),
       this.git.runForMachineParsing(repositoryRoot, [
         'for-each-ref',
-        '--format=%(objectname)%00%(refname:short)%00',
+        '--format=%(objectname)%00%(refname)%00',
         'refs/heads',
         'refs/remotes',
       ]),

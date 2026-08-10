@@ -2,7 +2,7 @@ import type * as vscode from 'vscode';
 import { describe, expect, it, vi } from 'vitest';
 import * as renderModule from '../../src/webview/render.js';
 
-const { renderCommitWebviewHtml } = renderModule;
+const { renderCommitWebviewHtml, renderHistoryWebviewHtml } = renderModule;
 
 function createWebview(): vscode.Webview {
   return {
@@ -105,8 +105,15 @@ describe('独立 Webview 壳页面', () => {
     expect(html).not.toContain('role="menuitemradio"');
   });
 
-  it('渲染模块不再提供历史 Webview 页面', () => {
-    expect('renderHistoryWebviewHtml' in renderModule).toBe(false);
+  it('历史页面使用独立脚本和列表壳', () => {
+    const html = renderHistoryWebviewHtml(
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
+    );
+    expect(html).toContain('id="history-list"');
+    expect(html).toContain('/media/history.js');
+    expect(html).not.toContain('id="commit-message"');
   });
 
   it('不再生成由原生视图标题栏承载的内部工具栏', () => {

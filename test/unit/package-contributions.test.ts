@@ -46,7 +46,7 @@ describe('扩展贡献点', () => {
     expect(manifest.contributes.views.gitool).toEqual([
       { type: 'webview', id: 'gitool.commitView', name: '提交信息' },
       { id: 'gitool.changesView', name: '当前变更' },
-      { id: 'gitool.historyView', name: '提交历史' },
+      { type: 'webview', id: 'gitool.historyView', name: '提交历史' },
     ]);
   });
 
@@ -88,8 +88,8 @@ describe('扩展贡献点', () => {
     });
   });
 
-  it('打包时排除已经废弃的 Webview 构建产物', () => {
+  it('打包时保留历史 Webview 并排除旧合并 Webview', () => {
     expect(vscodeIgnore).toContain('media/main.js');
-    expect(vscodeIgnore).toContain('media/history.js');
+    expect(vscodeIgnore).not.toContain('media/history.js');
   });
 });

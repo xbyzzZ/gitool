@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseAheadBehind,
+  buildGraph,
   parseCommitFiles,
   parseHistoryLog,
   parseRefs,
@@ -54,17 +55,67 @@ describe('Git 历史机器输出解析', () => {
 
   it('把本地和远程引用绑定到对应提交', () => {
     const raw = [
-      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'main',
-      '\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'origin/main',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'refs/heads/main',
+      '\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'refs/heads/feature/ui',
+      '\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'refs/remotes/origin/main',
+      '\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'refs/remotes/origin/HEAD',
       '',
     ].join('\0');
 
     expect(parseRefs(raw, 'main', 'origin/main')).toEqual(new Map([
       ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', [
         { name: 'main', kind: 'head' },
+        { name: 'feature/ui', kind: 'local' },
         { name: 'origin/main', kind: 'remote' },
       ]],
     ]));
+  });
+
+  it('为合并历史生成连续轨道、父提交边和穿越边', () => {
+    const hash = (value: string): string => value.repeat(40);
+    const summary = (
+      value: string,
+      parents: readonly string[],
+    ) => ({
+      hash: hash(value),
+      shortHash: value.repeat(7),
+      parents,
+      author: '许博阳',
+      authoredAt: '2026-08-01T10:00:00+08:00',
+      subject: value,
+      refs: [],
+    });
+    const graph = buildGraph([
+      summary('a', [hash('b'), hash('c')]),
+      summary('b', [hash('d')]),
+      summary('c', [hash('d')]),
+      summary('d', []),
+    ]);
+
+    expect(graph.map((node) => ({
+      lane: node.lane,
+      laneCount: node.laneCount,
+      hasIncoming: node.hasIncoming,
+      parentLanes: node.parentLanes,
+      passingEdges: node.passingEdges,
+    }))).toEqual([
+      {
+        lane: 0, laneCount: 2, hasIncoming: false,
+        parentLanes: [0, 1], passingEdges: [],
+      },
+      {
+        lane: 0, laneCount: 2, hasIncoming: true,
+        parentLanes: [0], passingEdges: [{ fromLane: 1, toLane: 1 }],
+      },
+      {
+        lane: 1, laneCount: 2, hasIncoming: true,
+        parentLanes: [0], passingEdges: [{ fromLane: 0, toLane: 0 }],
+      },
+      {
+        lane: 0, laneCount: 1, hasIncoming: true,
+        parentLanes: [], passingEdges: [],
+      },
+    ]);
   });
 
   it('解析普通、重命名和删除文件状态', () => {

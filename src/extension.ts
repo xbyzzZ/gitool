@@ -19,6 +19,7 @@ import {
   type TrashConfirmationRequest,
 } from './services/trash-service.js';
 import { GitoolViewProvider } from './webview/view-provider.js';
+import { HistoryViewProvider } from './webview/history-view-provider.js';
 import type { RepositoryViewModel } from './domain/view-model.js';
 import {
   ChangeTreeProvider,
@@ -28,10 +29,6 @@ import {
   GitoolViewActions,
   registerViewCommands,
 } from './views/view-actions.js';
-import {
-  HistoryTreeProvider,
-  type HistoryTreeNode,
-} from './views/history-tree-provider.js';
 import { PushAvailabilityContext } from './views/push-availability-context.js';
 
 interface BuiltinGitExtensionExports {
@@ -368,6 +365,10 @@ function registerErrorRuntime(
       GitoolViewProvider.viewType,
       provider,
     ));
+    disposables.push(vscode.window.registerWebviewViewProvider(
+      HistoryViewProvider.viewType,
+      provider,
+    ));
     disposables.push(vscode.workspace.registerTextDocumentContentProvider(
       'gitool-empty',
       { provideTextDocumentContent: () => '' },
@@ -448,7 +449,11 @@ function registerReadyRuntime(
       aiModelSelectionStore,
     });
     disposables.push(provider);
-    const historyProvider = new HistoryTreeProvider(repositoryService);
+    const historyProvider = new HistoryViewProvider({
+      extensionUri: context.extensionUri,
+      gitApi,
+      repositoryService,
+    });
     disposables.push(historyProvider);
     const changeProvider = new ChangeTreeProvider(repositoryService);
     disposables.push(changeProvider);
@@ -482,15 +487,10 @@ function registerReadyRuntime(
     );
     disposables.push(changeTree);
     disposables.push(changeProvider.bindCheckboxes(changeTree));
-    const historyTree = vscode.window.createTreeView<HistoryTreeNode>(
-      'gitool.historyView',
-      {
-        treeDataProvider: historyProvider,
-        showCollapseAll: true,
-      },
-    );
-    disposables.push(historyTree);
-    disposables.push(historyProvider.bindView(historyTree));
+    disposables.push(vscode.window.registerWebviewViewProvider(
+      HistoryViewProvider.viewType,
+      historyProvider,
+    ));
     const viewActions = new GitoolViewActions({
       service: repositoryService,
       gitApi,

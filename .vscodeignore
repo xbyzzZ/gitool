@@ -11,7 +11,6 @@ src/**
 test/**
 node_modules/**
 media/main.js
-media/history.js
 *.map
 eslint.config.mjs
 esbuild.mjs

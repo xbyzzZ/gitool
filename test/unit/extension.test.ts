@@ -209,7 +209,7 @@ beforeEach(() => {
 });
 
 describe('扩展激活', () => {
-  it('正常激活只注册提交信息 Webview 和两个原生树', async () => {
+  it('正常激活注册提交与历史 Webview，并保留当前变更原生树', async () => {
     mocks.state.gitExtension = gitExtension(() => ({
       getAPI: () => gitApi(),
     }));
@@ -224,10 +224,10 @@ describe('扩展激活', () => {
     ]);
     expect(mocks.state.registeredWebviewIds).toEqual([
       'gitool.commitView',
+      'gitool.historyView',
     ]);
     expect(mocks.createTreeView.mock.calls.map(([id]) => id)).toEqual([
       'gitool.changesView',
-      'gitool.historyView',
     ]);
     expect(mocks.executeCommand).toHaveBeenCalledWith(
       'setContext',
@@ -305,7 +305,7 @@ describe('扩展激活', () => {
     ]);
     expect(mocks.state.gitOpenListeners.size).toBe(0);
     expect(mocks.state.gitCloseListeners.size).toBe(0);
-    expect(mocks.state.activeViews.size).toBe(1);
+    expect(mocks.state.activeViews.size).toBe(2);
     expect(mocks.state.activeCommands.size).toBe(1);
 
     const html = await resolveLastProviderHtml();

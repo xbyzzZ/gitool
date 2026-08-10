@@ -23,10 +23,12 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.workbench-pane')).not.toMatch(/(?:^|;)\s*border\s*:/u);
   });
 
-  it('不再保留已迁移到原生 TreeView 的历史列表样式', () => {
-    expect(stylesheet).not.toMatch(
-      /\.(?:history-panel|commit-row|commit-files|commit-file)(?:\b|[-:])/u,
-    );
+  it('历史列表按多轨图、双行摘要和分支标签布局', () => {
+    expect(readRule('.history-commit-row')).toMatch(/grid-template-columns/u);
+    expect(readRule('.history-commit-copy')).toMatch(/flex-direction:\s*column/u);
+    expect(readRule('.history-list')).toMatch(/overflow:\s*auto/u);
+    expect(stylesheet).toContain('.graph-line');
+    expect(stylesheet).toContain('.commit-ref.remote');
   });
 
   it('AI 生成状态由按钮自身显示加载动画', () => {
