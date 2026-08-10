@@ -3,7 +3,7 @@ feature: history-graph-redesign
 status: delivered
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: f77f786..51fa64e
+commits: f77f786..2e79723
 ---
 
 # 提交历史图改版
@@ -12,7 +12,7 @@ commits: f77f786..51fa64e
 
 **完成内容** — 历史视图使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示 HEAD、本地与远程引用，并保留文件展开和第一父提交 Diff。CSP 修正移除了动态历史行的内联样式，改由 SVG 固有宽度和 `max-content` 网格分配图轨与正文空间。
 
-**验证** — `npm run check` 通过 32 个测试文件、327 条测试；`npm run build` 通过；`env -u ELECTRON_RUN_AS_NODE npm run test:vscode` 通过 3 个真实场景；`npm run package -- --out .../gitool-file-commit-0.2.5.vsix` 通过。独立审查范围 `f77f786..51fa64e`，规格符合性、正确性和代码库一致性均通过。
+**验证** — `npm run check` 通过 32 个测试文件、327 条测试；`npm run build` 通过；`env -u ELECTRON_RUN_AS_NODE npm run test:vscode` 通过 3 个真实场景；`npm run package -- --out .../gitool-file-commit-0.2.6.vsix` 通过。CSP 修复独立审查范围 `f77f786..51fa64e`，0.2.6 版本交付独立审查范围 `b4b34fd..2e79723`；规格符合性、正确性和代码库一致性均通过。
 
 **过程记录**
 
@@ -33,7 +33,7 @@ commits: f77f786..51fa64e
 
 引用标签使用 VS Code 主题变量：HEAD 为主要强调，本地分支为分支标签，远程分支为低强调远程标签。长标题和长引用单行省略，完整内容保留在 title。提交行支持键盘焦点和展开；展开后按文件名、目录和状态显示文件，点击文件继续打开历史 Diff。
 
-加载、空数据和失败状态保留；仓库切换或版本变化时清理展开详情。标题栏的拉取、推送和刷新命令保持不变。预览版本升级到 0.2.5，VSIX 输出到主项目目录供人工比较，但不合并到 main。
+加载、空数据和失败状态保留；仓库切换或版本变化时清理展开详情。标题栏的拉取、推送和刷新命令保持不变。修复版本升级到 0.2.6，VSIX 输出到主项目目录供人工比较，但不合并到 main。
 
 ## [S3] 范围外
 
@@ -51,5 +51,5 @@ commits: f77f786..51fa64e
 - [x] T1: 修正引用分类并扩展拓扑行模型 — acceptance: 本地、远程、HEAD 分类准确，合并提交输出可连续绘制的行边且有单元测试（covers: S2）
 - [x] T2: 实现历史图渲染与交互 — acceptance: 多轨 SVG、引用标签、双层提交信息、展开文件和 Diff 消息均有渲染或协议测试（covers: S2; depends: T1）
 - [x] T3: 将历史视图迁移为独立 Webview — acceptance: package 和扩展只为 historyView 注册 Webview Provider，标题命令及状态反馈保持（covers: S2; depends: T2）
-- [x] T4: 完成 0.2.5 预览交付 — acceptance: 完整检查、构建、Extension Host、VSIX 清单和独立审查通过，主分支不变化（covers: S2, S3; depends: T3）
+- [x] T4: 完成 0.2.6 修复包交付 — acceptance: 完整检查、构建、Extension Host、VSIX 清单和独立审查通过，主分支不变化（covers: S2, S3; depends: T3）
 - [x] T5: 修复严格 CSP 下历史正文不可见 — acceptance: 历史行不输出内联样式，网格不依赖自定义属性且渲染测试覆盖正文可见结构（covers: S4; depends: T2）
