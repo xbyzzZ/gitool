@@ -1,5 +1,5 @@
 import type * as vscode from 'vscode';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   showErrorMessage: vi.fn(() => Promise.resolve(undefined)),
@@ -25,6 +25,10 @@ function extensionUri(path = '/extensions/gitool'): vscode.Uri {
 }
 
 describe('提交历史 Webview Provider', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('选择提交后把详情交给原生提交文件视图', async () => {
     let receive: ((message: unknown) => void) | undefined;
     const details = {
@@ -184,6 +188,60 @@ describe('提交历史 Webview Provider', () => {
     expect(historyFilesProvider.selectCommit).toHaveBeenCalledWith(
       '/repo/a', 3, expect.objectContaining({ hash: hashB }),
     );
+    provider.dispose();
+  });
+
+  it('旧选择延迟失败时不覆盖新选择也不显示过期错误', async () => {
+    let receive: ((message: unknown) => void) | undefined;
+    let rejectFirst: ((reason: Error) => void) | undefined;
+    const first = new Promise((_resolve, reject) => { rejectFirst = reject; });
+    const hashA = 'a'.repeat(40);
+    const hashB = 'b'.repeat(40);
+    const detailsB = { hash: hashB, files: [{ status: 'M' as const, path: 'b.ts' }] };
+    const service = {
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      getViewModel: vi.fn(() => ({ currentRepositoryId: '/repo/a', version: 3 })),
+      loadCommitDetails: vi.fn((message: { readonly hash: string }) =>
+        message.hash === hashA ? first : Promise.resolve(detailsB)),
+      reportFailure: vi.fn(),
+    };
+    const historyFilesProvider = { clear: vi.fn(), selectCommit: vi.fn() };
+    const webview = {
+      cspSource: 'vscode-webview://gitool',
+      options: {},
+      html: '',
+      asWebviewUri: vi.fn((uri: vscode.Uri) => uri),
+      postMessage: vi.fn(() => Promise.resolve(true)),
+      onDidReceiveMessage: vi.fn((listener: (message: unknown) => void) => {
+        receive = listener;
+        return { dispose: vi.fn() };
+      }),
+    };
+    const provider = new HistoryViewProvider({
+      extensionUri: extensionUri(),
+      gitApi: {} as never,
+      repositoryService: service as never,
+      historyFilesProvider: historyFilesProvider as never,
+    });
+    provider.resolveWebviewView({
+      webview,
+      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+    } as unknown as vscode.WebviewView);
+    receive?.({ type: 'selectHistoryCommit', repositoryId: '/repo/a', version: 3,
+      hash: hashA, requestId: 'select-a' });
+    receive?.({ type: 'selectHistoryCommit', repositoryId: '/repo/a', version: 3,
+      hash: hashB, requestId: 'select-b' });
+    await vi.waitFor(() => {
+      expect(historyFilesProvider.selectCommit).toHaveBeenCalledWith('/repo/a', 3, detailsB);
+    });
+
+    rejectFirst?.(new Error('旧提交对象不存在'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(service.loadCommitDetails).toHaveBeenCalledTimes(2);
+    expect(historyFilesProvider.selectCommit).toHaveBeenCalledOnce();
+    expect(service.reportFailure).not.toHaveBeenCalled();
+    expect(mocks.showErrorMessage).not.toHaveBeenCalled();
     provider.dispose();
   });
 });
