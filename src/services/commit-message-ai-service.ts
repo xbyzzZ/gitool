@@ -18,6 +18,10 @@ export interface AiSelectedChangeContext {
 
 export interface AiLanguageModel {
   readonly id: string;
+  readonly name: string;
+  readonly vendor: string;
+  readonly family: string;
+  readonly version: string;
   readonly maxInputTokens: number;
   readonly countTokens?: (
     text: string,
@@ -29,6 +33,7 @@ export interface GenerateCommitMessageRequest {
   readonly repositoryRoot: string;
   readonly selectedPaths: readonly string[];
   readonly density: CommitMessageDensity;
+  readonly modelId?: string;
 }
 
 export interface GenerateCommitMessageResult {
@@ -150,6 +155,10 @@ async function fitPromptToModel(
 export class CommitMessageAiService {
   constructor(private readonly dependencies: CommitMessageAiDependencies) {}
 
+  async listModels(): Promise<readonly AiLanguageModel[]> {
+    return await this.dependencies.selectModels();
+  }
+
   async generate(
     request: GenerateCommitMessageRequest,
     signal?: AbortSignal,
@@ -158,9 +167,14 @@ export class CommitMessageAiService {
       throw new Error('至少选择一个文件后才能生成提交信息');
     }
     throwIfAborted(signal);
-    const models = await this.dependencies.selectModels();
-    const model = models[0];
+    const models = await this.listModels();
+    const model = request.modelId === undefined
+      ? (models.find((candidate) => candidate.vendor === 'copilot') ?? models[0])
+      : models.find((candidate) => candidate.id === request.modelId);
     if (model === undefined) {
+      if (request.modelId !== undefined) {
+        throw new Error('此前选择的 VS Code AI 模型已不可用，请重新选择模型');
+      }
       throw new Error('VS Code 当前没有可用的 AI 模型');
     }
     const context = await this.dependencies.readSelectedDiff({

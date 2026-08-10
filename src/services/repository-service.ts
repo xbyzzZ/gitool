@@ -7,6 +7,7 @@ import type { BuiltinGitApi } from '../git/builtin-git-api.js';
 import type { BuiltinRepository } from '../git/builtin-git-api.js';
 import type { CommitResult } from './commit-service.js';
 import type {
+  AiLanguageModel,
   CommitMessageDensity,
   GenerateCommitMessageResult,
 } from './commit-message-ai-service.js';
@@ -55,10 +56,12 @@ export interface RepositoryServiceDependencies {
   };
   readonly syncService?: Pick<SyncService, 'fetch' | 'pull' | 'pushAll'>;
   readonly aiService?: {
+    listModels(): Promise<readonly AiLanguageModel[]>;
     generate(request: {
       readonly repositoryRoot: string;
       readonly selectedPaths: readonly string[];
       readonly density: CommitMessageDensity;
+      readonly modelId?: string;
     }, signal?: AbortSignal): Promise<GenerateCommitMessageResult>;
   };
   readonly isWorkspaceTrusted: () => boolean;
@@ -68,6 +71,7 @@ export interface GenerateRepositoryCommitMessageRequest
   extends RepositoryVersionRequest {
   readonly selectedIds: readonly string[];
   readonly density: CommitMessageDensity;
+  readonly modelId?: string;
 }
 
 export interface LoadCommitDetailsRequest extends RepositoryVersionRequest {
@@ -259,6 +263,14 @@ export class RepositoryService {
     return result;
   }
 
+  async listAiModels(): Promise<readonly AiLanguageModel[]> {
+    const aiService = this.dependencies.aiService;
+    if (aiService === undefined) {
+      throw new Error('AI 提交信息服务尚未配置');
+    }
+    return await aiService.listModels();
+  }
+
   async generateCommitMessage(
     request: GenerateRepositoryCommitMessageRequest,
     signal?: AbortSignal,
@@ -285,6 +297,9 @@ export class RepositoryService {
         repositoryRoot: state.rootPath,
         selectedPaths: paths,
         density: request.density,
+        ...(request.modelId === undefined
+          ? {}
+          : { modelId: request.modelId }),
       }, signal);
       if (!this.matches(state, request.version)
         || !this.sameIds(state.selectedIds, request.selectedIds)) {

@@ -53,6 +53,7 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('id="commit-message"');
     expect(html).toContain('提交并推送');
     expect(html).toContain('id="ai-generate-button"');
+    expect(html).toContain('id="ai-model-button"');
     expect(html).not.toContain('id="tracked-group"');
     expect(html).not.toContain('id="history-list"');
     expect(html).not.toContain('class="pane-resizer"');
@@ -81,6 +82,7 @@ describe('独立 Webview 壳页面', () => {
     );
 
     expect(html).toContain('codicon-chevron-down');
+    expect(html).toContain('codicon-hubot');
     expect(html).toContain('codicon-check');
     expect(html).toContain('codicon-arrow-up');
     expect(html).not.toContain('codicon-git-commit');

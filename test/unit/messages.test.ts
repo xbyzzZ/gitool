@@ -21,6 +21,12 @@ const messagesWithExtraFields: readonly unknown[] = [
     requestId: 'request-1',
     extra: true,
   },
+  {
+    type: 'selectAiModel',
+    repositoryId: '/repo/a',
+    requestId: 'request-model',
+    modelId: '伪造模型',
+  },
   { type: 'trash', version: 0, fileIds: ['a.ts'], recursive: true },
   JSON.parse('{"type":"ready","__proto__":{"polluted":true}}') as unknown,
   Object.assign(Object.create({ polluted: true }) as object, { type: 'ready' }),
@@ -231,6 +237,18 @@ describe('parseWebviewMessage', () => {
         hash: 'b'.repeat(40),
         path: 'src/client.ts',
         requestId: 'request-4',
+      },
+    ],
+    [
+      {
+        type: 'selectAiModel',
+        repositoryId: '/repo/a',
+        requestId: 'request-model',
+      },
+      {
+        type: 'selectAiModel',
+        repositoryId: '/repo/a',
+        requestId: 'request-model',
       },
     ],
     [

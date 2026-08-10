@@ -90,6 +90,11 @@ export type WebviewMessage =
     readonly requestId: string;
   }
   | {
+    readonly type: 'selectAiModel';
+    readonly repositoryId: string;
+    readonly requestId: string;
+  }
+  | {
     readonly type: 'generateCommitMessage';
     readonly repositoryId: string;
     readonly version: number;
@@ -326,15 +331,22 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
       requireExactKeys(input, ['type', 'repositoryId', 'fileId']);
       {
         const repositoryId = requireRepositoryId(input);
-      if (!isNonEmptyString(input.fileId)) {
-        invalid('fileId');
+        if (!isNonEmptyString(input.fileId)) {
+          invalid('fileId');
+        }
+        return {
+          type: input.type,
+          repositoryId,
+          fileId: input.fileId,
+        };
       }
+    case 'selectAiModel':
+      requireExactKeys(input, ['type', 'repositoryId', 'requestId']);
       return {
         type: input.type,
-        repositoryId,
-        fileId: input.fileId,
+        repositoryId: requireRepositoryId(input),
+        requestId: requireRequestId(input),
       };
-      }
     case 'commit':
     case 'commitAndPush':
       return parseCommitMessage(input, input.type);

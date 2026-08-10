@@ -288,9 +288,20 @@ input:disabled {
   width: 25px;
   padding: 0;
   border-left: 0;
+  border-radius: 0;
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+.ai-model-button {
+  border-left: 0;
   border-radius: 0 2px 2px 0;
   color: var(--vscode-button-secondaryForeground);
   background: var(--vscode-button-secondaryBackground);
+}
+
+.ai-model-button:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
 }
 
 #ai-density-menu {

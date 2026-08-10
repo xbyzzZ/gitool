@@ -1,5 +1,6 @@
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
+import type { AiModelSelection } from '../services/ai-model-selection-store.js';
 import {
   aiControlPresentation,
   commitControlState,
@@ -21,6 +22,7 @@ interface VsCodeApi {
 interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
+  readonly aiModelSelection?: AiModelSelection;
   readonly acknowledgedRequestId?: string;
 }
 
@@ -72,6 +74,7 @@ const controls = {
   aiGenerateIcon: element('ai-generate-icon'),
   aiDensityButton: element('ai-density-button') as HTMLButtonElement,
   aiDensityMenu: element('ai-density-menu'),
+  aiModelButton: element('ai-model-button') as HTMLButtonElement,
   loadingStatus: element('loading-status') as HTMLParagraphElement,
   operationStatus: element('operation-status') as HTMLParagraphElement,
   errorStatus: element('error-status') as HTMLParagraphElement,
@@ -81,9 +84,11 @@ const controls = {
 
 let currentModel: RepositoryViewModel | undefined;
 let currentRepositoryId: string | undefined;
+let currentAiModelSelection: AiModelSelection | undefined;
 let pendingMessage: string | undefined;
 let messageTimer: number | undefined;
 let pendingRequestId: string | undefined;
+let modelSelectionRequestId: string | undefined;
 let pendingPresentation: PendingRequestPresentation | undefined;
 let sequence = 0;
 let density: CommitMessageDensity = 'standard';
@@ -139,7 +144,8 @@ function render(model: RepositoryViewModel): void {
 
   const running = model.operation.kind === 'running';
   const hasConflict = model.changes.some((change) => change.conflicted);
-  const locallyBusy = pendingRequestId !== undefined;
+  const locallyBusy = pendingRequestId !== undefined
+    || modelSelectionRequestId !== undefined;
   const {
     canWrite,
     canCommit,
@@ -160,6 +166,7 @@ function render(model: RepositoryViewModel): void {
     ? false
     : !canWrite || model.selectedIds.length === 0;
   controls.aiDensityButton.disabled = !canWrite || model.selectedIds.length === 0;
+  controls.aiModelButton.disabled = !canWrite || locallyBusy || aiGenerating;
   const aiPresentation = aiControlPresentation(density, aiGenerating);
   controls.aiGenerateIcon.dataset.density = aiPresentation.density;
   controls.aiGenerateIcon.classList.toggle(
@@ -175,6 +182,12 @@ function render(model: RepositoryViewModel): void {
   controls.aiGenerateButton.title = aiPresentation.generateLabel;
   controls.aiDensityButton.setAttribute('aria-label', aiPresentation.densityLabel);
   controls.aiDensityButton.title = aiPresentation.densityLabel;
+  const selectedModelName = modelSelectionRequestId === undefined
+    ? (currentAiModelSelection?.name ?? '自动选择')
+    : '正在选择';
+  const modelLabel = `选择 AI 模型（${selectedModelName}）`;
+  controls.aiModelButton.setAttribute('aria-label', modelLabel);
+  controls.aiModelButton.title = modelLabel;
 
   const feedback = operationFeedback(model.operation);
   controls.operationStatus.textContent = feedback.message;
@@ -305,6 +318,21 @@ for (const value of ['compact', 'standard', 'detailed'] as const) {
 controls.aiDensityButton.addEventListener('click', () => {
   controls.aiDensityMenu.hidden = !controls.aiDensityMenu.hidden;
 });
+controls.aiModelButton.addEventListener('click', () => {
+  const model = currentModel;
+  if (model?.currentRepositoryId === undefined
+    || modelSelectionRequestId !== undefined) {
+    return;
+  }
+  sequence += 1;
+  modelSelectionRequestId = `ai-model-${String(sequence)}`;
+  render(model);
+  post({
+    type: 'selectAiModel',
+    repositoryId: model.currentRepositoryId,
+    requestId: modelSelectionRequestId,
+  });
+});
 controls.aiGenerateButton.addEventListener('click', () => {
   const model = currentModel;
   if (model?.currentRepositoryId === undefined) {
@@ -337,9 +365,13 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
     return;
   }
   const state = message as StateMessage;
+  currentAiModelSelection = state.aiModelSelection;
   if (state.acknowledgedRequestId === pendingRequestId) {
     pendingRequestId = undefined;
     pendingPresentation = undefined;
+  }
+  if (state.acknowledgedRequestId === modelSelectionRequestId) {
+    modelSelectionRequestId = undefined;
   }
   render(state.model);
 });

@@ -95,6 +95,9 @@ export function renderCommitWebviewHtml(
             <button id="ai-density-button" class="ai-menu-button" type="button" aria-label="选择 AI 信息密度（标准）" title="选择 AI 信息密度（标准）" aria-haspopup="menu">
               <span class="codicon codicon-chevron-down" aria-hidden="true"></span>
             </button>
+            <button id="ai-model-button" class="ai-model-button commit-icon-button" type="button" aria-label="选择 AI 模型（自动选择）" title="选择 AI 模型（自动选择）">
+              <span class="codicon codicon-hubot" aria-hidden="true"></span>
+            </button>
             <div id="ai-density-menu" role="menu" hidden></div>
           </div>
           <div class="primary-actions">

@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import type { BuiltinGitApi } from '../../src/git/builtin-git-api.js';
 import type { RepositoryService } from '../../src/services/repository-service.js';
+import {
+  AiModelSelectionStore,
+  type AiModelSelectionPersistence,
+} from '../../src/services/ai-model-selection-store.js';
 
 const vscodeMocks = vi.hoisted(() => ({
   executeCommand: vi.fn(),
@@ -108,6 +112,7 @@ interface ServiceDouble {
   readonly pull: ReturnType<typeof vi.fn>;
   readonly pushAll: ReturnType<typeof vi.fn>;
   readonly generateCommitMessage: ReturnType<typeof vi.fn>;
+  readonly listAiModels: ReturnType<typeof vi.fn>;
   readonly fireChange: () => void;
 }
 
@@ -127,6 +132,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
   const pull = vi.fn().mockResolvedValue(undefined);
   const pushAll = vi.fn();
   const generateCommitMessage = vi.fn();
+  const listAiModels = vi.fn().mockResolvedValue([]);
   const changeListeners = new Set<() => unknown>();
   const getRepository = vi.fn().mockReturnValue({
     rootUri: uri('/workspace/repo'),
@@ -162,6 +168,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     pull,
     pushAll,
     generateCommitMessage,
+    listAiModels,
   } as unknown as RepositoryService;
   return {
     service,
@@ -181,6 +188,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     pull,
     pushAll,
     generateCommitMessage,
+    listAiModels,
     fireChange: () => {
       for (const listener of changeListeners) {
         listener();
@@ -237,7 +245,24 @@ function createViewHarness(options: {
   };
 }
 
-function createProvider(service: RepositoryService): GitoolViewProvider {
+function createSelectionStore(
+  initial: Record<string, { readonly id: string; readonly name: string }> = {},
+): AiModelSelectionStore {
+  let value: unknown = initial;
+  const persistence = {
+    get: () => value,
+    update: (_key: string, next: unknown) => {
+      value = next;
+      return Promise.resolve();
+    },
+  } satisfies AiModelSelectionPersistence;
+  return new AiModelSelectionStore(persistence);
+}
+
+function createProvider(
+  service: RepositoryService,
+  aiModelSelectionStore = createSelectionStore(),
+): GitoolViewProvider {
   const gitApi = {
     toGitUri: vi.fn((value: vscode.Uri) => value),
   } as unknown as BuiltinGitApi;
@@ -245,6 +270,7 @@ function createProvider(service: RepositoryService): GitoolViewProvider {
     extensionUri: uri('/extension/gitool'),
     gitApi,
     repositoryService: service,
+    aiModelSelectionStore,
   });
 }
 
@@ -398,6 +424,125 @@ describe('GitoolViewProvider', () => {
         density: 'detailed',
       }, expect.any(AbortSignal));
     });
+  });
+
+  it('选择具体 AI 模型后按仓库保存并用于生成', async () => {
+    const created = createServiceDouble();
+    created.listAiModels.mockResolvedValue([
+      {
+        id: 'model-1', name: '模型一', vendor: 'copilot',
+        family: 'family-1', version: '1', maxInputTokens: 8192,
+      },
+      {
+        id: 'model-2', name: '模型二', vendor: 'copilot',
+        family: 'family-2', version: '2', maxInputTokens: 16_384,
+      },
+    ]);
+    vscodeMocks.showQuickPick.mockImplementation(
+      (items: readonly unknown[]) => Promise.resolve(items[2]),
+    );
+    const store = createSelectionStore();
+    const provider = createProvider(created.service, store);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'selectAiModel',
+      repositoryId: '/workspace/repo',
+      requestId: 'select-model-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(store.get('/workspace/repo')).toEqual({
+        id: 'model-2',
+        name: '模型二',
+      });
+    });
+    expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'state',
+      aiModelSelection: { id: 'model-2', name: '模型二' },
+      acknowledgedRequestId: 'select-model-1',
+    }));
+
+    harness.receive({
+      type: 'generateCommitMessage',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      selectedIds: ['a.ts'],
+      density: 'standard',
+      requestId: 'generate-model-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.generateCommitMessage).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+        selectedIds: ['a.ts'],
+        density: 'standard',
+        modelId: 'model-2',
+      }, expect.any(AbortSignal));
+    });
+  });
+
+  it('取消模型选择时保留当前仓库原选择', async () => {
+    const created = createServiceDouble();
+    created.listAiModels.mockResolvedValue([{
+      id: 'model-1', name: '模型一', vendor: 'copilot',
+      family: 'family-1', version: '1', maxInputTokens: 8192,
+    }]);
+    vscodeMocks.showQuickPick.mockResolvedValue(undefined);
+    const store = createSelectionStore({
+      '/workspace/repo': { id: 'model-1', name: '模型一' },
+    });
+    const provider = createProvider(created.service, store);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'selectAiModel',
+      repositoryId: '/workspace/repo',
+      requestId: 'select-model-cancel',
+    });
+
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        acknowledgedRequestId: 'select-model-cancel',
+      }));
+    });
+    expect(store.get('/workspace/repo')).toEqual({
+      id: 'model-1',
+      name: '模型一',
+    });
+  });
+
+  it('选择自动模式时清除当前仓库显式模型', async () => {
+    const created = createServiceDouble();
+    created.listAiModels.mockResolvedValue([{
+      id: 'model-1', name: '模型一', vendor: 'copilot',
+      family: 'family-1', version: '1', maxInputTokens: 8192,
+    }]);
+    vscodeMocks.showQuickPick.mockImplementation(
+      (items: readonly unknown[]) => Promise.resolve(items[0]),
+    );
+    const store = createSelectionStore({
+      '/workspace/repo': { id: 'model-1', name: '模型一' },
+    });
+    const provider = createProvider(created.service, store);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'selectAiModel',
+      repositoryId: '/workspace/repo',
+      requestId: 'select-model-auto',
+    });
+
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        acknowledgedRequestId: 'select-model-auto',
+      }));
+    });
+    expect(store.get('/workspace/repo')).toBeUndefined();
   });
 
   it('选择远程后继续推送原提交且不再次提交', async () => {

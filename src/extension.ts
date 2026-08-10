@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { BuiltinGitApi } from './git/builtin-git-api.js';
 import { GitRunner, redactSensitiveText } from './git/git-runner.js';
 import { CommitService } from './services/commit-service.js';
+import { AiModelSelectionStore } from './services/ai-model-selection-store.js';
 import {
   CommitMessageAiService,
   type AiLanguageModel,
@@ -133,15 +134,16 @@ function createAiService(git: GitRunner): CommitMessageAiService {
   const selectedModels = new Map<string, vscode.LanguageModelChat>();
   return new CommitMessageAiService({
     selectModels: async (): Promise<readonly AiLanguageModel[]> => {
-      let models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-      if (models.length === 0) {
-        models = await vscode.lm.selectChatModels();
-      }
+      const models = await vscode.lm.selectChatModels();
       selectedModels.clear();
       return models.map((model) => {
         selectedModels.set(model.id, model);
         return {
           id: model.id,
+          name: model.name,
+          vendor: model.vendor,
+          family: model.family,
+          version: model.version,
           maxInputTokens: model.maxInputTokens,
           countTokens: async (text, signal) => {
             const cancellation = cancellationFor(signal);
@@ -185,6 +187,10 @@ function createTestAiService(): CommitMessageAiService {
   return new CommitMessageAiService({
     selectModels: () => Promise.resolve([{
       id: 'gitool-test-model',
+      name: 'Gitool 测试模型',
+      vendor: 'gitool-test',
+      family: 'gitool-test',
+      version: '1',
       maxInputTokens: 16_384,
     }]),
     readSelectedDiff: (request) => Promise.resolve({
@@ -412,6 +418,9 @@ function registerReadyRuntime(
   const disposables: vscode.Disposable[] = [];
   try {
     const git = new GitRunner(gitApi.git.path || 'git');
+    const aiModelSelectionStore = new AiModelSelectionStore(
+      context.workspaceState,
+    );
     const repositoryService = new RepositoryService({
       gitApi,
       commitService: new CommitService(git),
@@ -436,6 +445,7 @@ function registerReadyRuntime(
       extensionUri: context.extensionUri,
       gitApi,
       repositoryService,
+      aiModelSelectionStore,
     });
     disposables.push(provider);
     const historyProvider = new HistoryTreeProvider(repositoryService);

@@ -4,6 +4,10 @@ import { redactSensitiveText } from '../git/git-runner.js';
 import type { BuiltinGitApi } from '../git/builtin-git-api.js';
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { RepositoryService } from '../services/repository-service.js';
+import type {
+  AiModelSelection,
+  AiModelSelectionStore,
+} from '../services/ai-model-selection-store.js';
 import type { PushResult } from '../services/push-service.js';
 import { GitoolViewActions } from '../views/view-actions.js';
 import { parseWebviewMessage, type WebviewMessage } from './messages.js';
@@ -13,12 +17,18 @@ export interface GitoolViewProviderDependencies {
   readonly extensionUri: vscode.Uri;
   readonly gitApi: BuiltinGitApi;
   readonly repositoryService: RepositoryService;
+  readonly aiModelSelectionStore: AiModelSelectionStore;
 }
 
 interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
+  readonly aiModelSelection?: AiModelSelection;
   readonly acknowledgedRequestId?: string;
+}
+
+interface AiModelQuickPickItem extends vscode.QuickPickItem {
+  readonly selection?: AiModelSelection;
 }
 
 function errorMessage(error: unknown): string {
@@ -65,6 +75,8 @@ function messageAction(message: WebviewMessage): string {
       return '打开历史改动';
     case 'generateCommitMessage':
       return '生成提交信息';
+    case 'selectAiModel':
+      return '选择 AI 模型';
     case 'cancelCommitMessageGeneration':
       return '取消生成提交信息';
   }
@@ -291,6 +303,9 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       case 'generateCommitMessage':
         await this.generateCommitMessage(message);
         return;
+      case 'selectAiModel':
+        await this.selectAiModel(message.repositoryId);
+        return;
       case 'cancelCommitMessageGeneration':
         this.requireRepository(message.repositoryId);
         this.aiController?.abort();
@@ -324,17 +339,58 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     const controller = new AbortController();
     this.aiController = controller;
     try {
+      const selection = this.dependencies.aiModelSelectionStore.get(
+        message.repositoryId,
+      );
       await this.dependencies.repositoryService.generateCommitMessage({
         repositoryId: message.repositoryId,
         version: message.version,
         selectedIds: message.selectedIds,
         density: message.density,
+        ...(selection === undefined ? {} : { modelId: selection.id }),
       }, controller.signal);
     } finally {
       if (this.aiController === controller) {
         this.aiController = undefined;
       }
     }
+  }
+
+  private async selectAiModel(repositoryId: string): Promise<void> {
+    this.requireRepository(repositoryId);
+    const models = await this.dependencies.repositoryService.listAiModels();
+    if (models.length === 0) {
+      throw new Error('VS Code 当前没有可用的 AI 模型');
+    }
+    const current = this.dependencies.aiModelSelectionStore.get(repositoryId);
+    const items: readonly AiModelQuickPickItem[] = [
+      {
+        label: '自动选择（推荐）',
+        description: '优先使用 Copilot，否则使用首个可用模型',
+        picked: current === undefined,
+      },
+      ...models.map((model): AiModelQuickPickItem => ({
+        label: model.name,
+        description: [model.vendor, model.family, model.version]
+          .filter((value) => value.length > 0)
+          .join(' · '),
+        detail: `模型 ID：${model.id}`,
+        picked: current?.id === model.id,
+        selection: { id: model.id, name: model.name },
+      })),
+    ];
+    const selected = await vscode.window.showQuickPick(items, {
+      title: 'Gitool：选择 AI 提交信息模型',
+      placeHolder: '选择自动模式或一个 VS Code 可用模型',
+    });
+    if (selected === undefined) {
+      return;
+    }
+    this.requireRepository(repositoryId);
+    await this.dependencies.aiModelSelectionStore.set(
+      repositoryId,
+      selected.selection,
+    );
   }
 
   private requireRepository(repositoryId: string): RepositoryViewModel {
@@ -442,9 +498,15 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     if (webview === undefined) {
       return;
     }
+    const model = this.dependencies.repositoryService.getViewModel();
+    const repositoryId = model.currentRepositoryId;
+    const selection = repositoryId === undefined
+      ? undefined
+      : this.dependencies.aiModelSelectionStore.get(repositoryId);
     const message: StateMessage = {
       type: 'state',
-      model: this.dependencies.repositoryService.getViewModel(),
+      model,
+      ...(selection === undefined ? {} : { aiModelSelection: selection }),
       ...(acknowledgedRequestId === undefined
         ? {}
         : { acknowledgedRequestId }),

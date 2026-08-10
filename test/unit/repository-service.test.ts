@@ -363,14 +363,21 @@ describe('RepositoryService', () => {
       resolveGeneration = resolve;
     }));
     const { service } = createService([repository], true, {
-      aiService: { generate },
+      aiService: { listModels: vi.fn().mockResolvedValue([]), generate },
     });
     const request = service.generateCommitMessage({
       repositoryId: root,
       version: 0,
       selectedIds: ['a.ts', 'b.ts'],
       density: 'standard',
+      modelId: 'test-model',
     });
+    expect(generate).toHaveBeenCalledWith({
+      repositoryRoot: root,
+      selectedPaths: ['a.ts', 'b.ts'],
+      density: 'standard',
+      modelId: 'test-model',
+    }, undefined);
     service.setFileSelected('b.ts', false);
     resolveGeneration?.({
       message: '功能：AI 生成',
