@@ -24,7 +24,10 @@ describe('工作台紧凑布局样式', () => {
   });
 
   it('历史列表按多轨图、双行摘要和分支标签布局', () => {
-    expect(readRule('.history-commit-row')).toMatch(/grid-template-columns/u);
+    expect(readRule('.history-commit-row')).toMatch(
+      /grid-template-columns:\s*max-content 14px minmax\(0, 1fr\)/u,
+    );
+    expect(readRule('.history-commit-row')).not.toContain('--graph-width');
     expect(readRule('.history-commit-copy')).toMatch(/flex-direction:\s*column/u);
     expect(readRule('.history-list')).toMatch(/overflow:\s*auto/u);
     expect(stylesheet).toContain('.graph-line');

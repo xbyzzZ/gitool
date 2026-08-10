@@ -75,7 +75,7 @@
 ${commit.author} \xB7 ${commit.authoredAt}
 ${commit.hash}`;
     const files = expanded ? `<div class="history-files">${(options.files ?? []).map(fileMarkup).join("")}</div>` : "";
-    return `<article class="history-entry${expanded ? " expanded" : ""}" role="listitem" data-hash="${commit.hash}" style="--graph-width:${String(options.graphWidth)}px"><button class="history-commit-row" type="button" aria-expanded="${String(expanded)}" title="${escapeHtml(title)}">` + renderGraphMarkup(commit, options.graphWidth, options.lanePitch) + `<span class="codicon codicon-chevron-${expanded ? "down" : "right"} history-chevron" aria-hidden="true"></span><span class="history-commit-copy"><span class="history-commit-primary"><span class="history-subject">${escapeHtml(commit.subject)}</span><span class="history-refs">${refMarkup(commit)}</span></span><span class="history-meta">${escapeHtml(meta)}</span></span></button>` + files + "</article>";
+    return `<article class="history-entry${expanded ? " expanded" : ""}" role="listitem" data-hash="${commit.hash}"><button class="history-commit-row" type="button" aria-expanded="${String(expanded)}" title="${escapeHtml(title)}">` + renderGraphMarkup(commit, options.graphWidth, options.lanePitch) + `<span class="codicon codicon-chevron-${expanded ? "down" : "right"} history-chevron" aria-hidden="true"></span><span class="history-commit-copy"><span class="history-commit-primary"><span class="history-subject">${escapeHtml(commit.subject)}</span><span class="history-refs">${refMarkup(commit)}</span></span><span class="history-meta">${escapeHtml(meta)}</span></span></button>` + files + "</article>";
   }
   function graphMetrics(commits) {
     const laneCount = Math.max(1, ...commits.map((commit) => commit.laneCount));

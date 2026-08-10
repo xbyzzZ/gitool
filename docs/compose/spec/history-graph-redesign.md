@@ -1,9 +1,9 @@
 ---
 feature: history-graph-redesign
-status: delivered
+status: in-progress
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: 4bf652c..ae16685
+commits: f77f786..待交付
 ---
 
 # 提交历史图改版
@@ -37,9 +37,14 @@ commits: 4bf652c..ae16685
 - 不改变 Git 提交读取顺序、50 条默认限制、提交详情和 Diff 语义。
 - 不修改提交信息、当前变更、提交和推送流程。
 
+## [S4] CSP 兼容布局修正
+
+历史行不得依赖被 Webview CSP 禁止的内联 `style` 属性。多轨 SVG 的 `width` 属性作为第一列固有宽度，网格使用 `max-content`、固定箭头列和可收缩正文列；提交主题、引用和元数据必须在启用严格 CSP 时仍保持可见。
+
 ## Tasks
 
 - [x] T1: 修正引用分类并扩展拓扑行模型 — acceptance: 本地、远程、HEAD 分类准确，合并提交输出可连续绘制的行边且有单元测试（covers: S2）
 - [x] T2: 实现历史图渲染与交互 — acceptance: 多轨 SVG、引用标签、双层提交信息、展开文件和 Diff 消息均有渲染或协议测试（covers: S2; depends: T1）
 - [x] T3: 将历史视图迁移为独立 Webview — acceptance: package 和扩展只为 historyView 注册 Webview Provider，标题命令及状态反馈保持（covers: S2; depends: T2）
 - [x] T4: 完成 0.2.5 预览交付 — acceptance: 完整检查、构建、Extension Host、VSIX 清单和独立审查通过，主分支不变化（covers: S2, S3; depends: T3）
+- [ ] T5: 修复严格 CSP 下历史正文不可见 — acceptance: 历史行不输出内联样式，网格不依赖自定义属性且渲染测试覆盖正文可见结构（covers: S4; depends: T2）

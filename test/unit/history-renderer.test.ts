@@ -57,6 +57,7 @@ describe('提交历史图渲染', () => {
     expect(html).toContain('commit-ref local');
     expect(html).toContain('commit-ref remote');
     expect(html).toContain('测试作者 · 1 小时前 · aaaaaaa');
+    expect(html).not.toContain(' style=');
   });
 
   it('展开后显示可点击文件与状态', () => {
