@@ -1,3 +1,5 @@
+import { isFullGitObjectId } from '../domain/git-object-id.js';
+
 export type WebviewMessage =
   | { readonly type: 'ready' }
   | { readonly type: 'refresh' }
@@ -214,7 +216,7 @@ function requireRequestId(input: MessageRecord): string {
 }
 
 function requireCommitHash(input: MessageRecord): string {
-  if (typeof input.hash !== 'string' || !/^[0-9a-f]{40}$/u.test(input.hash)) {
+  if (!isFullGitObjectId(input.hash)) {
     invalid('hash');
   }
   return input.hash;

@@ -223,6 +223,22 @@ describe('parseWebviewMessage', () => {
     ],
     [
       {
+        type: 'loadCommitDetails',
+        repositoryId: '/repo/sha256',
+        version: 7,
+        hash: 'c'.repeat(64),
+        requestId: 'request-sha256',
+      },
+      {
+        type: 'loadCommitDetails',
+        repositoryId: '/repo/sha256',
+        version: 7,
+        hash: 'c'.repeat(64),
+        requestId: 'request-sha256',
+      },
+    ],
+    [
+      {
         type: 'openCommitDiff',
         repositoryId: '/repo/a',
         version: 8,
@@ -406,6 +422,13 @@ describe('parseWebviewMessage', () => {
       repositoryId: '/repo/a',
       version: 0,
       hash: 'abc123',
+      requestId: 'request-1',
+    },
+    {
+      type: 'loadCommitDetails',
+      repositoryId: '/repo/a',
+      version: 0,
+      hash: 'a'.repeat(41),
       requestId: 'request-1',
     },
     {

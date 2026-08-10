@@ -1,3 +1,4 @@
+import { isFullGitObjectId } from '../domain/git-object-id.js';
 import type {
   AheadBehind,
   AheadBehindCount,
@@ -10,7 +11,6 @@ import type {
 } from '../domain/history-model.js';
 import { GitRunner } from '../git/git-runner.js';
 
-const fullHashPattern = /^[0-9a-f]{40,64}$/u;
 const statusPattern = /^[A-Z][0-9]*$/u;
 
 function removeTrailingEmpty(fields: string[]): void {
@@ -20,7 +20,7 @@ function removeTrailingEmpty(fields: string[]): void {
 }
 
 function validateHash(hash: string, message: string): void {
-  if (!fullHashPattern.test(hash)) {
+  if (!isFullGitObjectId(hash)) {
     throw new Error(message);
   }
 }
@@ -251,7 +251,7 @@ export class HistoryService {
       ]),
     ]);
     const hashes = parentResult.rawStdout.trim().split(/\s+/u);
-    if (hashes[0] !== hash || hashes.some((value) => !fullHashPattern.test(value))) {
+    if (hashes[0] !== hash || hashes.some((value) => !isFullGitObjectId(value))) {
       throw new Error('Git 提交父级输出无效');
     }
     return {
