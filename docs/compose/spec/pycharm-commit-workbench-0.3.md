@@ -1,14 +1,23 @@
 ---
 feature: pycharm-commit-workbench-0.3
-status: in-progress
+status: complete
 updated: 2026-08-10
 branch: codex/pycharm-commit-0.3
-commits: 待交付
+commits: c4763cb, b509ba4
 ---
 
 # 0.3 PyCharm 风格提交工作台
 
 ## Report
+
+- 已交付：0.3.0 只贡献一个“提交”Webview；当前变更与提交历史视图、历史命令、历史脚本和 `gitool-empty` 文档提供器均已移除。
+- 已交付：统一工作台包含顶部操作栏、分组文件列表、当前主题文件图标、固定底部 AI/提交区和低高度/极窄侧栏降级。
+- 已交付：领先/落后计算从历史刷新拆入同步服务，移除历史功能后仍能正确控制拉取和推送全部。
+- 自动验证：`npm run check` 通过，32 个测试文件共 316 项；`npm run build` 与 `git diff --check` 通过。
+- Extension Host：VS Code 1.132.0 的 3 项真实双仓库回归通过，覆盖统一命令注册、安全默认选择、精确提交、远程修改、失败重试、领先计数与推送全部。
+- 独立审查：已修复低高度裁切、极窄侧栏隐藏推送和推送可用状态遗漏；主题竞态与变更列表 DOM 绑定测试已补齐。
+- 安装包：`gitool-file-commit-0.3.0.vsix` 共 15 个文件，不含 `history.js`；包内 `main.css`、`commit.js`、`extension.js` 与最终构建 SHA-256 完全一致。
+- 人工验收边界：尚未在用户真实主题和实际侧栏尺寸下目测最终 VSIX，也未自动驱动 Webview 顶部与底部按钮的浏览器 DOM 点击；由本地安装包试用验收。
 
 ## [S1] 问题
 
@@ -61,9 +70,9 @@ Gitool 活动栏仅贡献一个名为“提交”的 Webview View，移除“当
 
 ## Tasks
 
-- [ ] T1: 合并视图贡献与运行时 — acceptance: 清单只贡献“提交”Webview，扩展不再注册当前变更 TreeView、提交历史 Webview及历史命令（covers: S2, S6）
-- [ ] T2: 实现 PyCharm 风格统一布局 — acceptance: 工具栏、可滚动分组文件区、固定底部状态/输入/操作区在一个 Webview 中，结构测试覆盖关键区域（covers: S2, S4, S5; depends: T1）
-- [ ] T3: 实现 Webview 变更树交互 — acceptance: 分组展开、整组选中、文件勾选、Diff、空态、冲突态和响应式降级均有自动化测试（covers: S3, S5; depends: T2）
-- [ ] T4: 接入当前文件图标主题 — acceptance: 变更文件获得安全主题图标类，主题切换无过期覆盖，资源根和 CSP 保持严格（covers: S3, S5; depends: T2）
-- [ ] T5: 迁移工具栏与提交操作 — acceptance: 刷新、全选、清空、舍弃、拉取、推送、远程、AI、提交、提交并推送及重试均从统一面板可达且状态正确（covers: S4; depends: T2, T3）
-- [ ] T6: 完成 0.3.0 交付 — acceptance: 版本、README、CHANGELOG、完整检查、构建、Extension Host、VSIX 清单和独立审查均通过（covers: S1, S6; depends: T1, T2, T3, T4, T5）
+- [x] T1: 合并视图贡献与运行时 — acceptance: 清单只贡献“提交”Webview，扩展不再注册当前变更 TreeView、提交历史 Webview及历史命令（covers: S2, S6）
+- [x] T2: 实现 PyCharm 风格统一布局 — acceptance: 工具栏、可滚动分组文件区、固定底部状态/输入/操作区在一个 Webview 中，结构测试覆盖关键区域（covers: S2, S4, S5; depends: T1）
+- [x] T3: 实现 Webview 变更树交互 — acceptance: 分组展开、整组选中、文件勾选、Diff、空态、冲突态和响应式降级均有自动化测试（covers: S3, S5; depends: T2）
+- [x] T4: 接入当前文件图标主题 — acceptance: 变更文件获得安全主题图标类，主题切换无过期覆盖，资源根和 CSP 保持严格（covers: S3, S5; depends: T2）
+- [x] T5: 迁移工具栏与提交操作 — acceptance: 刷新、全选、清空、舍弃、拉取、推送、远程、AI、提交、提交并推送及重试均从统一面板可达且状态正确（covers: S4; depends: T2, T3）
+- [x] T6: 完成 0.3.0 交付 — acceptance: 版本、README、CHANGELOG、完整检查、构建、Extension Host、VSIX 清单和独立审查均通过（covers: S1, S6; depends: T1, T2, T3, T4, T5）
