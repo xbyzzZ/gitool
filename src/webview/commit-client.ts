@@ -5,8 +5,6 @@ import {
   aiControlPresentation,
   aiModelControlPresentation,
   commitControlState,
-  densityMenuPlacement,
-  densityMenuTargetIndex,
   operationFeedback,
 } from './commit-view-state.js';
 import type { WebviewMessage } from './messages.js';
@@ -25,6 +23,7 @@ interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
   readonly aiModelSelection?: AiModelSelection;
+  readonly selectedDensity?: CommitMessageDensity;
   readonly acknowledgedRequestId?: string;
 }
 
@@ -75,7 +74,6 @@ const controls = {
   aiGenerateButton: element('ai-generate-button') as HTMLButtonElement,
   aiGenerateIcon: element('ai-generate-icon'),
   aiDensityButton: element('ai-density-button') as HTMLButtonElement,
-  aiDensityMenu: element('ai-density-menu'),
   aiModelButton: element('ai-model-button') as HTMLButtonElement,
   aiModelName: element('ai-model-name'),
   loadingStatus: element('loading-status') as HTMLParagraphElement,
@@ -85,72 +83,6 @@ const controls = {
   feedback: element('operation-feedback'),
 };
 
-function densityFromButton(
-  button: HTMLButtonElement,
-): CommitMessageDensity {
-  const value = button.dataset.densityOption;
-  if (value === 'compact' || value === 'standard' || value === 'detailed') {
-    return value;
-  }
-  throw new Error('生成内容菜单包含无效档位');
-}
-
-function closeDensityMenu(restoreFocus: boolean): void {
-  controls.aiDensityMenu.hidden = true;
-  controls.aiDensityButton.setAttribute('aria-expanded', 'false');
-  if (restoreFocus) {
-    controls.aiDensityButton.focus();
-  }
-}
-
-function focusDensityOption(button: HTMLButtonElement): void {
-  for (const option of densityOptionButtons) {
-    option.tabIndex = -1;
-  }
-  button.tabIndex = 0;
-  button.focus();
-}
-
-function positionDensityMenu(): void {
-  controls.aiDensityMenu.style.removeProperty('max-height');
-  const triggerRect = controls.aiDensityButton.getBoundingClientRect();
-  const menuRect = controls.aiDensityMenu.getBoundingClientRect();
-  const placement = densityMenuPlacement({
-    triggerLeft: triggerRect.left,
-    triggerTop: triggerRect.top,
-    triggerBottom: triggerRect.bottom,
-    menuWidth: menuRect.width,
-    menuHeight: menuRect.height,
-    viewportWidth: window.innerWidth,
-    viewportHeight: window.innerHeight,
-  });
-  controls.aiDensityMenu.style.left = `${String(placement.left)}px`;
-  controls.aiDensityMenu.style.top = `${String(placement.top)}px`;
-  controls.aiDensityMenu.style.maxHeight = `${String(placement.maxHeight)}px`;
-  controls.aiDensityMenu.dataset.direction = placement.direction;
-}
-
-function openDensityMenu(): void {
-  controls.aiDensityMenu.hidden = false;
-  controls.aiDensityButton.setAttribute('aria-expanded', 'true');
-  positionDensityMenu();
-  const selected = densityOptionButtons.find(
-    (button) => densityFromButton(button) === density,
-  );
-  if (selected !== undefined) {
-    focusDensityOption(selected);
-  }
-}
-
-const densityOptionButtons = [
-  ...controls.aiDensityMenu.querySelectorAll<HTMLButtonElement>(
-    '[data-density-option]',
-  ),
-];
-if (densityOptionButtons.length !== 3) {
-  throw new Error('生成内容菜单必须包含精简、标准和详细三档');
-}
-
 let currentModel: RepositoryViewModel | undefined;
 let currentRepositoryId: string | undefined;
 let currentAiModelSelection: AiModelSelection | undefined;
@@ -158,6 +90,7 @@ let pendingMessage: string | undefined;
 let messageTimer: number | undefined;
 let pendingRequestId: string | undefined;
 let modelSelectionRequestId: string | undefined;
+let densitySelectionRequestId: string | undefined;
 let pendingPresentation: PendingRequestPresentation | undefined;
 let sequence = 0;
 let density: CommitMessageDensity = 'standard';
@@ -214,7 +147,8 @@ function render(model: RepositoryViewModel): void {
   const running = model.operation.kind === 'running';
   const hasConflict = model.changes.some((change) => change.conflicted);
   const locallyBusy = pendingRequestId !== undefined
-    || modelSelectionRequestId !== undefined;
+    || modelSelectionRequestId !== undefined
+    || densitySelectionRequestId !== undefined;
   const {
     canWrite,
     canCommit,
@@ -251,12 +185,6 @@ function render(model: RepositoryViewModel): void {
   controls.aiGenerateButton.title = aiPresentation.generateLabel;
   controls.aiDensityButton.setAttribute('aria-label', aiPresentation.densityLabel);
   controls.aiDensityButton.title = aiPresentation.densityLabel;
-  for (const button of densityOptionButtons) {
-    const selected = densityFromButton(button) === density;
-    button.setAttribute('aria-checked', String(selected));
-    button.classList.toggle('is-selected', selected);
-    button.tabIndex = selected ? 0 : -1;
-  }
   const modelPresentation = aiModelControlPresentation(
     currentAiModelSelection,
     modelSelectionRequestId !== undefined,
@@ -370,69 +298,28 @@ controls.retryPushButton.addEventListener('click', () => {
   }
 });
 
-for (const button of densityOptionButtons) {
-  button.addEventListener('click', () => {
-    density = densityFromButton(button);
-    closeDensityMenu(true);
-    if (currentRepositoryId !== undefined) {
-      persisted = {
-        densities: { ...persisted.densities, [currentRepositoryId]: density },
-      };
-      vscode.setState(persisted);
-    }
-    if (currentModel !== undefined) {
-      render(currentModel);
-    }
-  });
-  button.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      closeDensityMenu(true);
-      return;
-    }
-    const targetIndex = densityMenuTargetIndex(
-      densityOptionButtons.indexOf(button),
-      event.key,
-      densityOptionButtons.length,
-    );
-    if (targetIndex === undefined) {
-      return;
-    }
-    event.preventDefault();
-    const target = densityOptionButtons[targetIndex];
-    if (target !== undefined) {
-      focusDensityOption(target);
-    }
-  });
-}
-
 controls.aiDensityButton.addEventListener('click', () => {
-  if (controls.aiDensityMenu.hidden) {
-    openDensityMenu();
-  } else {
-    closeDensityMenu(true);
+  const model = currentModel;
+  if (model?.currentRepositoryId === undefined
+    || densitySelectionRequestId !== undefined) {
+    return;
   }
+  sequence += 1;
+  densitySelectionRequestId = `ai-density-${String(sequence)}`;
+  render(model);
+  post({
+    type: 'selectCommitMessageDensity',
+    repositoryId: model.currentRepositoryId,
+    currentDensity: density,
+    requestId: densitySelectionRequestId,
+  });
 });
-window.addEventListener('resize', () => {
-  if (!controls.aiDensityMenu.hidden) {
-    positionDensityMenu();
-  }
-});
-controls.aiDensityButton.closest('.commit-content')?.addEventListener(
-  'scroll',
-  () => {
-    if (!controls.aiDensityMenu.hidden) {
-      positionDensityMenu();
-    }
-  },
-);
 controls.aiModelButton.addEventListener('click', () => {
   const model = currentModel;
   if (model?.currentRepositoryId === undefined
     || modelSelectionRequestId !== undefined) {
     return;
   }
-  closeDensityMenu(false);
   sequence += 1;
   modelSelectionRequestId = `ai-model-${String(sequence)}`;
   render(model);
@@ -481,6 +368,17 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
   }
   if (state.acknowledgedRequestId === modelSelectionRequestId) {
     modelSelectionRequestId = undefined;
+  }
+  if (state.acknowledgedRequestId === densitySelectionRequestId) {
+    densitySelectionRequestId = undefined;
+    if (state.selectedDensity !== undefined
+      && currentRepositoryId !== undefined) {
+      density = state.selectedDensity;
+      persisted = {
+        densities: { ...persisted.densities, [currentRepositoryId]: density },
+      };
+      vscode.setState(persisted);
+    }
   }
   render(state.model);
 });

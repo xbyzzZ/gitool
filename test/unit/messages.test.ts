@@ -253,6 +253,20 @@ describe('parseWebviewMessage', () => {
     ],
     [
       {
+        type: 'selectCommitMessageDensity',
+        repositoryId: '/repo/a',
+        currentDensity: 'standard',
+        requestId: 'request-density',
+      },
+      {
+        type: 'selectCommitMessageDensity',
+        repositoryId: '/repo/a',
+        currentDensity: 'standard',
+        requestId: 'request-density',
+      },
+    ],
+    [
+      {
         type: 'generateCommitMessage',
         repositoryId: '/repo/a',
         version: 9,
@@ -409,6 +423,12 @@ describe('parseWebviewMessage', () => {
       selectedIds: ['a.ts'],
       density: 'verbose',
       requestId: 'request-1',
+    },
+    {
+      type: 'selectCommitMessageDensity',
+      repositoryId: '/repo/a',
+      currentDensity: 'verbose',
+      requestId: 'request-density',
     },
     {
       type: 'generateCommitMessage',

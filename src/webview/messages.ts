@@ -95,6 +95,12 @@ export type WebviewMessage =
     readonly requestId: string;
   }
   | {
+    readonly type: 'selectCommitMessageDensity';
+    readonly repositoryId: string;
+    readonly currentDensity: 'compact' | 'standard' | 'detailed';
+    readonly requestId: string;
+  }
+  | {
     readonly type: 'generateCommitMessage';
     readonly repositoryId: string;
     readonly version: number;
@@ -345,6 +351,21 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
       return {
         type: input.type,
         repositoryId: requireRepositoryId(input),
+        requestId: requireRequestId(input),
+      };
+    case 'selectCommitMessageDensity':
+      requireExactKeys(input, [
+        'type', 'repositoryId', 'currentDensity', 'requestId',
+      ]);
+      if (input.currentDensity !== 'compact'
+        && input.currentDensity !== 'standard'
+        && input.currentDensity !== 'detailed') {
+        invalid('currentDensity');
+      }
+      return {
+        type: input.type,
+        repositoryId: requireRepositoryId(input),
+        currentDensity: input.currentDensity,
         requestId: requireRequestId(input),
       };
     case 'commit':

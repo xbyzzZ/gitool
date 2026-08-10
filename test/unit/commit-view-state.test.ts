@@ -4,8 +4,6 @@ import {
   aiControlPresentation,
   aiModelControlPresentation,
   commitControlState,
-  densityMenuPlacement,
-  densityMenuTargetIndex,
   densityPresentation,
   operationFeedback,
 } from '../../src/webview/commit-view-state.js';
@@ -86,50 +84,6 @@ describe('提交信息展示状态', () => {
     }, true)).toEqual({
       name: '正在选择',
       label: '选择 AI 模型（正在选择）',
-    });
-  });
-
-  it('生成内容菜单支持循环方向键及首尾键导航', () => {
-    expect(densityMenuTargetIndex(1, 'ArrowDown', 3)).toBe(2);
-    expect(densityMenuTargetIndex(2, 'ArrowDown', 3)).toBe(0);
-    expect(densityMenuTargetIndex(0, 'ArrowUp', 3)).toBe(2);
-    expect(densityMenuTargetIndex(1, 'Home', 3)).toBe(0);
-    expect(densityMenuTargetIndex(1, 'End', 3)).toBe(2);
-    expect(densityMenuTargetIndex(1, 'Escape', 3)).toBeUndefined();
-    expect(densityMenuTargetIndex(-1, 'ArrowDown', 3)).toBeUndefined();
-  });
-
-  it('生成内容菜单在上方空间不足时限制高度且保持在视口内', () => {
-    expect(densityMenuPlacement({
-      triggerLeft: 9,
-      triggerTop: 110,
-      triggerBottom: 138,
-      menuWidth: 232,
-      menuHeight: 132,
-      viewportWidth: 200,
-      viewportHeight: 140,
-    })).toEqual({
-      left: 4,
-      top: 4,
-      maxHeight: 104,
-      direction: 'above',
-    });
-  });
-
-  it('生成内容菜单优先选择可完整容纳的一侧并修正水平越界', () => {
-    expect(densityMenuPlacement({
-      triggerLeft: 150,
-      triggerTop: 20,
-      triggerBottom: 48,
-      menuWidth: 232,
-      menuHeight: 132,
-      viewportWidth: 180,
-      viewportHeight: 260,
-    })).toEqual({
-      left: 4,
-      top: 50,
-      maxHeight: 206,
-      direction: 'below',
     });
   });
 

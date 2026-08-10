@@ -34,23 +34,21 @@ describe('工作台紧凑布局样式', () => {
   });
 
   it('AI 星级图标使用固定画布并由密度控制星星数量', () => {
-    const densityCanvas = readRule(
-      '.ai-density-icon,\n.ai-density-option-icon',
-    );
+    const densityCanvas = readRule('.ai-density-icon');
     expect(densityCanvas).toMatch(/width:\s*16px/u);
     expect(densityCanvas).toMatch(/height:\s*16px/u);
     expect(stylesheet).toContain(
-      ':is(.ai-density-icon, .ai-density-option-icon)[data-density="compact"]',
+      '.ai-density-icon[data-density="compact"]',
     );
     expect(stylesheet).toContain(
-      ':is(.ai-density-icon, .ai-density-option-icon)[data-density="standard"]',
+      '.ai-density-icon[data-density="standard"]',
     );
     expect(stylesheet).toContain(
-      ':is(.ai-density-icon, .ai-density-option-icon)[data-density="detailed"]',
+      '.ai-density-icon[data-density="detailed"]',
     );
     expect(stylesheet).toContain('.ai-density-icon.is-generating');
     expect(readRule(
-      ':is(.ai-density-icon, .ai-density-option-icon)[data-density="standard"] .ai-density-star-primary',
+      '.ai-density-icon[data-density="standard"] .ai-density-star-primary',
     )).toMatch(
       /width:\s*11px/u,
     );
@@ -67,17 +65,9 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.ai-model-name')).toMatch(/white-space:\s*nowrap/u);
   });
 
-  it('生成内容菜单使用视口定位且允许在高度不足时内部滚动', () => {
-    expect(readRule('#ai-density-menu')).toMatch(/position:\s*fixed/u);
-    expect(readRule('#ai-density-menu')).toMatch(/width:\s*232px/u);
-    expect(readRule('#ai-density-menu')).toMatch(
-      /max-width:\s*calc\(100vw - 8px\)/u,
-    );
-    expect(readRule('#ai-density-menu')).toMatch(/overflow-y:\s*auto/u);
-    expect(readRule('.ai-density-option-copy')).toMatch(/min-width:\s*0/u);
-    expect(readRule('.ai-density-option-description')).toMatch(
-      /color:\s*var\(--vscode-descriptionForeground\)/u,
-    );
+  it('生成内容选择不再渲染受 Webview 高度限制的弹层', () => {
+    expect(stylesheet).not.toContain('#ai-density-menu');
+    expect(stylesheet).not.toContain('.ai-density-option-copy');
   });
 
   it('提交图标按钮使用固定尺寸且不改变左右分组', () => {

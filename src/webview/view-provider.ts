@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { redactSensitiveText } from '../git/git-runner.js';
 import type { BuiltinGitApi } from '../git/builtin-git-api.js';
 import type { RepositoryViewModel } from '../domain/view-model.js';
+import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
 import type { RepositoryService } from '../services/repository-service.js';
 import type {
   AiModelSelection,
@@ -24,11 +25,16 @@ interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
   readonly aiModelSelection?: AiModelSelection;
+  readonly selectedDensity?: CommitMessageDensity;
   readonly acknowledgedRequestId?: string;
 }
 
 interface AiModelQuickPickItem extends vscode.QuickPickItem {
   readonly selection?: AiModelSelection;
+}
+
+interface DensityQuickPickItem extends vscode.QuickPickItem {
+  readonly density: CommitMessageDensity;
 }
 
 function errorMessage(error: unknown): string {
@@ -77,6 +83,8 @@ function messageAction(message: WebviewMessage): string {
       return '生成提交信息';
     case 'selectAiModel':
       return '选择 AI 模型';
+    case 'selectCommitMessageDensity':
+      return '选择生成内容';
     case 'cancelCommitMessageGeneration':
       return '取消生成提交信息';
   }
@@ -186,17 +194,21 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    let selectedDensity: CommitMessageDensity | undefined;
     try {
-      await this.handleMessage(message);
+      selectedDensity = await this.handleMessage(message);
     } catch (error) {
       this.reportError(messageAction(message), error);
     }
     await this.postState(
       'requestId' in message ? message.requestId : undefined,
+      selectedDensity,
     );
   }
 
-  private async handleMessage(message: WebviewMessage): Promise<void> {
+  private async handleMessage(
+    message: WebviewMessage,
+  ): Promise<CommitMessageDensity | undefined> {
     const service = this.dependencies.repositoryService;
     switch (message.type) {
       case 'ready':
@@ -306,6 +318,11 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       case 'selectAiModel':
         await this.selectAiModel(message.repositoryId);
         return;
+      case 'selectCommitMessageDensity':
+        return this.selectCommitMessageDensity(
+          message.repositoryId,
+          message.currentDensity,
+        );
       case 'cancelCommitMessageGeneration':
         this.requireRepository(message.repositoryId);
         this.aiController?.abort();
@@ -386,6 +403,38 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       repositoryId,
       selected.selection,
     );
+  }
+
+  private async selectCommitMessageDensity(
+    repositoryId: string,
+    currentDensity: CommitMessageDensity,
+  ): Promise<CommitMessageDensity | undefined> {
+    this.requireRepository(repositoryId);
+    const presentations: Readonly<Record<
+      CommitMessageDensity,
+      { readonly label: string; readonly description: string }
+    >> = {
+      compact: { label: '精简', description: '仅生成一行标题' },
+      standard: { label: '标准', description: '标题 + 2–4 条关键变化' },
+      detailed: { label: '详细', description: '标题 + 行为及兼容说明' },
+    };
+    const densities: readonly CommitMessageDensity[] = [
+      'compact', 'standard', 'detailed',
+    ];
+    const items = densities.map((density): DensityQuickPickItem => ({
+      label: `${currentDensity === density ? '$(check) ' : ''}${presentations[density].label}`,
+      description: presentations[density].description,
+      density,
+    }));
+    const selected = await vscode.window.showQuickPick(items, {
+      title: 'Gitool：选择生成内容',
+      placeHolder: '选择 AI 提交信息的内容详细程度',
+    });
+    if (selected === undefined) {
+      return undefined;
+    }
+    this.requireRepository(repositoryId);
+    return selected.density;
   }
 
   private requireRepository(repositoryId: string): RepositoryViewModel {
@@ -488,6 +537,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
 
   private async postState(
     acknowledgedRequestId?: string,
+    selectedDensity?: CommitMessageDensity,
   ): Promise<void> {
     const webview = this.webview;
     if (webview === undefined) {
@@ -502,6 +552,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       type: 'state',
       model,
       ...(selection === undefined ? {} : { aiModelSelection: selection }),
+      ...(selectedDensity === undefined ? {} : { selectedDensity }),
       ...(acknowledgedRequestId === undefined
         ? {}
         : { acknowledgedRequestId }),

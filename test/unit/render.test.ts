@@ -71,7 +71,7 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('id="ai-generate-icon"');
     expect(html).toContain('class="ai-density-icon"');
     expect(html).toContain('data-density="standard"');
-    expect(html.match(/<svg class="ai-density-star/gu)).toHaveLength(12);
+    expect(html.match(/<svg class="ai-density-star/gu)).toHaveLength(3);
     expect(html).not.toContain('codicon-sparkle ai-density-star');
     expect(html).toContain('ai-density-loading');
   });
@@ -93,21 +93,16 @@ describe('独立 Webview 壳页面', () => {
     expect(html).not.toContain('>提交并推送</button>');
   });
 
-  it('生成内容菜单展示三档星群、说明和单选语义', () => {
+  it('生成内容按钮委托宿主选择且不渲染受视图高度限制的菜单', () => {
     const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
     );
 
-    expect(html.match(/data-density-option=/gu)).toHaveLength(3);
-    expect(html.match(/role="menuitemradio"/gu)).toHaveLength(3);
-    expect(html).toContain('仅生成一行标题');
-    expect(html).toContain('标题 + 2–4 条关键变化');
-    expect(html).toContain('标题 + 行为及兼容说明');
-    expect(html).toContain('class="ai-density-option-icon" data-density="compact"');
-    expect(html).toContain('class="ai-density-option-icon" data-density="standard"');
-    expect(html).toContain('class="ai-density-option-icon" data-density="detailed"');
+    expect(html).toContain('id="ai-density-button"');
+    expect(html).not.toContain('id="ai-density-menu"');
+    expect(html).not.toContain('role="menuitemradio"');
   });
 
   it('渲染模块不再提供历史 Webview 页面', () => {

@@ -13,22 +13,6 @@ function densityStarsMarkup(): string {
   </span>`;
 }
 
-function densityOptionMarkup(
-  density: 'compact' | 'standard' | 'detailed',
-  label: string,
-  description: string,
-  checked: boolean,
-): string {
-  return `<button type="button" role="menuitemradio" aria-checked="${String(checked)}" data-density-option="${density}">
-    <span class="ai-density-option-icon" data-density="${density}" aria-hidden="true">${densityStarsMarkup()}</span>
-    <span class="ai-density-option-copy">
-      <span class="ai-density-option-label">${label}</span>
-      <span class="ai-density-option-description">${description}</span>
-    </span>
-    <span class="codicon codicon-check ai-density-option-check" aria-hidden="true"></span>
-  </button>`;
-}
-
 function mediaUri(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
@@ -115,14 +99,9 @@ export function renderCommitWebviewHtml(
                   <span class="codicon codicon-loading ai-density-loading"></span>
                 </span>
               </button>
-              <button id="ai-density-button" class="ai-menu-button" type="button" aria-label="选择生成内容（当前：标准）" title="选择生成内容（当前：标准）" aria-haspopup="menu" aria-expanded="false">
+              <button id="ai-density-button" class="ai-menu-button" type="button" aria-label="选择生成内容（当前：标准）" title="选择生成内容（当前：标准）">
                 <span class="codicon codicon-chevron-down" aria-hidden="true"></span>
               </button>
-              <div id="ai-density-menu" role="menu" aria-label="选择生成内容" hidden>
-                ${densityOptionMarkup('compact', '精简', '仅生成一行标题', false)}
-                ${densityOptionMarkup('standard', '标准', '标题 + 2–4 条关键变化', true)}
-                ${densityOptionMarkup('detailed', '详细', '标题 + 行为及兼容说明', false)}
-              </div>
             </div>
             <button id="ai-model-button" class="ai-model-button" type="button" aria-label="选择 AI 模型（自动选择）" title="选择 AI 模型（自动选择）">
               <span id="ai-model-name" class="ai-model-name">自动选择</span>

@@ -426,6 +426,51 @@ describe('GitoolViewProvider', () => {
     });
   });
 
+  it('通过宿主 Quick Pick 选择生成内容并回传所选档位', async () => {
+    const created = createServiceDouble();
+    vscodeMocks.showQuickPick.mockImplementation(
+      (items: readonly unknown[]) => Promise.resolve(items[2]),
+    );
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'selectCommitMessageDensity',
+      repositoryId: '/workspace/repo',
+      currentDensity: 'standard',
+      requestId: 'density-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(vscodeMocks.showQuickPick).toHaveBeenCalledWith([
+        {
+          label: '精简',
+          description: '仅生成一行标题',
+          density: 'compact',
+        },
+        {
+          label: '$(check) 标准',
+          description: '标题 + 2–4 条关键变化',
+          density: 'standard',
+        },
+        {
+          label: '详细',
+          description: '标题 + 行为及兼容说明',
+          density: 'detailed',
+        },
+      ], {
+        title: 'Gitool：选择生成内容',
+        placeHolder: '选择 AI 提交信息的内容详细程度',
+      });
+      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'state',
+        selectedDensity: 'detailed',
+        acknowledgedRequestId: 'density-1',
+      }));
+    });
+  });
+
   it('选择具体 AI 模型后按仓库保存并用于生成', async () => {
     const created = createServiceDouble();
     created.listAiModels.mockResolvedValue([
