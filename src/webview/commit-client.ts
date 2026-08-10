@@ -288,10 +288,7 @@ function render(model: RepositoryViewModel): void {
   controls.editRemoteButton.disabled = !canWrite;
   const aiPresentation = aiControlPresentation(density, aiGenerating);
   controls.aiGenerateLabel.textContent = aiPresentation.densityText;
-  controls.aiGenerateLoading.classList.toggle(
-    'is-visible',
-    aiPresentation.generating,
-  );
+  controls.aiGenerateLoading.hidden = !aiPresentation.generating;
   controls.aiGenerateLoading.classList.toggle(
     'codicon-modifier-spin',
     aiPresentation.generating,

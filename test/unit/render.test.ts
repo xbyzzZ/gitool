@@ -79,7 +79,9 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('class="ai-button ai-density-text-button"');
     expect(html).not.toContain('ai-density-star');
     expect(html).not.toContain('<svg');
-    expect(html).toContain('ai-density-loading');
+    expect(html).toContain(
+      'id="ai-generate-loading" class="codicon codicon-loading ai-density-loading" aria-hidden="true" hidden',
+    );
   });
 
   it('提交操作使用 PyCharm 风格文字按钮', () => {

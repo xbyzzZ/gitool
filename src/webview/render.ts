@@ -107,7 +107,7 @@ export function renderCommitWebviewHtml(
             <div class="ai-density-actions">
               <button id="ai-generate-button" class="ai-button ai-density-text-button" type="button" aria-label="生成提交信息：标准（标题 + 2–4 条关键变化）" title="生成提交信息：标准（标题 + 2–4 条关键变化）">
                 <span id="ai-generate-label">标准</span>
-                <span id="ai-generate-loading" class="codicon codicon-loading ai-density-loading" aria-hidden="true"></span>
+                <span id="ai-generate-loading" class="codicon codicon-loading ai-density-loading" aria-hidden="true" hidden></span>
               </button>
               <button id="ai-density-button" class="ai-menu-button" type="button" aria-label="选择生成内容（当前：标准）" title="选择生成内容（当前：标准）">
                 <span class="codicon codicon-chevron-down" aria-hidden="true"></span>

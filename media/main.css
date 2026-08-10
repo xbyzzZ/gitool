@@ -201,12 +201,7 @@ input:disabled {
 }
 
 .ai-density-loading {
-  display: none;
   font-size: 14px;
-}
-
-.ai-density-loading.is-visible {
-  display: inline-block;
 }
 
 .ai-density-loading.codicon-modifier-spin {

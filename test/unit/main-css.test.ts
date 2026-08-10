@@ -40,9 +40,7 @@ describe('工作台紧凑布局样式', () => {
   it('AI 生成按钮使用可读文字宽度并保留紧凑加载状态', () => {
     expect(readRule('.ai-density-text-button')).toMatch(/min-width:\s*48px/u);
     expect(readRule('.ai-density-text-button')).toMatch(/height:\s*28px/u);
-    expect(readRule('.ai-density-loading.is-visible')).toMatch(
-      /display:\s*inline-block/u,
-    );
+    expect(readRule('[hidden]')).toMatch(/display:\s*none\s*!important/u);
     expect(stylesheet).not.toContain('.ai-density-star');
   });
 
