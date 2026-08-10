@@ -1,28 +1,14 @@
 ---
 feature: ai-model-selector
-status: delivered
+status: in-progress
 updated: 2026-08-10
-branch: codex/ai-model-selector
-commits: 2b51c59..9935b52
+branch: codex/ai-toolbar-redesign
+commits: 17b8fcf..待交付
 ---
 
 # AI 模型选择
 
 ## Report
-
-**What was built** — 提交信息区新增固定尺寸的机器人按钮，用户点击后通过 VS Code 原生 Quick Pick 在自动模式和当前可用语言模型之间选择。显式选择按仓库保存在工作区状态中，切换仓库或重建 Webview 后恢复；按钮标题与无障碍标签同步展示当前模型。
-
-生成链路每次重新枚举模型：自动模式优先 Copilot，显式模式严格匹配模型 ID，失效时明确要求重新选择且不静默回退。即使当前没有任何可用模型，用户仍可打开仅含自动模式的选择器并清除失效选择。
-
-**Verification** — `npx vitest run test/unit/commit-view-state.test.ts test/unit/view-provider.test.ts test/unit/commit-message-ai-service.test.ts test/unit/ai-model-selection-store.test.ts test/unit/messages.test.ts test/unit/render.test.ts test/unit/repository-service.test.ts`：7 个文件、165 项通过；`npm run check`：类型检查、ESLint、30 个测试文件与 313 项测试全部通过；`npm run build`：通过；`git diff --check`：通过；独立复审：通过，无关键问题。`env -u ELECTRON_RUN_AS_NODE npm run test:vscode` 未完成验收：沙箱内 VS Code 1.131.0 在 macOS `RegisterApplication` / `NSApplication` 初始化阶段 `SIGABRT`，沙箱外窗口启动后未进入测试回调并持续挂起，因此不能宣称真实 GUI 与 Extension Host 已验收。
-
-**Journey log**
-
-- 首轮失败测试准确暴露模型枚举、指定模型、持久化、消息协议和页面入口缺口。
-- 将自动优先 Copilot 的策略下沉到 AI 服务，使全部模型仍可供用户选择且优先级可单元测试。
-- 独立审查发现空模型列表会阻止清除失效选择；修复为始终提供自动模式并补充边界测试。
-- 单选 Quick Pick 使用 `$(check)` 标记当前项，未使用只对多选有效的 `picked`。
-- Extension Host 阻断发生在 macOS GUI 初始化或测试回调之前，未将其误判为功能失败或 GUI 通过。
 
 ## [S1] 问题
 
@@ -41,14 +27,23 @@ Gitool 的 AI 提交信息功能会优先查询 Copilot 模型，并固定使用
 ## [S3] 范围外
 
 - 不增加 Gitool 独立 API Key 或第三方模型端点配置。
-- 不改变精简、标准、详细三档信息密度及其星级图标。
+- 不改变精简、标准、详细三档生成内容的提示词语义。
 - 不自动提交 AI 生成的文案。
 - 不在自动模式下引入基于上下文长度、价格或质量的模型评分。
 
+## [S4] 紧凑工具栏改版
+
+删除机器人图标，模型按钮直接显示当前选择名称并附带下拉箭头；自动模式显示“自动选择”，选择期间显示“正在选择”。按钮宽度随侧边栏在 56–112px 之间变化，名称过长时单行省略，`title` 和无障碍标签保留完整名称。点击按钮继续打开宿主侧原生模型选择器。
+
+生成按钮保持 28×28px，星群保持固定 16×16px 画布：精简使用居中单星，标准使用主次双星，详细使用三角三星。相邻下拉按钮打开生成内容菜单，三项分别展示星群、名称和说明：“仅生成一行标题”“标题 + 2–4 条关键变化”“标题 + 行为及兼容说明”；当前项使用选中状态和 `menuitemradio` 语义。生成按钮的悬停及无障碍文案同时说明当前档位和生成内容。
+
+模型选择与生成内容是两个分离控件组，中间保留 4px 间距；提交与推送按钮尺寸和位置不变。布局使用 VS Code 主题变量，不引入固定品牌色；窄宽度优先压缩模型名称，不压缩星群或提交操作。
+
+版本升级到 0.2.2，变更日志和 README 同步新交互；最终 VSIX 必须通过发布清单、包内版本、压缩完整性和功能字符串检查。
+
 ## Tasks
 
-- [x] T1: 扩展 AI 服务的模型描述、枚举和指定模型合同 — acceptance: 自动模式优先 Copilot、否则使用首个可用模型，显式 ID 精确命中，失效 ID 返回明确错误（covers: S2）
-- [x] T2: 增加按仓库持久化的模型选择状态 — acceptance: 仓库之间互不覆盖，自动模式删除显式选择，非法存储值被忽略（covers: S2）
-- [x] T3: 接入模型选择按钮、原生 Quick Pick 和严格消息校验 — acceptance: 用户点击后可选择自动或具体模型，取消不改变状态，按钮准确展示当前选择（covers: S2; depends: T1, T2）
-- [x] T4: 将显式模型贯通到提交信息生成并更新使用说明 — acceptance: 生成请求携带当前仓库模型 ID，README 说明选择、持久化和失效行为（covers: S2, S3; depends: T1, T2, T3）
-- [x] T5: 完成定向测试、完整检查、构建与独立审查 — acceptance: 新增行为测试通过，`npm run check` 和 `npm run build` 通过，审查无关键问题（covers: S2, S3; depends: T4）
+- [ ] T6: 扩展提交信息展示状态合同 — acceptance: 自动、显式、选择中模型名称及三档生成内容文案均由纯函数输出并有测试（covers: S4）
+- [ ] T7: 重构模型按钮、星群和生成内容菜单 — acceptance: 固定画布星群、带说明的单选菜单、可截断模型名及完整无障碍文本均进入构建产物（covers: S4; depends: T6）
+- [ ] T8: 升级 0.2.2 并更新使用说明 — acceptance: 根包版本和锁文件一致，README 与 CHANGELOG 准确描述新交互（covers: S4; depends: T7）
+- [ ] T9: 完成验证、打包和独立审查 — acceptance: 定向测试、完整检查、构建、VSIX 清单与包内校验通过，审查无关键问题（covers: S3, S4; depends: T8）

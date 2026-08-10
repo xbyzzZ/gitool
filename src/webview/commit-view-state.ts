@@ -12,6 +12,16 @@ export interface AiControlPresentation {
   readonly densityLabel: string;
 }
 
+export interface DensityPresentation {
+  readonly label: string;
+  readonly description: string;
+}
+
+export interface AiModelControlPresentation {
+  readonly name: string;
+  readonly label: string;
+}
+
 export interface OperationFeedback {
   readonly message: string;
   readonly error: string;
@@ -42,31 +52,41 @@ const actionLabels: Readonly<Record<
   pull: '正在从远程拉取…',
 };
 
+export function densityPresentation(
+  density: CommitMessageDensity,
+): DensityPresentation {
+  return {
+    compact: { label: '精简', description: '仅生成一行标题' },
+    standard: { label: '标准', description: '标题 + 2–4 条关键变化' },
+    detailed: { label: '详细', description: '标题 + 行为及兼容说明' },
+  }[density];
+}
+
 export function densityLabel(density: CommitMessageDensity): string {
-  return { compact: '精简', standard: '标准', detailed: '详细' }[density];
+  return densityPresentation(density).label;
 }
 
 export function aiControlPresentation(
   density: CommitMessageDensity,
   generating: boolean,
 ): AiControlPresentation {
-  const label = densityLabel(density);
+  const { label, description } = densityPresentation(density);
   return {
     density,
     generating,
     generateLabel: generating
       ? '取消 AI 生成'
-      : `使用 AI 生成提交信息（${label}）`,
-    densityLabel: `选择 AI 信息密度（${label}）`,
+      : `生成提交信息：${label}（${description}）`,
+    densityLabel: `选择生成内容（当前：${label}）`,
   };
 }
 
-export function aiModelSelectionLabel(
+export function aiModelControlPresentation(
   selection: AiModelSelection | undefined,
   selecting: boolean,
-): string {
+): AiModelControlPresentation {
   const name = selecting ? '正在选择' : (selection?.name ?? '自动选择');
-  return `选择 AI 模型（${name}）`;
+  return { name, label: `选择 AI 模型（${name}）` };
 }
 
 export function operationFeedback(

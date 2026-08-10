@@ -3,9 +3,8 @@ import type { CommitMessageDensity } from '../services/commit-message-ai-service
 import type { AiModelSelection } from '../services/ai-model-selection-store.js';
 import {
   aiControlPresentation,
-  aiModelSelectionLabel,
+  aiModelControlPresentation,
   commitControlState,
-  densityLabel,
   operationFeedback,
 } from './commit-view-state.js';
 import type { WebviewMessage } from './messages.js';
@@ -76,12 +75,32 @@ const controls = {
   aiDensityButton: element('ai-density-button') as HTMLButtonElement,
   aiDensityMenu: element('ai-density-menu'),
   aiModelButton: element('ai-model-button') as HTMLButtonElement,
+  aiModelName: element('ai-model-name'),
   loadingStatus: element('loading-status') as HTMLParagraphElement,
   operationStatus: element('operation-status') as HTMLParagraphElement,
   errorStatus: element('error-status') as HTMLParagraphElement,
   retryPushButton: element('retry-push-button') as HTMLButtonElement,
   feedback: element('operation-feedback'),
 };
+
+function densityFromButton(
+  button: HTMLButtonElement,
+): CommitMessageDensity {
+  const value = button.dataset.densityOption;
+  if (value === 'compact' || value === 'standard' || value === 'detailed') {
+    return value;
+  }
+  throw new Error('生成内容菜单包含无效档位');
+}
+
+const densityOptionButtons = [
+  ...controls.aiDensityMenu.querySelectorAll<HTMLButtonElement>(
+    '[data-density-option]',
+  ),
+];
+if (densityOptionButtons.length !== 3) {
+  throw new Error('生成内容菜单必须包含精简、标准和详细三档');
+}
 
 let currentModel: RepositoryViewModel | undefined;
 let currentRepositoryId: string | undefined;
@@ -183,12 +202,18 @@ function render(model: RepositoryViewModel): void {
   controls.aiGenerateButton.title = aiPresentation.generateLabel;
   controls.aiDensityButton.setAttribute('aria-label', aiPresentation.densityLabel);
   controls.aiDensityButton.title = aiPresentation.densityLabel;
-  const modelLabel = aiModelSelectionLabel(
+  for (const button of densityOptionButtons) {
+    const selected = densityFromButton(button) === density;
+    button.setAttribute('aria-checked', String(selected));
+    button.classList.toggle('is-selected', selected);
+  }
+  const modelPresentation = aiModelControlPresentation(
     currentAiModelSelection,
     modelSelectionRequestId !== undefined,
   );
-  controls.aiModelButton.setAttribute('aria-label', modelLabel);
-  controls.aiModelButton.title = modelLabel;
+  controls.aiModelName.textContent = modelPresentation.name;
+  controls.aiModelButton.setAttribute('aria-label', modelPresentation.label);
+  controls.aiModelButton.title = modelPresentation.label;
 
   const feedback = operationFeedback(model.operation);
   controls.operationStatus.textContent = feedback.message;
@@ -295,17 +320,14 @@ controls.retryPushButton.addEventListener('click', () => {
   }
 });
 
-for (const value of ['compact', 'standard', 'detailed'] as const) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.setAttribute('role', 'menuitem');
-  button.textContent = densityLabel(value);
+for (const button of densityOptionButtons) {
   button.addEventListener('click', () => {
-    density = value;
+    density = densityFromButton(button);
     controls.aiDensityMenu.hidden = true;
+    controls.aiDensityButton.setAttribute('aria-expanded', 'false');
     if (currentRepositoryId !== undefined) {
       persisted = {
-        densities: { ...persisted.densities, [currentRepositoryId]: value },
+        densities: { ...persisted.densities, [currentRepositoryId]: density },
       };
       vscode.setState(persisted);
     }
@@ -313,11 +335,14 @@ for (const value of ['compact', 'standard', 'detailed'] as const) {
       render(currentModel);
     }
   });
-  controls.aiDensityMenu.append(button);
 }
 
 controls.aiDensityButton.addEventListener('click', () => {
   controls.aiDensityMenu.hidden = !controls.aiDensityMenu.hidden;
+  controls.aiDensityButton.setAttribute(
+    'aria-expanded',
+    String(!controls.aiDensityMenu.hidden),
+  );
 });
 controls.aiModelButton.addEventListener('click', () => {
   const model = currentModel;
@@ -325,6 +350,8 @@ controls.aiModelButton.addEventListener('click', () => {
     || modelSelectionRequestId !== undefined) {
     return;
   }
+  controls.aiDensityMenu.hidden = true;
+  controls.aiDensityButton.setAttribute('aria-expanded', 'false');
   sequence += 1;
   modelSelectionRequestId = `ai-model-${String(sequence)}`;
   render(model);

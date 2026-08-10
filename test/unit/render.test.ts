@@ -54,6 +54,8 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('提交并推送');
     expect(html).toContain('id="ai-generate-button"');
     expect(html).toContain('id="ai-model-button"');
+    expect(html).toContain('id="ai-model-name"');
+    expect(html).toContain('>自动选择</span>');
     expect(html).not.toContain('id="tracked-group"');
     expect(html).not.toContain('id="history-list"');
     expect(html).not.toContain('class="pane-resizer"');
@@ -69,7 +71,7 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('id="ai-generate-icon"');
     expect(html).toContain('class="ai-density-icon"');
     expect(html).toContain('data-density="standard"');
-    expect(html.match(/<svg class="ai-density-star/gu)).toHaveLength(3);
+    expect(html.match(/<svg class="ai-density-star/gu)).toHaveLength(12);
     expect(html).not.toContain('codicon-sparkle ai-density-star');
     expect(html).toContain('ai-density-loading');
   });
@@ -82,13 +84,30 @@ describe('独立 Webview 壳页面', () => {
     );
 
     expect(html).toContain('codicon-chevron-down');
-    expect(html).toContain('codicon-hubot');
+    expect(html).not.toContain('codicon-hubot');
     expect(html).toContain('codicon-check');
     expect(html).toContain('codicon-arrow-up');
     expect(html).not.toContain('codicon-git-commit');
     expect(html).not.toContain('codicon-cloud-upload');
     expect(html).not.toContain('>仅提交</button>');
     expect(html).not.toContain('>提交并推送</button>');
+  });
+
+  it('生成内容菜单展示三档星群、说明和单选语义', () => {
+    const html = renderCommitWebviewHtml(
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
+    );
+
+    expect(html.match(/data-density-option=/gu)).toHaveLength(3);
+    expect(html.match(/role="menuitemradio"/gu)).toHaveLength(3);
+    expect(html).toContain('仅生成一行标题');
+    expect(html).toContain('标题 + 2–4 条关键变化');
+    expect(html).toContain('标题 + 行为及兼容说明');
+    expect(html).toContain('class="ai-density-option-icon" data-density="compact"');
+    expect(html).toContain('class="ai-density-option-icon" data-density="standard"');
+    expect(html).toContain('class="ai-density-option-icon" data-density="detailed"');
   });
 
   it('渲染模块不再提供历史 Webview 页面', () => {

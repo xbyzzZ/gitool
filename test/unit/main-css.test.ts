@@ -34,22 +34,47 @@ describe('工作台紧凑布局样式', () => {
   });
 
   it('AI 星级图标使用固定画布并由密度控制星星数量', () => {
-    expect(readRule('.ai-density-icon')).toMatch(/width:\s*16px/u);
-    expect(readRule('.ai-density-icon')).toMatch(/height:\s*16px/u);
+    const densityCanvas = readRule(
+      '.ai-density-icon,\n.ai-density-option-icon',
+    );
+    expect(densityCanvas).toMatch(/width:\s*16px/u);
+    expect(densityCanvas).toMatch(/height:\s*16px/u);
     expect(stylesheet).toContain(
-      '.ai-density-icon[data-density="compact"]',
+      ':is(.ai-density-icon, .ai-density-option-icon)[data-density="compact"]',
     );
     expect(stylesheet).toContain(
-      '.ai-density-icon[data-density="standard"]',
+      ':is(.ai-density-icon, .ai-density-option-icon)[data-density="standard"]',
     );
     expect(stylesheet).toContain(
-      '.ai-density-icon[data-density="detailed"]',
+      ':is(.ai-density-icon, .ai-density-option-icon)[data-density="detailed"]',
     );
     expect(stylesheet).toContain('.ai-density-icon.is-generating');
     expect(readRule(
-      '.ai-density-icon[data-density="standard"] .ai-density-star-primary',
+      ':is(.ai-density-icon, .ai-density-option-icon)[data-density="standard"] .ai-density-star-primary',
     )).toMatch(
-      /width:\s*12px/u,
+      /width:\s*11px/u,
+    );
+  });
+
+  it('模型名称按钮在窄侧边栏弹性截断且保留独立分组', () => {
+    expect(readRule('.ai-actions')).toMatch(/gap:\s*4px/u);
+    expect(readRule('.ai-menu-button')).toMatch(
+      /border-radius:\s*0 2px 2px 0/u,
+    );
+    expect(readRule('.ai-model-button')).toMatch(/min-width:\s*56px/u);
+    expect(readRule('.ai-model-button')).toMatch(/max-width:\s*112px/u);
+    expect(readRule('.ai-model-name')).toMatch(/text-overflow:\s*ellipsis/u);
+    expect(readRule('.ai-model-name')).toMatch(/white-space:\s*nowrap/u);
+  });
+
+  it('生成内容菜单为名称和说明预留稳定宽度', () => {
+    expect(readRule('#ai-density-menu')).toMatch(/width:\s*232px/u);
+    expect(readRule('#ai-density-menu')).toMatch(
+      /max-width:\s*calc\(100vw - 18px\)/u,
+    );
+    expect(readRule('.ai-density-option-copy')).toMatch(/min-width:\s*0/u);
+    expect(readRule('.ai-density-option-description')).toMatch(
+      /color:\s*var\(--vscode-descriptionForeground\)/u,
     );
   });
 

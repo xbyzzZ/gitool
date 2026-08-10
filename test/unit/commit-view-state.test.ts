@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import {
   aiControlPresentation,
-  aiModelSelectionLabel,
+  aiModelControlPresentation,
   commitControlState,
+  densityPresentation,
   operationFeedback,
 } from '../../src/webview/commit-view-state.js';
 
@@ -43,15 +44,16 @@ function model(hasRemote: boolean): RepositoryViewModel {
 
 describe('提交信息展示状态', () => {
   it.each([
-    ['compact', '精简'],
-    ['standard', '标准'],
-    ['detailed', '详细'],
-  ] as const)('输出 %s 密度的 AI 星级展示状态', (density, label) => {
+    ['compact', '精简', '仅生成一行标题'],
+    ['standard', '标准', '标题 + 2–4 条关键变化'],
+    ['detailed', '详细', '标题 + 行为及兼容说明'],
+  ] as const)('输出 %s 密度的生成内容状态', (density, label, description) => {
+    expect(densityPresentation(density)).toEqual({ label, description });
     expect(aiControlPresentation(density, false)).toEqual({
       density,
       generating: false,
-      generateLabel: `使用 AI 生成提交信息（${label}）`,
-      densityLabel: `选择 AI 信息密度（${label}）`,
+      generateLabel: `生成提交信息：${label}（${description}）`,
+      densityLabel: `选择生成内容（当前：${label}）`,
     });
   });
 
@@ -60,18 +62,29 @@ describe('提交信息展示状态', () => {
       density: 'detailed',
       generating: true,
       generateLabel: '取消 AI 生成',
-      densityLabel: '选择 AI 信息密度（详细）',
+      densityLabel: '选择生成内容（当前：详细）',
     });
   });
 
-  it('展示自动、显式模型和选择中的按钮文案', () => {
-    expect(aiModelSelectionLabel(undefined, false)).toBe(
-      '选择 AI 模型（自动选择）',
-    );
-    expect(aiModelSelectionLabel({ id: 'model-1', name: '模型一' }, false))
-      .toBe('选择 AI 模型（模型一）');
-    expect(aiModelSelectionLabel({ id: 'model-1', name: '模型一' }, true))
-      .toBe('选择 AI 模型（正在选择）');
+  it('展示自动、显式模型和选择中的可见名称及完整文案', () => {
+    expect(aiModelControlPresentation(undefined, false)).toEqual({
+      name: '自动选择',
+      label: '选择 AI 模型（自动选择）',
+    });
+    expect(aiModelControlPresentation({
+      id: 'model-1',
+      name: 'GPT-5.1-Codex-Max',
+    }, false)).toEqual({
+      name: 'GPT-5.1-Codex-Max',
+      label: '选择 AI 模型（GPT-5.1-Codex-Max）',
+    });
+    expect(aiModelControlPresentation({
+      id: 'model-1',
+      name: 'GPT-5.1-Codex-Max',
+    }, true)).toEqual({
+      name: '正在选择',
+      label: '选择 AI 模型（正在选择）',
+    });
   });
 
   it('完整提交成功不显示成功文字', () => {
