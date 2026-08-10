@@ -1,14 +1,21 @@
 ---
 feature: ai-model-selector
-status: in-progress
+status: delivered
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: 17b8fcf..待交付
+commits: 17b8fcf..b1fe870
 ---
 
 # AI 模型选择
 
 ## Report
+
+- 当前模型按钮已改为直接显示“自动选择”“正在选择”或显式模型名称，保留完整标题和无障碍文案，点击继续打开宿主侧 Quick Pick。
+- 精简、标准、详细改为固定 16×16px 的一、二、三星布局；生成内容菜单补充名称、说明、单选状态以及方向键、首尾键、Esc 和焦点恢复。
+- 版本已升级到 0.2.2；README、CHANGELOG、包清单和锁文件已同步。
+- 验证：定向测试 3 个文件 27 项通过；`npm run check` 的 30 个文件 317 项通过；构建、`vsce ls --no-dependencies`、VSIX 打包和 `unzip -t` 均通过。
+- 独立审查发现的菜单焦点问题已在 `b1fe870` 修复并复审通过，未发现其他阻断或非阻断问题。
+- 验收边界：当前环境未完成真实 VS Code Extension Host/Webview 的目测与 Quick Pick 点击闭环；Marketplace 上传不在本次交付范围。
 
 ## [S1] 问题
 
@@ -43,7 +50,7 @@ Gitool 的 AI 提交信息功能会优先查询 Copilot 模型，并固定使用
 
 ## Tasks
 
-- [ ] T6: 扩展提交信息展示状态合同 — acceptance: 自动、显式、选择中模型名称及三档生成内容文案均由纯函数输出并有测试（covers: S4）
-- [ ] T7: 重构模型按钮、星群和生成内容菜单 — acceptance: 固定画布星群、带说明的单选菜单、可截断模型名及完整无障碍文本均进入构建产物（covers: S4; depends: T6）
-- [ ] T8: 升级 0.2.2 并更新使用说明 — acceptance: 根包版本和锁文件一致，README 与 CHANGELOG 准确描述新交互（covers: S4; depends: T7）
-- [ ] T9: 完成验证、打包和独立审查 — acceptance: 定向测试、完整检查、构建、VSIX 清单与包内校验通过，审查无关键问题（covers: S3, S4; depends: T8）
+- [x] T6: 扩展提交信息展示状态合同 — acceptance: 自动、显式、选择中模型名称及三档生成内容文案均由纯函数输出并有测试（covers: S4）
+- [x] T7: 重构模型按钮、星群和生成内容菜单 — acceptance: 固定画布星群、带说明的单选菜单、可截断模型名及完整无障碍文本均进入构建产物（covers: S4; depends: T6）
+- [x] T8: 升级 0.2.2 并更新使用说明 — acceptance: 根包版本和锁文件一致，README 与 CHANGELOG 准确描述新交互（covers: S4; depends: T7）
+- [x] T9: 完成验证、打包和独立审查 — acceptance: 定向测试、完整检查、构建、VSIX 清单与包内校验通过，审查无关键问题（covers: S3, S4; depends: T8）
