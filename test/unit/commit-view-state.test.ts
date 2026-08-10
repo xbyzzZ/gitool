@@ -4,6 +4,7 @@ import {
   aiControlPresentation,
   aiModelControlPresentation,
   commitControlState,
+  densityMenuTargetIndex,
   densityPresentation,
   operationFeedback,
 } from '../../src/webview/commit-view-state.js';
@@ -85,6 +86,16 @@ describe('提交信息展示状态', () => {
       name: '正在选择',
       label: '选择 AI 模型（正在选择）',
     });
+  });
+
+  it('生成内容菜单支持循环方向键及首尾键导航', () => {
+    expect(densityMenuTargetIndex(1, 'ArrowDown', 3)).toBe(2);
+    expect(densityMenuTargetIndex(2, 'ArrowDown', 3)).toBe(0);
+    expect(densityMenuTargetIndex(0, 'ArrowUp', 3)).toBe(2);
+    expect(densityMenuTargetIndex(1, 'Home', 3)).toBe(0);
+    expect(densityMenuTargetIndex(1, 'End', 3)).toBe(2);
+    expect(densityMenuTargetIndex(1, 'Escape', 3)).toBeUndefined();
+    expect(densityMenuTargetIndex(-1, 'ArrowDown', 3)).toBeUndefined();
   });
 
   it('完整提交成功不显示成功文字', () => {

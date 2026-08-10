@@ -66,6 +66,28 @@ export function densityLabel(density: CommitMessageDensity): string {
   return densityPresentation(density).label;
 }
 
+export function densityMenuTargetIndex(
+  currentIndex: number,
+  key: string,
+  optionCount: number,
+): number | undefined {
+  if (optionCount < 1 || currentIndex < 0 || currentIndex >= optionCount) {
+    return undefined;
+  }
+  switch (key) {
+    case 'ArrowDown':
+      return (currentIndex + 1) % optionCount;
+    case 'ArrowUp':
+      return (currentIndex - 1 + optionCount) % optionCount;
+    case 'Home':
+      return 0;
+    case 'End':
+      return optionCount - 1;
+    default:
+      return undefined;
+  }
+}
+
 export function aiControlPresentation(
   density: CommitMessageDensity,
   generating: boolean,

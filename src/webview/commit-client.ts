@@ -5,6 +5,7 @@ import {
   aiControlPresentation,
   aiModelControlPresentation,
   commitControlState,
+  densityMenuTargetIndex,
   operationFeedback,
 } from './commit-view-state.js';
 import type { WebviewMessage } from './messages.js';
@@ -91,6 +92,33 @@ function densityFromButton(
     return value;
   }
   throw new Error('生成内容菜单包含无效档位');
+}
+
+function closeDensityMenu(restoreFocus: boolean): void {
+  controls.aiDensityMenu.hidden = true;
+  controls.aiDensityButton.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) {
+    controls.aiDensityButton.focus();
+  }
+}
+
+function focusDensityOption(button: HTMLButtonElement): void {
+  for (const option of densityOptionButtons) {
+    option.tabIndex = -1;
+  }
+  button.tabIndex = 0;
+  button.focus();
+}
+
+function openDensityMenu(): void {
+  controls.aiDensityMenu.hidden = false;
+  controls.aiDensityButton.setAttribute('aria-expanded', 'true');
+  const selected = densityOptionButtons.find(
+    (button) => densityFromButton(button) === density,
+  );
+  if (selected !== undefined) {
+    focusDensityOption(selected);
+  }
 }
 
 const densityOptionButtons = [
@@ -206,6 +234,7 @@ function render(model: RepositoryViewModel): void {
     const selected = densityFromButton(button) === density;
     button.setAttribute('aria-checked', String(selected));
     button.classList.toggle('is-selected', selected);
+    button.tabIndex = selected ? 0 : -1;
   }
   const modelPresentation = aiModelControlPresentation(
     currentAiModelSelection,
@@ -323,8 +352,7 @@ controls.retryPushButton.addEventListener('click', () => {
 for (const button of densityOptionButtons) {
   button.addEventListener('click', () => {
     density = densityFromButton(button);
-    controls.aiDensityMenu.hidden = true;
-    controls.aiDensityButton.setAttribute('aria-expanded', 'false');
+    closeDensityMenu(true);
     if (currentRepositoryId !== undefined) {
       persisted = {
         densities: { ...persisted.densities, [currentRepositoryId]: density },
@@ -335,14 +363,34 @@ for (const button of densityOptionButtons) {
       render(currentModel);
     }
   });
+  button.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeDensityMenu(true);
+      return;
+    }
+    const targetIndex = densityMenuTargetIndex(
+      densityOptionButtons.indexOf(button),
+      event.key,
+      densityOptionButtons.length,
+    );
+    if (targetIndex === undefined) {
+      return;
+    }
+    event.preventDefault();
+    const target = densityOptionButtons[targetIndex];
+    if (target !== undefined) {
+      focusDensityOption(target);
+    }
+  });
 }
 
 controls.aiDensityButton.addEventListener('click', () => {
-  controls.aiDensityMenu.hidden = !controls.aiDensityMenu.hidden;
-  controls.aiDensityButton.setAttribute(
-    'aria-expanded',
-    String(!controls.aiDensityMenu.hidden),
-  );
+  if (controls.aiDensityMenu.hidden) {
+    openDensityMenu();
+  } else {
+    closeDensityMenu(true);
+  }
 });
 controls.aiModelButton.addEventListener('click', () => {
   const model = currentModel;
@@ -350,8 +398,7 @@ controls.aiModelButton.addEventListener('click', () => {
     || modelSelectionRequestId !== undefined) {
     return;
   }
-  controls.aiDensityMenu.hidden = true;
-  controls.aiDensityButton.setAttribute('aria-expanded', 'false');
+  closeDensityMenu(false);
   sequence += 1;
   modelSelectionRequestId = `ai-model-${String(sequence)}`;
   render(model);
