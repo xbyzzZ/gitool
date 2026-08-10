@@ -15,6 +15,14 @@ import {
   type PendingRequestPresentation,
 } from './request-state.js';
 import { renderChangeList } from './commit-change-renderer.js';
+import {
+  bindDockResizer,
+  clampCommitDockHeight,
+  defaultCommitDockHeight,
+  dockResizerAriaValues,
+  persistDockHeight,
+  readPersistedDockHeight,
+} from './commit-workbench-layout.js';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
@@ -33,6 +41,7 @@ interface StateMessage {
 
 interface PersistedState {
   readonly densities: Readonly<Record<string, CommitMessageDensity>>;
+  readonly dockHeight?: number;
 }
 
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -50,17 +59,22 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function readPersistedState(value: unknown): PersistedState {
-  if (!isObject(value) || !isObject(value.densities)) {
+  if (!isObject(value)) {
     return { densities: {} };
   }
   const densities: Record<string, CommitMessageDensity> = {};
-  for (const [repositoryId, density] of Object.entries(value.densities)) {
-    if (density === 'compact' || density === 'standard'
-      || density === 'detailed') {
-      densities[repositoryId] = density;
+  if (isObject(value.densities)) {
+    for (const [repositoryId, density] of Object.entries(value.densities)) {
+      if (density === 'compact' || density === 'standard'
+        || density === 'detailed') {
+        densities[repositoryId] = density;
+      }
     }
   }
-  return { densities };
+  const dockHeight = readPersistedDockHeight(value);
+  return dockHeight !== undefined
+    ? { densities, dockHeight }
+    : { densities };
 }
 
 const vscode = acquireVsCodeApi();
@@ -69,6 +83,11 @@ if (layoutElement === null) {
   throw new Error('缺少提交信息主布局');
 }
 const layout = layoutElement;
+const commitDockElement = document.querySelector<HTMLElement>('.commit-dock');
+if (commitDockElement === null) {
+  throw new Error('缺少提交信息区域');
+}
+const commitDock = commitDockElement;
 const controls = {
   repositorySelect: element('repository-select') as HTMLSelectElement,
   repositorySummary: element('repository-summary') as HTMLParagraphElement,
@@ -78,7 +97,8 @@ const controls = {
   commitButton: element('commit-button') as HTMLButtonElement,
   commitPushButton: element('commit-push-button') as HTMLButtonElement,
   aiGenerateButton: element('ai-generate-button') as HTMLButtonElement,
-  aiGenerateIcon: element('ai-generate-icon'),
+  aiGenerateLabel: element('ai-generate-label'),
+  aiGenerateLoading: element('ai-generate-loading'),
   aiDensityButton: element('ai-density-button') as HTMLButtonElement,
   aiModelButton: element('ai-model-button') as HTMLButtonElement,
   aiModelName: element('ai-model-name'),
@@ -94,6 +114,7 @@ const controls = {
   pullButton: element('pull-button') as HTMLButtonElement,
   pushAllButton: element('push-all-button') as HTMLButtonElement,
   editRemoteButton: element('edit-remote-button') as HTMLButtonElement,
+  commitResizer: element('commit-resizer'),
 };
 
 let currentModel: RepositoryViewModel | undefined;
@@ -111,6 +132,27 @@ let persisted = readPersistedState(vscode.getState());
 let revealedFeedbackKey: string | undefined;
 let fileIconClasses: readonly (string | null)[] = [];
 const collapsedSections = new Set<ChangeSectionKind>(['untracked']);
+
+function applyDockHeight(requestedHeight: number, persist: boolean): void {
+  const height = clampCommitDockHeight(requestedHeight, window.innerHeight);
+  const aria = dockResizerAriaValues(height, window.innerHeight);
+  commitDock.style.height = `${String(height)}px`;
+  controls.commitResizer.setAttribute('aria-valuenow', String(aria.current));
+  controls.commitResizer.setAttribute(
+    'aria-valuemin',
+    String(aria.minimum),
+  );
+  controls.commitResizer.setAttribute(
+    'aria-valuemax',
+    String(aria.maximum),
+  );
+  if (persist) {
+    persisted = persistDockHeight(persisted, height);
+    vscode.setState(persisted);
+  }
+}
+
+applyDockHeight(persisted.dockHeight ?? defaultCommitDockHeight, false);
 
 function post(message: WebviewMessage): void {
   vscode.postMessage(message);
@@ -242,16 +284,15 @@ function render(model: RepositoryViewModel): void {
   controls.pushAllButton.disabled = locallyBusy || !canPushAll(model);
   controls.editRemoteButton.disabled = !canWrite;
   const aiPresentation = aiControlPresentation(density, aiGenerating);
-  controls.aiGenerateIcon.dataset.density = aiPresentation.density;
-  controls.aiGenerateIcon.classList.toggle(
-    'is-generating',
+  controls.aiGenerateLabel.textContent = aiPresentation.densityText;
+  controls.aiGenerateLoading.classList.toggle(
+    'is-visible',
     aiPresentation.generating,
   );
-  controls.aiGenerateIcon.querySelector('.ai-density-loading')
-    ?.classList.toggle(
-      'codicon-modifier-spin',
-      aiPresentation.generating,
-    );
+  controls.aiGenerateLoading.classList.toggle(
+    'codicon-modifier-spin',
+    aiPresentation.generating,
+  );
   controls.aiGenerateButton.setAttribute('aria-label', aiPresentation.generateLabel);
   controls.aiGenerateButton.title = aiPresentation.generateLabel;
   controls.aiDensityButton.setAttribute('aria-label', aiPresentation.densityLabel);
@@ -338,6 +379,15 @@ controls.selectAllButton.addEventListener('click', () => {
 });
 controls.clearSelectionButton.addEventListener('click', () => {
   setAllGroups(false);
+});
+
+bindDockResizer({
+  resizer: controls.commitResizer,
+  target: window,
+  getDockHeight: () => commitDock.getBoundingClientRect().height,
+  getViewportHeight: () => window.innerHeight,
+  getPreferredHeight: () => persisted.dockHeight,
+  applyHeight: applyDockHeight,
 });
 
 function postVersionAction(
@@ -504,6 +554,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
       && currentRepositoryId !== undefined) {
       density = state.selectedDensity;
       persisted = {
+        ...persisted,
         densities: { ...persisted.densities, [currentRepositoryId]: density },
       };
       vscode.setState(persisted);

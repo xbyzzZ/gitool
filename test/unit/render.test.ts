@@ -55,6 +55,8 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('id="changes-list"');
     expect(html).toContain('class="commit-toolbar"');
     expect(html).toContain('class="commit-dock"');
+    expect(html).toContain('id="commit-resizer"');
+    expect(html).toContain('role="separator"');
     expect(html).toContain('id="selection-summary"');
     expect(html).toContain('id="trash-button"');
     expect(html).toContain('id="edit-remote-button"');
@@ -66,18 +68,17 @@ describe('独立 Webview 壳页面', () => {
     expect(html).not.toContain('class="pane-resizer"');
   });
 
-  it('AI 按钮默认渲染标准密度的固定星群和加载节点', () => {
+  it('AI 按钮默认渲染标准文字和加载节点', () => {
     const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
     );
 
-    expect(html).toContain('id="ai-generate-icon"');
-    expect(html).toContain('class="ai-density-icon"');
-    expect(html).toContain('data-density="standard"');
-    expect(html.match(/<svg class="ai-density-star/gu)).toHaveLength(3);
-    expect(html).not.toContain('codicon-sparkle ai-density-star');
+    expect(html).toContain('id="ai-generate-label">标准</span>');
+    expect(html).toContain('class="ai-button ai-density-text-button"');
+    expect(html).not.toContain('ai-density-star');
+    expect(html).not.toContain('<svg');
     expect(html).toContain('ai-density-loading');
   });
 

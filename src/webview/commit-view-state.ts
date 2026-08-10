@@ -7,6 +7,7 @@ import type { AiModelSelection } from '../services/ai-model-selection-store.js';
 
 export interface AiControlPresentation {
   readonly density: CommitMessageDensity;
+  readonly densityText: string;
   readonly generating: boolean;
   readonly generateLabel: string;
   readonly densityLabel: string;
@@ -73,6 +74,7 @@ export function aiControlPresentation(
   const { label, description } = densityPresentation(density);
   return {
     density,
+    densityText: label,
     generating,
     generateLabel: generating
       ? '取消 AI 生成'

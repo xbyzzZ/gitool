@@ -25,6 +25,7 @@ describe('工作台紧凑布局样式', () => {
 
   it('变更列表独立滚动且文件图标保持紧凑', () => {
     expect(readRule('.changes-pane')).toMatch(/overflow:\s*hidden/u);
+    expect(readRule('.changes-pane')).toMatch(/min-height:\s*48px/u);
     expect(readRule('.changes-list')).toMatch(/overflow:\s*auto/u);
     expect(readRule('.change-file-row')).toMatch(/height:\s*24px/u);
     expect(readRule('.change-file-icon')).toMatch(/width:\s*14px/u);
@@ -36,25 +37,13 @@ describe('工作台紧凑布局样式', () => {
     expect(stylesheet).toContain('.codicon-modifier-spin');
   });
 
-  it('AI 星级图标使用固定画布并由密度控制星星数量', () => {
-    const densityCanvas = readRule('.ai-density-icon');
-    expect(densityCanvas).toMatch(/width:\s*16px/u);
-    expect(densityCanvas).toMatch(/height:\s*16px/u);
-    expect(stylesheet).toContain(
-      '.ai-density-icon[data-density="compact"]',
+  it('AI 生成按钮使用可读文字宽度并保留紧凑加载状态', () => {
+    expect(readRule('.ai-density-text-button')).toMatch(/min-width:\s*48px/u);
+    expect(readRule('.ai-density-text-button')).toMatch(/height:\s*28px/u);
+    expect(readRule('.ai-density-loading.is-visible')).toMatch(
+      /display:\s*inline-block/u,
     );
-    expect(stylesheet).toContain(
-      '.ai-density-icon[data-density="standard"]',
-    );
-    expect(stylesheet).toContain(
-      '.ai-density-icon[data-density="detailed"]',
-    );
-    expect(stylesheet).toContain('.ai-density-icon.is-generating');
-    expect(readRule(
-      '.ai-density-icon[data-density="standard"] .ai-density-star-primary',
-    )).toMatch(
-      /width:\s*11px/u,
-    );
+    expect(stylesheet).not.toContain('.ai-density-star');
   });
 
   it('模型名称按钮在窄侧边栏弹性截断且保留独立分组', () => {
@@ -73,10 +62,8 @@ describe('工作台紧凑布局样式', () => {
     expect(stylesheet).not.toContain('.ai-density-option-copy');
   });
 
-  it('提交图标按钮使用固定尺寸且不改变左右分组', () => {
-    expect(readRule('.commit-icon-button')).toMatch(/width:\s*28px/u);
-    expect(readRule('.commit-icon-button')).toMatch(/min-width:\s*28px/u);
-    expect(readRule('.commit-icon-button')).toMatch(/padding:\s*0/u);
+  it('AI 文字档位与模型按钮保持独立分组', () => {
+    expect(readRule('.ai-density-text-button')).toMatch(/padding:\s*0 7px/u);
     expect(readRule('.commit-actions')).toMatch(
       /justify-content:\s*space-between/u,
     );
@@ -86,12 +73,14 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.layout')).toMatch(/height:\s*100vh/u);
     expect(readRule('body')).toMatch(/overflow:\s*hidden/u);
     expect(readRule('.commit-dock')).toMatch(/flex:\s*none/u);
-    expect(readRule('.commit-dock')).toMatch(/border-top:/u);
+    expect(readRule('.commit-dock')).toMatch(/min-height:\s*156px/u);
+    expect(readRule('.commit-resizer')).toMatch(/cursor:\s*row-resize/u);
+    expect(readRule('.commit-resizer')).toMatch(/touch-action:\s*none/u);
     expect(stylesheet).toMatch(
-      /@media \(max-height: 360px\)[\s\S]*?\.changes-pane\s*\{[^}]*min-height:\s*0/u,
+      /@media \(max-height: 360px\)[\s\S]*?\.changes-pane\s*\{[^}]*min-height:\s*24px/u,
     );
     expect(stylesheet).toMatch(
-      /@media \(max-height: 360px\)[\s\S]*?\.commit-dock\s*\{[^}]*min-height:\s*102px/u,
+      /@media \(max-height: 360px\)[\s\S]*?\.commit-dock\s*\{[^}]*min-height:\s*112px/u,
     );
   });
 

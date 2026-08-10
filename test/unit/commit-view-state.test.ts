@@ -51,6 +51,7 @@ describe('提交信息展示状态', () => {
     expect(densityPresentation(density)).toEqual({ label, description });
     expect(aiControlPresentation(density, false)).toEqual({
       density,
+      densityText: label,
       generating: false,
       generateLabel: `生成提交信息：${label}（${description}）`,
       densityLabel: `选择生成内容（当前：${label}）`,
@@ -60,6 +61,7 @@ describe('提交信息展示状态', () => {
   it('AI 生成中保留密度并输出加载状态', () => {
     expect(aiControlPresentation('detailed', true)).toEqual({
       density: 'detailed',
+      densityText: '详细',
       generating: true,
       generateLabel: '取消 AI 生成',
       densityLabel: '选择生成内容（当前：详细）',
