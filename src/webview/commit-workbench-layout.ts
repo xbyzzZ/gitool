@@ -149,10 +149,9 @@ export function bindDockResizer(options: DockResizerBindingOptions): void {
     if (event.pointerId !== session?.pointerId) {
       return;
     }
-    const originalHeight = session.height;
     session = undefined;
     options.resizer.classList.remove('is-dragging');
-    options.applyHeight(originalHeight, false);
+    options.applyHeight(options.getDockHeight(), true);
     releaseCapture(event.pointerId);
   });
   options.resizer.addEventListener(
@@ -161,10 +160,9 @@ export function bindDockResizer(options: DockResizerBindingOptions): void {
       if (event.pointerId !== session?.pointerId) {
         return;
       }
-      const originalHeight = session.height;
       session = undefined;
       options.resizer.classList.remove('is-dragging');
-      options.applyHeight(originalHeight, false);
+      options.applyHeight(options.getDockHeight(), true);
     },
   );
   options.resizer.addEventListener('keydown', (event: KeyboardEvent) => {
@@ -180,7 +178,9 @@ export function bindDockResizer(options: DockResizerBindingOptions): void {
   });
   options.target.addEventListener('resize', () => {
     options.applyHeight(
-      options.getPreferredHeight() ?? options.getDockHeight(),
+      session === undefined
+        ? (options.getPreferredHeight() ?? options.getDockHeight())
+        : options.getDockHeight(),
       false,
     );
   });

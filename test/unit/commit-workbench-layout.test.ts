@@ -123,7 +123,7 @@ describe('提交工作台可调边界', () => {
     targetListeners.get('pointercancel')?.(pointer(2, 430));
     expect(applied).toEqual([
       { height: 310, persist: false },
-      { height: 240, persist: false },
+      { height: 310, persist: true },
     ]);
     expect(captures.has(2)).toBe(false);
 
@@ -132,8 +132,17 @@ describe('提交工作台可调边界', () => {
     resizerListeners.get('pointerdown')?.(pointer(3, 500));
     targetListeners.get('pointermove')?.(pointer(3, 460));
     resizerListeners.get('lostpointercapture')?.(pointer(3, 460));
-    expect(applied.at(-1)).toEqual({ height: 240, persist: false });
+    expect(applied.at(-1)).toEqual({ height: 280, persist: true });
     expect(classes.has('is-dragging')).toBe(false);
+
+    height = 240;
+    applied.length = 0;
+    resizerListeners.get('pointerdown')?.(pointer(4, 500));
+    targetListeners.get('pointermove')?.(pointer(4, 470));
+    targetListeners.get('resize')?.({});
+    expect(applied.at(-1)).toEqual({ height: 270, persist: false });
+    targetListeners.get('pointerup')?.(pointer(4, 470));
+    expect(applied.at(-1)).toEqual({ height: 270, persist: true });
 
     let prevented = false;
     height = 200;

@@ -1,6 +1,6 @@
 ---
 feature: pycharm-commit-workbench-0.3
-status: delivered
+status: in-progress
 updated: 2026-08-10
 branch: codex/pycharm-commit-0.3
 commits: c4763cb..fc94657
@@ -95,6 +95,10 @@ AI 生成主按钮不再绘制星形图标，直接显示当前“精简”“�
 
 右侧档位选择按钮只负责选择“精简”“标准”或“详细”，不依赖当前是否已勾选文件；工作区可写且未执行其他操作时始终可用。左侧生成按钮仍必须至少勾选一个文件，生成期间的圆弧仅表示加载并可通过主按钮取消，不作为独立操作入口。
 
+## [S9] 拖动中断行为
+
+分隔条拖动被 `pointercancel` 或意外丢失指针捕获终止时，保留并保存最后一个有效高度，不恢复拖动前高度。拖动期间 Webview 尺寸变化只按新视口边界裁剪当前高度，不重新应用旧偏好；非拖动状态下尺寸变化仍按已保存偏好恢复并裁剪。
+
 ## Tasks
 
 - [x] T1: 合并视图贡献与运行时 — acceptance: 清单只贡献“提交”Webview，扩展不再注册当前变更 TreeView、提交历史 Webview及历史命令（covers: S2, S6）
@@ -108,3 +112,5 @@ AI 生成主按钮不再绘制星形图标，直接显示当前“精简”“�
 - [x] T9: 重新完成 0.3.0 交付 — acceptance: 完整检查、构建、Extension Host、独立审查和最终 VSIX 哈希复核通过（covers: S6, S7; depends: T7, T8）
 - [x] T10: 修复档位按钮可用状态 — acceptance: 未勾选文件时仍可打开档位选择，生成按钮保持禁用，忙碌或不可写状态仍正确禁用（covers: S8; depends: T8）
 - [x] T11: 重新生成 0.3.0 安装包 — acceptance: 定向回归、完整检查、构建、独立审查及 VSIX 哈希复核通过（covers: S6, S8; depends: T10）
+- [ ] T12: 修复拖动回弹 — acceptance: 正常松手、指针取消、捕获丢失和拖动期间窗口变化均保留最后有效高度，只有非拖动窗口变化恢复已保存偏好（covers: S7, S9; depends: T7）
+- [ ] T13: 重新交付拖动修复 — acceptance: 定向回归、完整检查、构建、独立审查及 VSIX 哈希复核通过（covers: S6, S9; depends: T12）
