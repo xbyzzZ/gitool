@@ -3,16 +3,16 @@ feature: history-graph-redesign
 status: delivered
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: 9fc8631..9a7b529
+commits: 9fc8631..6346cd0
 ---
 
 # 提交历史图改版
 
 ## Report
 
-**完成内容** — 历史视图继续使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示当前、本地与远程引用。0.2.11 恢复提交行内展开和收起，文件直接显示在对应提交下方并保留第一父提交 Diff。文件图标读取当前 `workbench.iconTheme` 的主题贡献，支持字体、图片、文件名、复合扩展名、默认文件、继承与明暗覆盖；切换文件或颜色主题时自动重载，并用异步序号防止旧主题覆盖新主题。原生“提交文件”试验视图已移除，避免重复区域。0.2.12 将提交标题从中等字重恢复为 VS Code 原生列表接近的常规字重。
+**完成内容** — 历史视图继续使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示当前、本地与远程引用。0.2.11 恢复提交行内展开和收起，文件直接显示在对应提交下方并保留第一父提交 Diff。文件图标读取当前 `workbench.iconTheme` 的主题贡献，支持字体、图片、文件名、复合扩展名、默认文件、继承与明暗覆盖；切换文件或颜色主题时自动重载，并用异步序号防止旧主题覆盖新主题。原生“提交文件”试验视图已移除，避免重复区域。0.2.12 将提交标题恢复为常规字重，0.2.13 将紧凑文件行的图标画布收至 14×14 像素。
 
-**验证** — `npm run check` 通过 34 个测试文件、337 条测试；`npm run build` 通过；`npm run test:vscode` 通过 3 个真实 Extension Host 场景；`npm run package -- --out .../gitool-file-commit-0.2.12.vsix` 通过，最终包仅含 16 个发布文件，SHA-256 为 `a35505faebe1dcb3f92c05bbb875cf5a8ae5c721f1691b0b2dfc289c3ec36828`。包内样式确认 `.history-subject` 为 `font-weight: 400`。独立审查确认真实 Seti 字体转义、JSONC 尾逗号、父子主题资源、主题动态切换和竞态处理均已覆盖，未发现剩余阻断。
+**验证** — `npm run check` 通过 34 个测试文件、337 条测试；`npm run build` 通过；`npm run test:vscode` 通过 3 个真实 Extension Host 场景；`npm run package -- --out .../gitool-file-commit-0.2.13.vsix` 通过，最终包仅含 16 个发布文件，SHA-256 为 `fad055d36888983cd6fb69e66200c1d08283fb553f604775b9e3d94f0f1e9500`。包内样式确认提交标题为 `font-weight: 400`，文件图标宽、高和行高均为 14px。独立审查确认真实 Seti 字体转义、JSONC 尾逗号、父子主题资源、主题动态切换和竞态处理均已覆盖，未发现剩余阻断。
 
 **过程记录**
 
@@ -82,3 +82,4 @@ commits: 9fc8631..9a7b529
 - [x] T8: 注册正常运行时历史空文档提供器 — acceptance: ready runtime 注册并释放 `gitool-empty`；Extension Host 可打开虚拟空文档（covers: S7; depends: T3）
 - [x] T9: 恢复行内展开并接入当前文件图标主题 — acceptance: 提交行可展开/收起文件，主题文件名与扩展映射生成安全图标类，文件可打开历史 Diff；清单不再贡献重复原生文件视图（covers: S8; depends: T8）
 - [x] T10: 恢复提交标题常规字重 — acceptance: 提交标题使用 `font-weight: 400`，字号继续继承 VS Code 主题变量，样式回归测试与包内检查通过（covers: S5; depends: T9）
+- [x] T11: 收紧行内文件图标 — acceptance: 文件图标画布和对应网格列统一为 14px，图片与 Codicon 保持居中，样式回归测试与包内检查通过（covers: S8; depends: T10）
