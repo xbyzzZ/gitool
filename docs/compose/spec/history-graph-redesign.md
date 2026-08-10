@@ -1,18 +1,18 @@
 ---
 feature: history-graph-redesign
-status: in-progress
+status: delivered
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: 2c52141..待交付
+commits: 2c52141..13084cd
 ---
 
 # 提交历史图改版
 
 ## Report
 
-**完成内容** — 历史视图使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示当前、本地与远程引用，并保留文件展开和第一父提交 Diff。0.2.9 在正常运行时注册 `gitool-empty` 内容提供器，使新增、删除文件的历史差异可以解析空白对比侧。
+**完成内容** — 历史视图继续使用稳定路径颜色绘制多轨分叉、合并和穿越边，分别展示当前、本地与远程引用。0.2.10 将提交交互改为单选，把文件列表迁移到原生“提交文件”视图，以真实 `resourceUri + ThemeIcon.File` 跟随当前 VS Code 文件图标主题，并保留第一父提交 Diff。新选择会立即清空旧文件，异步详情只允许最后一次选择写入，避免高亮提交和文件列表错位。
 
-**验证** — `npm run check` 通过 32 个测试文件、329 条测试；`npm run build` 通过；`env -u ELECTRON_RUN_AS_NODE npm run test:vscode` 通过 3 个真实场景，其中首场实际解析 `gitool-empty`；`npm run package -- --out .../gitool-file-commit-0.2.9.vsix` 通过。独立审查范围 `dc7833a..045811d`，复审范围 `045811d..1b68b84`；规格符合性、正确性和代码库一致性均通过。
+**验证** — `npm run check` 通过 33 个测试文件、336 条测试；`npm run build` 通过；`env -u ELECTRON_RUN_AS_NODE npm run test:vscode` 通过 3 个真实场景；`npm run package -- --out .../gitool-file-commit-0.2.10.vsix` 通过。独立审查范围 `2c52141..efd3b37`，复审范围 `efd3b37..38fb233`；发现的异步选择竞态已关闭，补充的过期失败测试经完整检查通过。
 
 **过程记录**
 
@@ -21,6 +21,8 @@ commits: 2c52141..待交付
 - 分支名称可能远长于侧栏，标签必须同时具备容器级收缩、标签级最大宽度和完整 title。
 - 空的弹性容器仍会保留 `flex-basis`；可选区域应在无数据时不生成 DOM，而不是只清空内容。
 - 虚拟 URI 构造测试不能证明 scheme 可解析；必须在 ready runtime 注册并通过 Extension Host 实际打开。0.2.9 VSIX 输出到主项目目录，源码未合并到 `main`。
+- Webview 无法通过稳定公开 API 解析当前文件图标主题；原生 TreeItem 必须同时提供真实资源 URI 和 `ThemeIcon.File`。
+- 提交详情是异步读取，单纯乐观高亮会受返回顺序影响；原生列表在请求开始时清空，并用单调序号拒绝过期成功和过期失败结果。
 
 ## [S1] 问题
 
@@ -73,4 +75,4 @@ commits: 2c52141..待交付
 - [x] T6: 将历史记录与分支引用压缩为单行 — acceptance: 行高为 28px，主题、引用和元数据同排；长引用省略且完整信息可通过 title 获取；窄宽度按作者、时间顺序降级（covers: S5; depends: T5）
 - [x] T7: 取消无引用提交的空标签占位 — acceptance: refs 为空时不生成引用容器且主题使用释放后的空间；有 refs 时标签结构保持（covers: S6; depends: T6）
 - [x] T8: 注册正常运行时历史空文档提供器 — acceptance: ready runtime 注册并释放 `gitool-empty`；Extension Host 可打开虚拟空文档（covers: S7; depends: T3）
-- [ ] T9: 将提交文件迁移到原生主题图标视图 — acceptance: 提交行支持单选状态且不再内联展开；原生文件节点使用 `resourceUri + ThemeIcon.File`，可打开历史 Diff，切换仓库后清空（covers: S8; depends: T8）
+- [x] T9: 将提交文件迁移到原生主题图标视图 — acceptance: 提交行支持单选状态且不再内联展开；原生文件节点使用 `resourceUri + ThemeIcon.File`，可打开历史 Diff，切换仓库后清空（covers: S8; depends: T8）
