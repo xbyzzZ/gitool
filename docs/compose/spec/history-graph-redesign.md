@@ -1,14 +1,20 @@
 ---
 feature: history-graph-redesign
-status: in-progress
+status: delivered
 updated: 2026-08-10
 branch: codex/ai-toolbar-redesign
-commits: 4bf652c..待交付
+commits: 4bf652c..ae16685
 ---
 
 # 提交历史图改版
 
 ## Report
+
+- 实现：历史视图迁移为独立 Webview，使用稳定路径颜色绘制多轨分叉、合并与穿越边；HEAD、本地和远程引用分别展示，提交详情继续支持文件展开与第一父提交 Diff。
+- 兼容性：完整对象 ID 仅接受 SHA-1 的 40 位或 SHA-256 的 64 位；远程符号引用 `*/HEAD` 被过滤。
+- 验证：`npm run check` 通过 32 个测试文件、327 条测试；`npm run build`、`npm run package` 和真实 Extension Host 3 个场景通过。
+- 审查：独立复审范围 `4bf652c..ae16685`；修复构建产物 ESLint 清单、SHA-256 消息校验、历史操作错误反馈和轨道压缩换色后通过。
+- 交付：版本 `0.2.5`，VSIX 输出到主项目目录；源码仍位于隔离分支，未合并到 `main`。
 
 ## [S1] 问题
 
@@ -33,7 +39,7 @@ commits: 4bf652c..待交付
 
 ## Tasks
 
-- [ ] T1: 修正引用分类并扩展拓扑行模型 — acceptance: 本地、远程、HEAD 分类准确，合并提交输出可连续绘制的行边且有单元测试（covers: S2）
-- [ ] T2: 实现历史图渲染与交互 — acceptance: 多轨 SVG、引用标签、双层提交信息、展开文件和 Diff 消息均有渲染或协议测试（covers: S2; depends: T1）
-- [ ] T3: 将历史视图迁移为独立 Webview — acceptance: package 和扩展只为 historyView 注册 Webview Provider，标题命令及状态反馈保持（covers: S2; depends: T2）
-- [ ] T4: 完成 0.2.5 预览交付 — acceptance: 完整检查、构建、Extension Host、VSIX 清单和独立审查通过，主分支不变化（covers: S2, S3; depends: T3）
+- [x] T1: 修正引用分类并扩展拓扑行模型 — acceptance: 本地、远程、HEAD 分类准确，合并提交输出可连续绘制的行边且有单元测试（covers: S2）
+- [x] T2: 实现历史图渲染与交互 — acceptance: 多轨 SVG、引用标签、双层提交信息、展开文件和 Diff 消息均有渲染或协议测试（covers: S2; depends: T1）
+- [x] T3: 将历史视图迁移为独立 Webview — acceptance: package 和扩展只为 historyView 注册 Webview Provider，标题命令及状态反馈保持（covers: S2; depends: T2）
+- [x] T4: 完成 0.2.5 预览交付 — acceptance: 完整检查、构建、Extension Host、VSIX 清单和独立审查通过，主分支不变化（covers: S2, S3; depends: T3）
