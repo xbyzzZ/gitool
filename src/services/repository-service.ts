@@ -54,7 +54,8 @@ export interface RepositoryServiceDependencies {
     details(repositoryRoot: string, hash: string): Promise<CommitDetails>;
     aheadBehind(repositoryRoot: string): Promise<AheadBehind>;
   };
-  readonly syncService?: Pick<SyncService, 'fetch' | 'pull' | 'pushAll'>;
+  readonly syncService?: Pick<SyncService, 'fetch' | 'pull' | 'pushAll'>
+    & Partial<Pick<SyncService, 'aheadBehind'>>;
   readonly aiService?: {
     listModels(): Promise<readonly AiLanguageModel[]>;
     generate(request: {
@@ -162,6 +163,11 @@ export class RepositoryService {
         repositoryId: id,
         version: model.version,
       }).catch(() => undefined);
+    } else {
+      void this.refreshSyncStatus({
+        repositoryId: id,
+        version: model.version,
+      }).catch(() => undefined);
     }
     return model;
   }
@@ -173,6 +179,11 @@ export class RepositoryService {
     if (model.currentRepositoryId !== undefined
       && this.dependencies.historyService !== undefined) {
       await this.refreshHistory({
+        repositoryId: model.currentRepositoryId,
+        version: model.version,
+      });
+    } else if (model.currentRepositoryId !== undefined) {
+      await this.refreshSyncStatus({
         repositoryId: model.currentRepositoryId,
         version: model.version,
       });
@@ -397,6 +408,11 @@ export class RepositoryService {
         repositoryId: id,
         version: state.version,
       });
+    } else {
+      await this.refreshSyncStatus({
+        repositoryId: id,
+        version: state.version,
+      });
     }
   }
 
@@ -455,10 +471,17 @@ export class RepositoryService {
         await operation(state.repository, state);
         state.operation = { kind: 'idle' };
         await this.registry.refreshRepositorySnapshot(state.id);
-        await this.refreshHistory({
-          repositoryId: state.id,
-          version: state.version,
-        });
+        if (this.dependencies.historyService !== undefined) {
+          await this.refreshHistory({
+            repositoryId: state.id,
+            version: state.version,
+          });
+        } else {
+          await this.refreshSyncStatus({
+            repositoryId: state.id,
+            version: state.version,
+          });
+        }
       } catch (error) {
         state.operation = {
           kind: 'failed',
@@ -473,5 +496,26 @@ export class RepositoryService {
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private async refreshSyncStatus(
+    request: RepositoryVersionRequest,
+  ): Promise<void> {
+    const aheadBehind = this.dependencies.syncService?.aheadBehind;
+    if (aheadBehind === undefined) {
+      return;
+    }
+    const state = this.requireVersion(request);
+    const sync = await aheadBehind.call(
+      this.dependencies.syncService,
+      state.rootPath,
+    );
+    if (!this.matches(state, request.version)) {
+      return;
+    }
+    state.sync = state.repository.state.HEAD?.name === undefined
+      ? { kind: 'detached' }
+      : sync;
+    this.registry.notifyChange();
   }
 }

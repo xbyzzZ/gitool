@@ -1,7 +1,6 @@
 import { isFullGitObjectId } from '../domain/git-object-id.js';
 import type {
   AheadBehind,
-  AheadBehindCount,
   CommitDetails,
   CommitFile,
   CommitGraphNode,
@@ -10,6 +9,9 @@ import type {
   HistoryView,
 } from '../domain/history-model.js';
 import { GitRunner } from '../git/git-runner.js';
+import { parseAheadBehind } from './ahead-behind.js';
+
+export { parseAheadBehind } from './ahead-behind.js';
 
 const statusPattern = /^[A-Z][0-9]*$/u;
 
@@ -143,14 +145,6 @@ export function parseCommitFiles(raw: string): CommitFile[] {
     index += 1;
   }
   return files;
-}
-
-export function parseAheadBehind(raw: string): AheadBehindCount {
-  const match = /^\s*(\d+)\s+(\d+)\s*$/u.exec(raw);
-  if (match === null) {
-    throw new Error('Git 未返回有效的领先落后计数');
-  }
-  return { ahead: Number(match[1]), behind: Number(match[2]) };
 }
 
 export function buildGraph(

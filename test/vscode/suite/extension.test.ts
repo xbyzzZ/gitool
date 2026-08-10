@@ -30,13 +30,6 @@ interface RepositoryState {
     readonly ahead?: number;
     readonly behind?: number;
   };
-  readonly history: {
-    readonly kind: string;
-    readonly commits: readonly {
-      readonly hash: string;
-      readonly refs: readonly { readonly name: string; readonly kind: string }[];
-    }[];
-  };
   readonly operation: {
     readonly kind: string;
     readonly action?: string;
@@ -87,7 +80,7 @@ async function git(
 }
 
 suite('Gitool 扩展', () => {
-  test('可以激活并注册原生视图命令', async () => {
+  test('可以激活并只注册统一提交工作台命令', async () => {
     const extension = vscode.extensions.getExtension(
       'gitool.gitool-file-commit',
     );
@@ -100,23 +93,22 @@ suite('Gitool 扩展', () => {
       commands.includes('gitool.refresh'),
       '激活后应注册刷新命令',
     );
-    assert.ok(
-      commands.includes('gitool.openHistoryChange'),
-      '激活后应注册历史文件差异命令',
-    );
+    assert.ok(!commands.includes('gitool.openHistoryChange'), '0.3 不应注册历史文件差异命令');
     assert.ok(
       commands.includes('gitool.pull'),
-      '激活后应注册历史区拉取命令',
+      '激活后应注册拉取命令',
     );
     assert.ok(
       commands.includes('gitool.pushAll'),
-      '激活后应注册历史区推送命令',
+      '激活后应注册推送命令',
     );
-    const emptyDocument = await vscode.workspace.openTextDocument(
-      vscode.Uri.parse('gitool-empty:/test/new-file.ts'),
+    await assert.rejects(
+      async () => await vscode.workspace.openTextDocument(
+        vscode.Uri.parse('gitool-empty:/test/new-file.ts'),
+      ),
+      /Unable to resolve|无法解析/u,
     );
-    assert.equal(emptyDocument.getText(), '');
-    await vscode.commands.executeCommand('gitool.historyView.focus');
+    await vscode.commands.executeCommand('gitool.commitView.focus');
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
     const viewState = await vscode.commands.executeCommand<RepositoryState>(
       'gitool.test.getState',
@@ -364,27 +356,13 @@ suite('Gitool 扩展', () => {
         `测试：本地领先 ${String(index)}`,
       ]);
     }
-    await vscode.commands.executeCommand('gitool.test.refresh');
     state = await vscode.commands.executeCommand<RepositoryState>(
-      'gitool.test.refreshHistory',
+      'gitool.test.refresh',
     );
-    assert.equal(state.history.kind, 'ready');
     assert.equal(state.sync.kind, 'ready');
     assert.equal(state.sync.upstream, 'origin/main');
     assert.equal(state.sync.ahead, 3, '应识别本地 HEAD 领先远程三个提交');
     assert.equal(state.sync.behind, 0);
-    assert.ok(
-      state.history.commits.some((commit) => commit.refs.some(
-        (ref) => ref.kind === 'head' && ref.name === 'main',
-      )),
-      '历史中应标出本地 HEAD 位置',
-    );
-    assert.ok(
-      state.history.commits.some((commit) => commit.refs.some(
-        (ref) => ref.kind === 'remote' && ref.name === 'origin/main',
-      )),
-      '历史中应标出远程引用位置',
-    );
 
     await vscode.commands.executeCommand('gitool.test.pushAll');
     assert.equal(

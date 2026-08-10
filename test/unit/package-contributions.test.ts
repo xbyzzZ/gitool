@@ -42,54 +42,27 @@ describe('扩展贡献点', () => {
     expect(manifest.icon).toBe('media/logo.png');
   });
 
-  it('贡献提交信息、当前变更和提交历史三个独立视图', () => {
+  it('0.3 只贡献统一提交工作台', () => {
     expect(manifest.contributes.views.gitool).toEqual([
-      { type: 'webview', id: 'gitool.commitView', name: '提交信息' },
-      { id: 'gitool.changesView', name: '当前变更' },
-      { type: 'webview', id: 'gitool.historyView', name: '提交历史' },
+      { type: 'webview', id: 'gitool.commitView', name: '提交' },
     ]);
   });
 
-  it('声明打开历史文件改动命令', () => {
-    expect(manifest.contributes.commands).toContainEqual({
-      command: 'gitool.openHistoryChange',
-      title: 'Gitool：打开历史文件改动',
-    });
-  });
-
-  it('历史区推送命令由仓库可推送状态控制', () => {
+  it('保留提交工作台需要的推送命令', () => {
     expect(manifest.contributes.commands).toContainEqual({
       command: 'gitool.pushAll',
       title: 'Gitool：推送全部本地提交',
       icon: '$(cloud-upload)',
-      enablement: 'gitool.canPushAll',
     });
   });
 
-  it('标题栏命令位于对应视图', () => {
-    expect(titleCommands('gitool.commitView')).toEqual([
-      'gitool.editRemote',
-    ]);
-    expect(titleCommands('gitool.changesView')).toEqual([
-      'gitool.refreshChanges',
-    ]);
-    expect(titleCommands('gitool.historyView')).toEqual([
-      'gitool.pull',
-      'gitool.pushAll',
-      'gitool.refreshHistory',
-    ]);
+  it('全部操作由工作台内部工具栏承载', () => {
+    expect(manifest.contributes.menus).toBeUndefined();
+    expect(titleCommands('gitool.commitView')).toEqual([]);
   });
 
-  it('舍弃命令只在未跟踪文件节点显示', () => {
-    expect(manifest.contributes.menus?.['view/item/context'] ?? []).toContainEqual({
-      command: 'gitool.trashUntracked',
-      when: 'view == gitool.changesView && viewItem == gitool.untrackedFile',
-      group: 'inline',
-    });
-  });
-
-  it('打包时保留历史 Webview 并排除旧合并 Webview', () => {
+  it('打包时只保留统一工作台脚本', () => {
     expect(vscodeIgnore).toContain('media/main.js');
-    expect(vscodeIgnore).not.toContain('media/history.js');
+    expect(vscodeIgnore).toContain('media/history.js');
   });
 });

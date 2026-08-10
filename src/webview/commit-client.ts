@@ -1,6 +1,8 @@
 import type { RepositoryViewModel } from '../domain/view-model.js';
+import type { ChangeSectionKind } from '../domain/change-groups.js';
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
 import type { AiModelSelection } from '../services/ai-model-selection-store.js';
+import { canPushAll } from '../views/push-availability-context.js';
 import {
   aiControlPresentation,
   aiModelControlPresentation,
@@ -12,6 +14,7 @@ import {
   beginScopedRequest,
   type PendingRequestPresentation,
 } from './request-state.js';
+import { renderChangeList } from './commit-change-renderer.js';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
@@ -25,6 +28,7 @@ interface StateMessage {
   readonly aiModelSelection?: AiModelSelection;
   readonly selectedDensity?: CommitMessageDensity;
   readonly acknowledgedRequestId?: string;
+  readonly fileIconClasses?: readonly (string | null)[];
 }
 
 interface PersistedState {
@@ -68,6 +72,8 @@ const layout = layoutElement;
 const controls = {
   repositorySelect: element('repository-select') as HTMLSelectElement,
   repositorySummary: element('repository-summary') as HTMLParagraphElement,
+  changesList: element('changes-list'),
+  selectionSummary: element('selection-summary') as HTMLParagraphElement,
   commitMessage: element('commit-message') as HTMLTextAreaElement,
   commitButton: element('commit-button') as HTMLButtonElement,
   commitPushButton: element('commit-push-button') as HTMLButtonElement,
@@ -81,6 +87,13 @@ const controls = {
   errorStatus: element('error-status') as HTMLParagraphElement,
   retryPushButton: element('retry-push-button') as HTMLButtonElement,
   feedback: element('operation-feedback'),
+  refreshButton: element('refresh-button') as HTMLButtonElement,
+  selectAllButton: element('select-all-button') as HTMLButtonElement,
+  clearSelectionButton: element('clear-selection-button') as HTMLButtonElement,
+  trashButton: element('trash-button') as HTMLButtonElement,
+  pullButton: element('pull-button') as HTMLButtonElement,
+  pushAllButton: element('push-all-button') as HTMLButtonElement,
+  editRemoteButton: element('edit-remote-button') as HTMLButtonElement,
 };
 
 let currentModel: RepositoryViewModel | undefined;
@@ -96,6 +109,8 @@ let sequence = 0;
 let density: CommitMessageDensity = 'standard';
 let persisted = readPersistedState(vscode.getState());
 let revealedFeedbackKey: string | undefined;
+let fileIconClasses: readonly (string | null)[] = [];
+const collapsedSections = new Set<ChangeSectionKind>(['untracked']);
 
 function post(message: WebviewMessage): void {
   vscode.postMessage(message);
@@ -139,6 +154,53 @@ function render(model: RepositoryViewModel): void {
     : 'false');
   controls.loadingStatus.hidden = true;
   updateRepository(model);
+  renderChangeList(
+    controls.changesList,
+    model.changes,
+    new Set(model.selectedIds),
+    collapsedSections,
+    fileIconClasses,
+    {
+      toggleSection: (section) => {
+        if (collapsedSections.has(section)) {
+          collapsedSections.delete(section);
+        } else {
+          collapsedSections.add(section);
+        }
+        render(model);
+      },
+      setGroup: (group, selected) => {
+        if (model.currentRepositoryId !== undefined) {
+          post({
+            type: 'setGroup',
+            repositoryId: model.currentRepositoryId,
+            group,
+            selected,
+          });
+        }
+      },
+      toggleFile: (fileId, selected) => {
+        if (model.currentRepositoryId !== undefined) {
+          post({
+            type: 'toggleFile',
+            repositoryId: model.currentRepositoryId,
+            fileId,
+            selected,
+          });
+        }
+      },
+      openDiff: (fileId) => {
+        if (model.currentRepositoryId !== undefined) {
+          post({
+            type: 'openDiff',
+            repositoryId: model.currentRepositoryId,
+            fileId,
+          });
+        }
+      },
+    },
+  );
+  controls.selectionSummary.textContent = `已选择 ${String(model.selectedIds.length)} / ${String(model.changeCount)}`;
   if (pendingMessage === undefined || pendingMessage === model.commitMessage) {
     controls.commitMessage.value = model.commitMessage;
     pendingMessage = undefined;
@@ -170,6 +232,15 @@ function render(model: RepositoryViewModel): void {
     : !canWrite || model.selectedIds.length === 0;
   controls.aiDensityButton.disabled = !canWrite || model.selectedIds.length === 0;
   controls.aiModelButton.disabled = !canWrite || locallyBusy || aiGenerating;
+  controls.refreshButton.disabled = running || locallyBusy;
+  controls.selectAllButton.disabled = !canWrite || model.changeCount === 0;
+  controls.clearSelectionButton.disabled = !canWrite || model.selectedIds.length === 0;
+  controls.trashButton.disabled = !canWrite || !model.changes.some(
+    (change) => change.untracked && model.selectedIds.includes(change.id),
+  );
+  controls.pullButton.disabled = !canWrite || model.sync.kind !== 'ready';
+  controls.pushAllButton.disabled = locallyBusy || !canPushAll(model);
+  controls.editRemoteButton.disabled = !canWrite;
   const aiPresentation = aiControlPresentation(density, aiGenerating);
   controls.aiGenerateIcon.dataset.density = aiPresentation.density;
   controls.aiGenerateIcon.classList.toggle(
@@ -247,6 +318,63 @@ controls.repositorySelect.addEventListener('change', () => {
     repositoryId: controls.repositorySelect.value,
     requestId: `switch-${String(sequence)}`,
   });
+});
+
+controls.refreshButton.addEventListener('click', () => {
+  post({ type: 'refresh' });
+});
+
+function setAllGroups(selected: boolean): void {
+  const repositoryId = currentModel?.currentRepositoryId;
+  if (repositoryId === undefined) {
+    return;
+  }
+  post({ type: 'setGroup', repositoryId, group: 'tracked', selected });
+  post({ type: 'setGroup', repositoryId, group: 'untracked', selected });
+}
+
+controls.selectAllButton.addEventListener('click', () => {
+  setAllGroups(true);
+});
+controls.clearSelectionButton.addEventListener('click', () => {
+  setAllGroups(false);
+});
+
+function postVersionAction(
+  type: 'editRemoteUrl' | 'pull' | 'pushAll',
+): void {
+  const model = currentModel;
+  if (model === undefined) {
+    return;
+  }
+  const scope = beginRequest(model);
+  if (scope !== undefined) {
+    post({ type, ...scope });
+  }
+}
+
+controls.trashButton.addEventListener('click', () => {
+  const model = currentModel;
+  if (model === undefined) {
+    return;
+  }
+  const scope = beginRequest(model);
+  if (scope === undefined) {
+    return;
+  }
+  const fileIds = model.changes
+    .filter((change) => change.untracked && model.selectedIds.includes(change.id))
+    .map((change) => change.id);
+  post({ type: 'trash', ...scope, fileIds });
+});
+controls.pullButton.addEventListener('click', () => {
+  postVersionAction('pull');
+});
+controls.pushAllButton.addEventListener('click', () => {
+  postVersionAction('pushAll');
+});
+controls.editRemoteButton.addEventListener('click', () => {
+  postVersionAction('editRemoteUrl');
 });
 
 controls.commitMessage.addEventListener('input', () => {
@@ -361,6 +489,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
     return;
   }
   const state = message as StateMessage;
+  fileIconClasses = state.fileIconClasses ?? [];
   currentAiModelSelection = state.aiModelSelection;
   if (state.acknowledgedRequestId === pendingRequestId) {
     pendingRequestId = undefined;

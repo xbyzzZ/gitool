@@ -13,12 +13,17 @@ import type { PushResult } from '../services/push-service.js';
 import { GitoolViewActions } from '../views/view-actions.js';
 import { parseWebviewMessage, type WebviewMessage } from './messages.js';
 import { renderCommitWebviewHtml } from './render.js';
+import {
+  loadCurrentFileIconTheme,
+  type LoadedFileIconTheme,
+} from './file-icon-theme-loader.js';
 
 export interface GitoolViewProviderDependencies {
   readonly extensionUri: vscode.Uri;
   readonly gitApi: BuiltinGitApi;
   readonly repositoryService: RepositoryService;
   readonly aiModelSelectionStore: AiModelSelectionStore;
+  readonly loadFileIconTheme?: typeof loadCurrentFileIconTheme;
 }
 
 interface StateMessage {
@@ -27,6 +32,7 @@ interface StateMessage {
   readonly aiModelSelection?: AiModelSelection;
   readonly selectedDensity?: CommitMessageDensity;
   readonly acknowledgedRequestId?: string;
+  readonly fileIconClasses: readonly (string | null)[];
 }
 
 interface AiModelQuickPickItem extends vscode.QuickPickItem {
@@ -67,18 +73,10 @@ function messageAction(message: WebviewMessage): string {
       return '舍弃未跟踪文件';
     case 'editRemoteUrl':
       return '修改远程 URL';
-    case 'refreshHistory':
-      return '刷新提交历史';
-    case 'fetchHistory':
-      return '刷新远程状态';
     case 'pull':
       return '从远程拉取';
     case 'pushAll':
       return '推送全部本地提交';
-    case 'loadCommitDetails':
-      return '读取提交详情';
-    case 'openCommitDiff':
-      return '打开历史改动';
     case 'generateCommitMessage':
       return '生成提交信息';
     case 'selectAiModel':
@@ -122,24 +120,32 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   private aiController: AbortController | undefined;
   private readonly viewActions: GitoolViewActions;
   private disposed = false;
+  private themeLoadSequence = 0;
+  private fileIconTheme: Pick<LoadedFileIconTheme, 'classForPath'> = {
+    classForPath: () => undefined,
+  };
 
   constructor(private readonly dependencies: GitoolViewProviderDependencies) {
     this.viewActions = new GitoolViewActions({
       service: dependencies.repositoryService,
       gitApi: dependencies.gitApi,
     });
+    this.disposables.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('workbench.iconTheme')) {
+          void this.reloadFileIconTheme();
+        }
+      }),
+      vscode.window.onDidChangeActiveColorTheme(() => {
+        void this.reloadFileIconTheme();
+      }),
+    );
   }
 
-  resolveWebviewView(webviewView: vscode.WebviewView): void {
+  async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
     this.disposeView();
     this.view = webviewView;
     this.webview = webviewView.webview;
-    this.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.dependencies.extensionUri, 'media'),
-      ],
-    };
     this.viewDisposables = [
       this.webview.onDidReceiveMessage((input: unknown) => {
         void this.handleInput(input);
@@ -152,11 +158,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.disposeView();
       }),
     ];
-    this.webview.html = renderCommitWebviewHtml(
-      this.webview,
-      this.dependencies.extensionUri,
-      randomBytes(16).toString('hex'),
-    );
+    await this.reloadFileIconTheme();
     this.updateViewMetadata();
   }
 
@@ -172,6 +174,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   }
 
   private disposeView(): void {
+    this.themeLoadSequence += 1;
     this.aiController?.abort();
     this.aiController = undefined;
     if (this.view !== undefined) {
@@ -183,6 +186,49 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     for (const disposable of this.viewDisposables.splice(0)) {
       disposable.dispose();
     }
+  }
+
+  private async reloadFileIconTheme(): Promise<void> {
+    const webview = this.webview;
+    if (webview === undefined) {
+      return;
+    }
+    const sequence = ++this.themeLoadSequence;
+    let theme: LoadedFileIconTheme;
+    try {
+      theme = await (this.dependencies.loadFileIconTheme
+        ?? loadCurrentFileIconTheme)(webview);
+    } catch (error) {
+      if (sequence !== this.themeLoadSequence || this.webview !== webview) {
+        return;
+      }
+      this.dependencies.repositoryService.reportFailure(
+        '读取文件图标主题',
+        errorMessage(error),
+      );
+      theme = {
+        css: '',
+        classForPath: () => undefined,
+        localResourceRoots: [],
+      };
+    }
+    if (sequence !== this.themeLoadSequence || this.webview !== webview) {
+      return;
+    }
+    this.fileIconTheme = theme;
+    webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.dependencies.extensionUri, 'media'),
+        ...theme.localResourceRoots,
+      ],
+    };
+    webview.html = renderCommitWebviewHtml(
+      webview,
+      this.dependencies.extensionUri,
+      randomBytes(16).toString('hex'),
+      theme.css,
+    );
   }
 
   private async handleInput(input: unknown): Promise<void> {
@@ -290,17 +336,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.requireScope(message.repositoryId, message.version);
         await this.viewActions.editRemote();
         return;
-      case 'refreshHistory':
-        this.requireScope(message.repositoryId, message.version);
-        await this.viewActions.refreshHistory();
-        return;
-      case 'fetchHistory':
-        this.requireScope(message.repositoryId, message.version);
-        await service.fetchHistory({
-          repositoryId: message.repositoryId,
-          version: message.version,
-        });
-        return;
       case 'pull':
         this.requireScope(message.repositoryId, message.version);
         await this.viewActions.pull();
@@ -309,9 +344,6 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.requireScope(message.repositoryId, message.version);
         await this.viewActions.pushAll();
         return;
-      case 'loadCommitDetails':
-      case 'openCommitDiff':
-        throw new Error('提交信息视图不支持历史操作');
       case 'generateCommitMessage':
         await this.generateCommitMessage(message);
         return;
@@ -551,6 +583,8 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     const message: StateMessage = {
       type: 'state',
       model,
+      fileIconClasses: model.changes.map((change) =>
+        this.fileIconTheme.classForPath(change.path) ?? null),
       ...(selection === undefined ? {} : { aiModelSelection: selection }),
       ...(selectedDensity === undefined ? {} : { selectedDensity }),
       ...(acknowledgedRequestId === undefined

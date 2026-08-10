@@ -16,6 +16,20 @@ const vscodeMocks = vi.hoisted(() => ({
   showTextDocument: vi.fn(),
   showWarningMessage: vi.fn(),
   stat: vi.fn(),
+  colorThemeListeners: [] as (() => void)[],
+  configurationListeners: [] as ((event: {
+    readonly affectsConfiguration: (section: string) => boolean;
+  }) => void)[],
+  onDidChangeActiveColorTheme: vi.fn((listener: () => void) => {
+    vscodeMocks.colorThemeListeners.push(listener);
+    return { dispose: vi.fn() };
+  }),
+  onDidChangeConfiguration: vi.fn((listener: (event: {
+    readonly affectsConfiguration: (section: string) => boolean;
+  }) => void) => {
+    vscodeMocks.configurationListeners.push(listener);
+    return { dispose: vi.fn() };
+  }),
 }));
 
 vi.mock('vscode', () => ({
@@ -38,11 +52,18 @@ vi.mock('vscode', () => ({
     showQuickPick: vscodeMocks.showQuickPick,
     showTextDocument: vscodeMocks.showTextDocument,
     showWarningMessage: vscodeMocks.showWarningMessage,
+    onDidChangeActiveColorTheme: vscodeMocks.onDidChangeActiveColorTheme,
   },
-  workspace: { fs: { stat: vscodeMocks.stat } },
+  workspace: {
+    fs: { stat: vscodeMocks.stat },
+    onDidChangeConfiguration: vscodeMocks.onDidChangeConfiguration,
+  },
 }));
 
-import { GitoolViewProvider } from '../../src/webview/view-provider.js';
+import {
+  GitoolViewProvider,
+  type GitoolViewProviderDependencies,
+} from '../../src/webview/view-provider.js';
 
 function uri(path: string): vscode.Uri {
   return {
@@ -262,6 +283,7 @@ function createSelectionStore(
 function createProvider(
   service: RepositoryService,
   aiModelSelectionStore = createSelectionStore(),
+  loadFileIconTheme?: GitoolViewProviderDependencies['loadFileIconTheme'],
 ): GitoolViewProvider {
   const gitApi = {
     toGitUri: vi.fn((value: vscode.Uri) => value),
@@ -271,11 +293,20 @@ function createProvider(
     gitApi,
     repositoryService: service,
     aiModelSelectionStore,
+    loadFileIconTheme: loadFileIconTheme ?? vi.fn().mockResolvedValue({
+      css: '.gitool-file-icon-test { color: inherit; }',
+      classForPath: (path: string) => path.endsWith('.ts')
+        ? 'gitool-file-icon-test'
+        : undefined,
+      localResourceRoots: [uri('/extension/theme')],
+    }),
   });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vscodeMocks.colorThemeListeners.length = 0;
+  vscodeMocks.configurationListeners.length = 0;
 });
 
 describe('GitoolViewProvider', () => {
@@ -284,18 +315,67 @@ describe('GitoolViewProvider', () => {
     const provider = createProvider(created.service);
     const harness = createViewHarness({ emitReadyWhenHtmlSet: true });
 
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     await vi.waitFor(() => {
       expect(created.refresh).toHaveBeenCalledOnce();
     });
   });
 
-  it('Webview 首次就绪时先刷新仓库快照并读取提交历史', async () => {
+  it('主题连续切换时只应用最后一次文件图标加载结果', async () => {
+    type Theme = Awaited<ReturnType<NonNullable<
+      GitoolViewProviderDependencies['loadFileIconTheme']
+    >>>;
+    let resolveOld: ((theme: Theme) => void) | undefined;
+    let resolveLatest: ((theme: Theme) => void) | undefined;
+    const oldTheme = new Promise<Theme>((resolve) => { resolveOld = resolve; });
+    const latestTheme = new Promise<Theme>((resolve) => { resolveLatest = resolve; });
+    const load = vi.fn()
+      .mockResolvedValueOnce({
+        css: '.theme-initial {}',
+        classForPath: () => 'theme-initial',
+        localResourceRoots: [uri('/theme/initial')],
+      })
+      .mockReturnValueOnce(oldTheme)
+      .mockReturnValueOnce(latestTheme);
+    const provider = createProvider(
+      createServiceDouble().service,
+      createSelectionStore(),
+      load,
+    );
+    const harness = createViewHarness();
+    await provider.resolveWebviewView(harness.view);
+
+    vscodeMocks.configurationListeners[0]?.({
+      affectsConfiguration: (section) => section === 'workbench.iconTheme',
+    });
+    vscodeMocks.colorThemeListeners[0]?.();
+    resolveLatest?.({
+      css: '.theme-latest {}',
+      classForPath: () => 'theme-latest',
+      localResourceRoots: [uri('/theme/latest')],
+    });
+    await vi.waitFor(() => {
+      expect(harness.view.webview.html).toContain('.theme-latest {}');
+    });
+    resolveOld?.({
+      css: '.theme-old {}',
+      classForPath: () => 'theme-old',
+      localResourceRoots: [uri('/theme/old')],
+    });
+    await Promise.resolve();
+
+    expect(harness.view.webview.html).not.toContain('.theme-old {}');
+    expect(harness.view.webview.options.localResourceRoots).toContainEqual(
+      expect.objectContaining({ fsPath: '/theme/latest' }),
+    );
+  });
+
+  it('Webview 首次就绪时只刷新当前仓库快照', async () => {
     const created = createServiceDouble();
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({ type: 'ready' });
 
@@ -310,7 +390,7 @@ describe('GitoolViewProvider', () => {
     const provider = createProvider(created.service);
     const harness = createViewHarness();
 
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     expect(harness.view.badge).toEqual({
       value: 4,
@@ -328,7 +408,7 @@ describe('GitoolViewProvider', () => {
     });
   });
 
-  it('路由远程刷新、拉取和推送全部消息', async () => {
+  it('路由拉取和推送全部消息', async () => {
     const created = createServiceDouble();
     created.pushAll.mockResolvedValue({
       kind: 'pushed',
@@ -337,9 +417,9 @@ describe('GitoolViewProvider', () => {
     });
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
-    for (const type of ['fetchHistory', 'pull', 'pushAll'] as const) {
+    for (const type of ['pull', 'pushAll'] as const) {
       harness.receive({
         type,
         repositoryId: '/workspace/repo',
@@ -349,10 +429,6 @@ describe('GitoolViewProvider', () => {
     }
 
     await vi.waitFor(() => {
-      expect(created.fetchHistory).toHaveBeenCalledWith({
-        repositoryId: '/workspace/repo',
-        version: 0,
-      });
       expect(created.pull).toHaveBeenCalledWith({
         repositoryId: '/workspace/repo',
         version: 0,
@@ -378,7 +454,7 @@ describe('GitoolViewProvider', () => {
     );
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'pushAll',
@@ -405,7 +481,7 @@ describe('GitoolViewProvider', () => {
     });
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'generateCommitMessage',
@@ -433,7 +509,7 @@ describe('GitoolViewProvider', () => {
     );
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'selectCommitMessageDensity',
@@ -489,7 +565,7 @@ describe('GitoolViewProvider', () => {
     const store = createSelectionStore();
     const provider = createProvider(created.service, store);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'selectAiModel',
@@ -541,7 +617,7 @@ describe('GitoolViewProvider', () => {
     });
     const provider = createProvider(created.service, store);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'selectAiModel',
@@ -574,7 +650,7 @@ describe('GitoolViewProvider', () => {
     });
     const provider = createProvider(created.service, store);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'selectAiModel',
@@ -601,7 +677,7 @@ describe('GitoolViewProvider', () => {
     });
     const provider = createProvider(created.service, store);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'selectAiModel',
@@ -627,7 +703,7 @@ describe('GitoolViewProvider', () => {
     });
     const provider = createProvider(created.service, store);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({ type: 'ready' });
 
@@ -659,7 +735,7 @@ describe('GitoolViewProvider', () => {
     );
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'commitAndPush',
@@ -698,7 +774,7 @@ describe('GitoolViewProvider', () => {
     vscodeMocks.showInputBox.mockResolvedValue(undefined);
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'editRemoteUrl',
@@ -744,7 +820,7 @@ describe('GitoolViewProvider', () => {
     vscodeMocks.showWarningMessage.mockResolvedValue('确认添加');
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'editRemoteUrl',
@@ -777,7 +853,7 @@ describe('GitoolViewProvider', () => {
     vscodeMocks.showInputBox.mockResolvedValue(undefined);
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'editRemoteUrl',
@@ -805,7 +881,7 @@ describe('GitoolViewProvider', () => {
     vscodeMocks.showWarningMessage.mockResolvedValue('确认添加');
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'editRemoteUrl',
@@ -833,7 +909,7 @@ describe('GitoolViewProvider', () => {
     vscodeMocks.showWarningMessage.mockResolvedValue(undefined);
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'editRemoteUrl',
@@ -863,7 +939,7 @@ describe('GitoolViewProvider', () => {
     });
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'commit',
@@ -883,6 +959,7 @@ describe('GitoolViewProvider', () => {
         type: 'state',
         model: initialModel,
         acknowledgedRequestId: 'request-1',
+        fileIconClasses: ['gitool-file-icon-test'],
       });
     });
   });
@@ -898,7 +975,7 @@ describe('GitoolViewProvider', () => {
     }));
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'commit',
@@ -930,7 +1007,7 @@ describe('GitoolViewProvider', () => {
     created.commit.mockRejectedValue(new Error('仓库正在执行写操作'));
     const provider = createProvider(created.service);
     const harness = createViewHarness();
-    provider.resolveWebviewView(harness.view);
+    await provider.resolveWebviewView(harness.view);
 
     harness.receive({
       type: 'commit',

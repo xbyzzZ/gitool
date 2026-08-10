@@ -35,18 +35,6 @@ if (existsSync('src/webview/commit-client.ts')) {
   }));
 }
 
-if (existsSync('src/webview/history-client.ts')) {
-  builds.push(build({
-    entryPoints: ['src/webview/history-client.ts'],
-    outfile: 'media/history.js',
-    bundle: true,
-    format: 'iife',
-    platform: 'browser',
-    sourcemap: false,
-    target: 'es2022',
-  }));
-}
-
 const vscodeTestEntries = [
   'test/vscode/run-tests.ts',
   'test/vscode/suite/index.ts',

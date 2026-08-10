@@ -1,5 +1,3 @@
-import { isFullGitObjectId } from '../domain/git-object-id.js';
-
 export type WebviewMessage =
   | { readonly type: 'ready' }
   | { readonly type: 'refresh' }
@@ -71,24 +69,9 @@ export type WebviewMessage =
     readonly requestId: string;
   }
   | {
-    readonly type: 'refreshHistory' | 'fetchHistory' | 'pull' | 'pushAll';
+    readonly type: 'pull' | 'pushAll';
     readonly repositoryId: string;
     readonly version: number;
-    readonly requestId: string;
-  }
-  | {
-    readonly type: 'loadCommitDetails';
-    readonly repositoryId: string;
-    readonly version: number;
-    readonly hash: string;
-    readonly requestId: string;
-  }
-  | {
-    readonly type: 'openCommitDiff';
-    readonly repositoryId: string;
-    readonly version: number;
-    readonly hash: string;
-    readonly path: string;
     readonly requestId: string;
   }
   | {
@@ -177,8 +160,7 @@ function requireRepositoryId(input: MessageRecord): string {
 
 function parseVersionMessage(
   input: MessageRecord,
-  type: 'retryPush' | 'editRemoteUrl' | 'refreshHistory'
-    | 'fetchHistory' | 'pull' | 'pushAll',
+  type: 'retryPush' | 'editRemoteUrl' | 'pull' | 'pushAll',
 ): WebviewMessage {
   requireExactKeys(input, [
     'type',
@@ -213,13 +195,6 @@ function requireRequestId(input: MessageRecord): string {
     invalid('requestId');
   }
   return input.requestId;
-}
-
-function requireCommitHash(input: MessageRecord): string {
-  if (!isFullGitObjectId(input.hash)) {
-    invalid('hash');
-  }
-  return input.hash;
 }
 
 function parseCommitMessage(
@@ -375,37 +350,9 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
       return parseCommitMessage(input, input.type);
     case 'retryPush':
     case 'editRemoteUrl':
-    case 'refreshHistory':
-    case 'fetchHistory':
     case 'pull':
     case 'pushAll':
       return parseVersionMessage(input, input.type);
-    case 'loadCommitDetails':
-      requireExactKeys(input, [
-        'type', 'repositoryId', 'version', 'hash', 'requestId',
-      ]);
-      return {
-        type: input.type,
-        repositoryId: requireRepositoryId(input),
-        version: requireVersion(input),
-        hash: requireCommitHash(input),
-        requestId: requireRequestId(input),
-      };
-    case 'openCommitDiff':
-      requireExactKeys(input, [
-        'type', 'repositoryId', 'version', 'hash', 'path', 'requestId',
-      ]);
-      if (!isNonEmptyString(input.path)) {
-        invalid('path');
-      }
-      return {
-        type: input.type,
-        repositoryId: requireRepositoryId(input),
-        version: requireVersion(input),
-        hash: requireCommitHash(input),
-        path: input.path,
-        requestId: requireRequestId(input),
-      };
     case 'generateCommitMessage':
       requireExactKeys(input, [
         'type',

@@ -3,14 +3,17 @@
 .gitignore
 .superpowers/**
 .serena/**
+.vscode-test
 .vscode-test/**
 coverage/**
 docs/**
 dist/test/**
 src/**
 test/**
+node_modules
 node_modules/**
 media/main.js
+media/history.js
 *.map
 eslint.config.mjs
 esbuild.mjs

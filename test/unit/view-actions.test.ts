@@ -4,7 +4,6 @@ import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import type { BuiltinGitApi } from '../../src/git/builtin-git-api.js';
 import type { RepositoryService } from '../../src/services/repository-service.js';
 import type { ChangeFileNode } from '../../src/views/change-tree-provider.js';
-import type { HistoryFileNode } from '../../src/views/history-tree-provider.js';
 
 const vscodeMocks = vi.hoisted(() => ({
   activeCommands: new Map<string, (...args: readonly unknown[]) => unknown>(),
@@ -110,24 +109,6 @@ function fileNode(fileId = 'src/job.py'): ChangeFileNode {
     repositoryId: '/workspace/repo',
     section: current.untracked ? 'untracked' : 'tracked',
     change: current,
-  };
-}
-
-function historyFileNode(
-  status: string,
-  originalPath?: string,
-): HistoryFileNode {
-  return {
-    kind: 'file',
-    repositoryId: '/workspace/repo',
-    version: 7,
-    hash: 'commit123456',
-    parentHash: 'parent123456',
-    file: {
-      status,
-      path: 'src/new.py',
-      ...(originalPath === undefined ? {} : { originalPath }),
-    },
   };
 }
 
@@ -276,68 +257,17 @@ describe('原生视图操作', () => {
     });
   });
 
-  it.each([
-    {
-      name: '修改文件',
-      node: historyFileNode('M'),
-      left: { scheme: 'git', path: '/workspace/repo/src/new.py', query: 'parent123456' },
-      right: { scheme: 'git', path: '/workspace/repo/src/new.py', query: 'commit123456' },
-    },
-    {
-      name: '新增文件',
-      node: historyFileNode('A'),
-      left: { scheme: 'gitool-empty', path: '/commit123456/src/new.py' },
-      right: { scheme: 'git', path: '/workspace/repo/src/new.py', query: 'commit123456' },
-    },
-    {
-      name: '删除文件',
-      node: historyFileNode('D'),
-      left: { scheme: 'git', path: '/workspace/repo/src/new.py', query: 'parent123456' },
-      right: { scheme: 'gitool-empty', path: '/commit123456/src/new.py' },
-    },
-    {
-      name: '重命名文件',
-      node: historyFileNode('R', 'src/old.py'),
-      left: { scheme: 'git', path: '/workspace/repo/src/old.py', query: 'parent123456' },
-      right: { scheme: 'git', path: '/workspace/repo/src/new.py', query: 'commit123456' },
-    },
-  ])('$name打开正确的历史比较', async ({ node, left, right }) => {
-    const { actions } = createHarness();
-
-    await actions.openHistoryChange(node);
-
-    expect(vscodeMocks.executeCommand).toHaveBeenCalledWith(
-      'vscode.diff',
-      expect.objectContaining(left),
-      expect.objectContaining(right),
-      expect.stringContaining('历史提交 commit1'),
-    );
-  });
-
-  it('拒绝打开过期仓库版本的历史文件', async () => {
-    const { actions } = createHarness();
-
-    await expect(actions.openHistoryChange({
-      ...historyFileNode('M'),
-      version: 6,
-    })).rejects.toThrow('仓库状态已变化，请刷新后重试');
-    expect(vscodeMocks.executeCommand).not.toHaveBeenCalled();
-  });
-
-  it('注册并释放八个原生视图命令', () => {
+  it('注册并释放五个提交工作台命令', () => {
     const { actions } = createHarness();
 
     const registrations = registerViewCommands(actions);
 
     expect([...vscodeMocks.activeCommands.keys()]).toEqual([
       'gitool.editRemote',
-      'gitool.refreshChanges',
       'gitool.trashUntracked',
       'gitool.openChange',
-      'gitool.openHistoryChange',
       'gitool.pull',
       'gitool.pushAll',
-      'gitool.refreshHistory',
     ]);
     registrations.forEach((item) => {
       item.dispose();

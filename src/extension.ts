@@ -8,7 +8,6 @@ import {
   type AiLanguageModel,
   type AiSelectedChangeContext,
 } from './services/commit-message-ai-service.js';
-import { HistoryService } from './services/history-service.js';
 import { RepositoryOperationLock } from './services/operation-lock.js';
 import { PushService } from './services/push-service.js';
 import { RemoteService } from './services/remote-service.js';
@@ -19,17 +18,11 @@ import {
   type TrashConfirmationRequest,
 } from './services/trash-service.js';
 import { GitoolViewProvider } from './webview/view-provider.js';
-import { HistoryViewProvider } from './webview/history-view-provider.js';
 import type { RepositoryViewModel } from './domain/view-model.js';
-import {
-  ChangeTreeProvider,
-  type ChangeTreeNode,
-} from './views/change-tree-provider.js';
 import {
   GitoolViewActions,
   registerViewCommands,
 } from './views/view-actions.js';
-import { PushAvailabilityContext } from './views/push-availability-context.js';
 
 interface BuiltinGitExtensionExports {
   getAPI(version: 1): unknown;
@@ -365,14 +358,6 @@ function registerErrorRuntime(
       GitoolViewProvider.viewType,
       provider,
     ));
-    disposables.push(vscode.window.registerWebviewViewProvider(
-      HistoryViewProvider.viewType,
-      provider,
-    ));
-    disposables.push(vscode.workspace.registerTextDocumentContentProvider(
-      'gitool-empty',
-      { provideTextDocumentContent: () => '' },
-    ));
     disposables.push(vscode.commands.registerCommand(
       'gitool.refresh',
       async () => {
@@ -434,8 +419,7 @@ function registerReadyRuntime(
         },
       }),
       operationLock: new RepositoryOperationLock(),
-      historyService: new HistoryService(git),
-      syncService: new SyncService(),
+      syncService: new SyncService(git),
       aiService: context.extensionMode === vscode.ExtensionMode.Test
         ? createTestAiService()
         : createAiService(git),
@@ -449,51 +433,9 @@ function registerReadyRuntime(
       aiModelSelectionStore,
     });
     disposables.push(provider);
-    const historyProvider = new HistoryViewProvider({
-      extensionUri: context.extensionUri,
-      gitApi,
-      repositoryService,
-    });
-    disposables.push(historyProvider);
-    const changeProvider = new ChangeTreeProvider(repositoryService);
-    disposables.push(changeProvider);
-    const pushAvailability = new PushAvailabilityContext(
-      repositoryService,
-      (enabled) => {
-        void vscode.commands.executeCommand(
-          'setContext',
-          'gitool.canPushAll',
-          enabled,
-        ).then(undefined, (error: unknown) => {
-          repositoryService.reportFailure(
-            '更新推送按钮状态',
-            error instanceof Error ? error.message : String(error),
-          );
-        });
-      },
-    );
-    disposables.push(pushAvailability);
-
     disposables.push(vscode.window.registerWebviewViewProvider(
       GitoolViewProvider.viewType,
       provider,
-    ));
-    const changeTree = vscode.window.createTreeView<ChangeTreeNode>(
-      'gitool.changesView',
-      {
-        treeDataProvider: changeProvider,
-        showCollapseAll: true,
-      },
-    );
-    disposables.push(changeTree);
-    disposables.push(changeProvider.bindCheckboxes(changeTree));
-    disposables.push(vscode.window.registerWebviewViewProvider(
-      HistoryViewProvider.viewType,
-      historyProvider,
-    ));
-    disposables.push(vscode.workspace.registerTextDocumentContentProvider(
-      'gitool-empty',
-      { provideTextDocumentContent: () => '' },
     ));
     const viewActions = new GitoolViewActions({
       service: repositoryService,
@@ -604,14 +546,6 @@ function registerReadyRuntime(
           });
           await repositoryService.refresh();
           return result;
-        },
-      ));
-      disposables.push(vscode.commands.registerCommand(
-        'gitool.test.refreshHistory',
-        async (): Promise<RepositoryViewModel> => {
-          const scope = currentScope();
-          await repositoryService.refreshHistory(scope);
-          return repositoryService.getViewModel();
         },
       ));
       disposables.push(vscode.commands.registerCommand(

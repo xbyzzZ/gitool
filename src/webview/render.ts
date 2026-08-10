@@ -78,21 +78,43 @@ export function renderCommitWebviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
   nonce: string,
+  fileIconThemeCss = '',
 ): string {
   return documentShell(
     webview,
     extensionUri,
     nonce,
-    'Gitool 提交信息',
+    'Gitool 提交',
     'commit.js',
-    `<main class="layout commit-layout" aria-busy="true">
-    <section class="commit-panel workbench-pane">
-      <label class="visually-hidden" for="repository-select">选择仓库</label>
-      <select id="repository-select" aria-label="选择 Git 仓库" hidden></select>
-      <p id="repository-summary" class="visually-hidden">正在读取仓库…</p>
-      <div class="pane-content commit-content">
-        <textarea id="commit-message" rows="3" placeholder="输入本次提交信息" spellcheck="true"></textarea>
-        <div class="commit-actions">
+    `<main class="layout commit-workbench" aria-busy="true">
+      <header class="commit-toolbar" aria-label="提交工具栏">
+        <div class="toolbar-group">
+          <button id="refresh-button" class="icon-button" type="button" aria-label="刷新变更" title="刷新变更"><span class="codicon codicon-refresh" aria-hidden="true"></span></button>
+          <button id="select-all-button" class="icon-button" type="button" aria-label="选择全部变更" title="选择全部变更"><span class="codicon codicon-check-all" aria-hidden="true"></span></button>
+          <button id="clear-selection-button" class="icon-button" type="button" aria-label="清空文件选择" title="清空文件选择"><span class="codicon codicon-clear-all" aria-hidden="true"></span></button>
+          <button id="trash-button" class="icon-button danger-toolbar-button" type="button" aria-label="舍弃所选未跟踪文件" title="舍弃所选未跟踪文件"><span class="codicon codicon-trash" aria-hidden="true"></span></button>
+        </div>
+        <div class="toolbar-group toolbar-group-end">
+          <button id="pull-button" class="icon-button" type="button" aria-label="从远程拉取" title="从远程拉取"><span class="codicon codicon-cloud-download" aria-hidden="true"></span></button>
+          <button id="push-all-button" class="icon-button" type="button" aria-label="推送全部本地提交" title="推送全部本地提交"><span class="codicon codicon-cloud-upload" aria-hidden="true"></span></button>
+        </div>
+      </header>
+      <section class="repository-strip" aria-label="当前仓库">
+        <label class="visually-hidden" for="repository-select">选择仓库</label>
+        <select id="repository-select" aria-label="选择 Git 仓库" hidden></select>
+        <p id="repository-summary">正在读取仓库…</p>
+      </section>
+      <section class="changes-pane" aria-label="当前变更">
+        <p id="loading-status" class="changes-status" role="status">正在读取仓库状态…</p>
+        <div id="changes-list" class="changes-list" aria-label="变更文件列表"></div>
+      </section>
+      <section class="commit-dock" aria-label="提交信息与操作">
+        <section id="operation-feedback" class="feedback" aria-label="操作反馈">
+          <p id="operation-status" class="operation-status" aria-live="polite"></p>
+          <p id="error-status" class="error-status" role="alert" hidden></p>
+          <button id="retry-push-button" class="secondary retry-push-button" type="button" aria-label="重试推送当前提交" hidden>重试推送</button>
+        </section>
+        <div class="commit-meta-row">
           <div class="ai-actions">
             <div class="ai-density-actions">
               <button id="ai-generate-button" class="ai-button commit-icon-button" type="button" aria-label="生成提交信息：标准（标题 + 2–4 条关键变化）" title="生成提交信息：标准（标题 + 2–4 条关键变化）">
@@ -110,44 +132,17 @@ export function renderCommitWebviewHtml(
               <span class="codicon codicon-chevron-down ai-model-chevron" aria-hidden="true"></span>
             </button>
           </div>
-          <div class="primary-actions">
-            <button id="commit-button" class="secondary commit-icon-button" type="button" aria-label="提交所选文件" title="仅提交">
-              <span class="codicon codicon-check" aria-hidden="true"></span>
-            </button>
-            <button id="commit-push-button" class="primary commit-icon-button" type="button" aria-label="提交并推送所选文件" title="提交并推送">
-              <span class="codicon codicon-arrow-up" aria-hidden="true"></span>
-            </button>
-          </div>
+          <p id="selection-summary" class="selection-summary">已选择 0 / 0</p>
         </div>
-        <section id="operation-feedback" class="feedback" aria-label="操作反馈">
-          <p id="loading-status" class="loading-status" role="status">正在加载仓库状态…</p>
-          <p id="operation-status" class="operation-status" aria-live="polite"></p>
-          <p id="error-status" class="error-status" role="alert" hidden></p>
-          <button id="retry-push-button" class="secondary" type="button" aria-label="重试推送当前提交" hidden>重试推送</button>
-        </section>
-      </div>
-    </section>
-  </main>`,
-  );
-}
-
-export function renderHistoryWebviewHtml(
-  webview: vscode.Webview,
-  extensionUri: vscode.Uri,
-  nonce: string,
-  fileIconThemeCss = '',
-): string {
-  return documentShell(
-    webview,
-    extensionUri,
-    nonce,
-    'Gitool 提交历史',
-    'history.js',
-    `<main class="layout history-layout" aria-busy="true">
-      <p id="sync-summary" class="visually-hidden">正在读取同步状态…</p>
-      <section class="history-panel" aria-label="提交历史">
-        <p id="history-status" class="history-status" role="status">正在读取提交历史…</p>
-        <div id="history-list" class="history-list" role="list" aria-label="提交历史列表"></div>
+        <label class="visually-hidden" for="commit-message">提交信息</label>
+        <textarea id="commit-message" rows="5" placeholder="输入本次提交信息" spellcheck="true"></textarea>
+        <footer class="commit-footer">
+          <div class="primary-actions">
+            <button id="commit-button" class="secondary commit-text-button" type="button" aria-label="提交所选文件">提交</button>
+            <button id="commit-push-button" class="secondary commit-text-button" type="button" aria-label="提交并推送所选文件">提交并推送</button>
+          </div>
+          <button id="edit-remote-button" class="icon-button" type="button" aria-label="远程仓库设置" title="远程仓库设置"><span class="codicon codicon-settings-gear" aria-hidden="true"></span></button>
+        </footer>
       </section>
     </main>`,
     fileIconThemeCss,

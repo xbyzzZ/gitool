@@ -192,7 +192,7 @@ describe('parseWebviewMessage', () => {
         requestId: 'request-1',
       },
     ],
-    ...(['refreshHistory', 'fetchHistory', 'pull', 'pushAll'] as const).map(
+    ...(['pull', 'pushAll'] as const).map(
       (type): [unknown, unknown] => [{
         type,
         repositoryId: '/repo/a',
@@ -205,56 +205,6 @@ describe('parseWebviewMessage', () => {
         requestId: 'request-2',
       }],
     ),
-    [
-      {
-        type: 'loadCommitDetails',
-        repositoryId: '/repo/a',
-        version: 7,
-        hash: 'a'.repeat(40),
-        requestId: 'request-3',
-      },
-      {
-        type: 'loadCommitDetails',
-        repositoryId: '/repo/a',
-        version: 7,
-        hash: 'a'.repeat(40),
-        requestId: 'request-3',
-      },
-    ],
-    [
-      {
-        type: 'loadCommitDetails',
-        repositoryId: '/repo/sha256',
-        version: 7,
-        hash: 'c'.repeat(64),
-        requestId: 'request-sha256',
-      },
-      {
-        type: 'loadCommitDetails',
-        repositoryId: '/repo/sha256',
-        version: 7,
-        hash: 'c'.repeat(64),
-        requestId: 'request-sha256',
-      },
-    ],
-    [
-      {
-        type: 'openCommitDiff',
-        repositoryId: '/repo/a',
-        version: 8,
-        hash: 'b'.repeat(40),
-        path: 'src/client.ts',
-        requestId: 'request-4',
-      },
-      {
-        type: 'openCommitDiff',
-        repositoryId: '/repo/a',
-        version: 8,
-        hash: 'b'.repeat(40),
-        path: 'src/client.ts',
-        requestId: 'request-4',
-      },
-    ],
     [
       {
         type: 'selectAiModel',

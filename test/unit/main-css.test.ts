@@ -23,33 +23,13 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.workbench-pane')).not.toMatch(/(?:^|;)\s*border\s*:/u);
   });
 
-  it('历史列表按多轨图、单行摘要和紧凑分支标签布局', () => {
-    expect(readRule('.history-commit-row')).toMatch(
-      /grid-template-columns:\s*max-content 14px minmax\(0, 1fr\)/u,
-    );
-    expect(readRule('.history-commit-row')).not.toContain('--graph-width');
-    expect(readRule('.history-commit-row')).toMatch(/height:\s*28px/u);
-    expect(readRule('.history-file-icon')).toMatch(/width:\s*14px/u);
-    expect(readRule('.history-file-icon')).toMatch(/height:\s*14px/u);
-    expect(readRule('.history-commit-copy')).toMatch(/align-items:\s*center/u);
-    expect(readRule('.history-subject')).toMatch(/font-weight:\s*400/u);
-    expect(readRule('.history-refs')).toMatch(/max-width:\s*min\(38%, 220px\)/u);
-    expect(readRule('.commit-ref.local')).toMatch(/max-width:\s*112px/u);
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 520px\)[\s\S]*?\.history-author\s*\{[^}]*display:\s*none/u,
-    );
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 520px\)[\s\S]*?\.history-author \+ span::before\s*\{[^}]*display:\s*none/u,
-    );
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 360px\)[\s\S]*?\.history-time\s*\{[^}]*display:\s*none/u,
-    );
-    expect(stylesheet).toMatch(
-      /@media \(max-width: 360px\)[\s\S]*?\.history-time \+ span::before\s*\{[^}]*display:\s*none/u,
-    );
-    expect(readRule('.history-list')).toMatch(/overflow:\s*auto/u);
-    expect(stylesheet).toContain('.graph-line');
-    expect(stylesheet).toContain('.commit-ref.remote');
+  it('变更列表独立滚动且文件图标保持紧凑', () => {
+    expect(readRule('.changes-pane')).toMatch(/overflow:\s*hidden/u);
+    expect(readRule('.changes-list')).toMatch(/overflow:\s*auto/u);
+    expect(readRule('.change-file-row')).toMatch(/height:\s*24px/u);
+    expect(readRule('.change-file-icon')).toMatch(/width:\s*14px/u);
+    expect(readRule('.change-file-icon')).toMatch(/height:\s*14px/u);
+    expect(readRule('.change-file-directory')).toMatch(/text-overflow:\s*ellipsis/u);
   });
 
   it('AI 生成状态由按钮自身显示加载动画', () => {
@@ -102,15 +82,24 @@ describe('工作台紧凑布局样式', () => {
     );
   });
 
-  it('提交内容在独立视图边界内滚动而不被下方视图裁切', () => {
-    expect(readRule('.commit-layout .commit-panel')).toMatch(
-      /height:\s*100%\s*!important/u,
+  it('统一工作台固定底部提交区且中间列表承担滚动', () => {
+    expect(readRule('.layout')).toMatch(/height:\s*100vh/u);
+    expect(readRule('body')).toMatch(/overflow:\s*hidden/u);
+    expect(readRule('.commit-dock')).toMatch(/flex:\s*none/u);
+    expect(readRule('.commit-dock')).toMatch(/border-top:/u);
+    expect(stylesheet).toMatch(
+      /@media \(max-height: 360px\)[\s\S]*?\.changes-pane\s*\{[^}]*min-height:\s*0/u,
     );
-    expect(readRule('.commit-layout .commit-content')).toMatch(
-      /height:\s*100%/u,
+    expect(stylesheet).toMatch(
+      /@media \(max-height: 360px\)[\s\S]*?\.commit-dock\s*\{[^}]*min-height:\s*102px/u,
     );
-    expect(readRule('.commit-layout .commit-content')).toMatch(
-      /overflow-y:\s*auto/u,
-    );
+  });
+
+  it('极窄侧栏隐藏统计但保留拉取和推送工具组', () => {
+    const narrow = /@media \(max-width: 260px\)\s*\{([\s\S]*?)\n\}/u.exec(
+      stylesheet,
+    )?.[1] ?? '';
+    expect(narrow).toContain('.selection-summary');
+    expect(narrow).not.toContain('.toolbar-group-end');
   });
 });

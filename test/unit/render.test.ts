@@ -2,7 +2,7 @@ import type * as vscode from 'vscode';
 import { describe, expect, it, vi } from 'vitest';
 import * as renderModule from '../../src/webview/render.js';
 
-const { renderCommitWebviewHtml, renderHistoryWebviewHtml } = renderModule;
+const { renderCommitWebviewHtml } = renderModule;
 
 function createWebview(): vscode.Webview {
   return {
@@ -44,7 +44,7 @@ describe('独立 Webview 壳页面', () => {
     expect(html).not.toContain("'unsafe-eval'");
   });
 
-  it('提交页面只保留现有提交内容', () => {
+  it('提交页面整合工具栏、变更列表和固定提交区', () => {
     const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
@@ -52,11 +52,16 @@ describe('独立 Webview 壳页面', () => {
     );
     expect(html).toContain('id="commit-message"');
     expect(html).toContain('提交并推送');
+    expect(html).toContain('id="changes-list"');
+    expect(html).toContain('class="commit-toolbar"');
+    expect(html).toContain('class="commit-dock"');
+    expect(html).toContain('id="selection-summary"');
+    expect(html).toContain('id="trash-button"');
+    expect(html).toContain('id="edit-remote-button"');
     expect(html).toContain('id="ai-generate-button"');
     expect(html).toContain('id="ai-model-button"');
     expect(html).toContain('id="ai-model-name"');
     expect(html).toContain('>自动选择</span>');
-    expect(html).not.toContain('id="tracked-group"');
     expect(html).not.toContain('id="history-list"');
     expect(html).not.toContain('class="pane-resizer"');
   });
@@ -76,7 +81,7 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('ai-density-loading');
   });
 
-  it('提交操作使用固定 Codicon 且不显示可折行文字', () => {
+  it('提交操作使用 PyCharm 风格文字按钮', () => {
     const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
@@ -85,12 +90,9 @@ describe('独立 Webview 壳页面', () => {
 
     expect(html).toContain('codicon-chevron-down');
     expect(html).not.toContain('codicon-hubot');
-    expect(html).toContain('codicon-check');
-    expect(html).toContain('codicon-arrow-up');
-    expect(html).not.toContain('codicon-git-commit');
-    expect(html).not.toContain('codicon-cloud-upload');
-    expect(html).not.toContain('>仅提交</button>');
-    expect(html).not.toContain('>提交并推送</button>');
+    expect(html).toContain('>提交</button>');
+    expect(html).toContain('>提交并推送</button>');
+    expect(html).toContain('codicon-cloud-upload');
   });
 
   it('生成内容按钮委托宿主选择且不渲染受视图高度限制的菜单', () => {
@@ -105,19 +107,8 @@ describe('独立 Webview 壳页面', () => {
     expect(html).not.toContain('role="menuitemradio"');
   });
 
-  it('历史页面使用独立脚本和列表壳', () => {
-    const html = renderHistoryWebviewHtml(
-      createWebview(),
-      createExtensionUri(),
-      'nonce-123',
-    );
-    expect(html).toContain('id="history-list"');
-    expect(html).toContain('/media/history.js');
-    expect(html).not.toContain('id="commit-message"');
-  });
-
-  it('历史文件图标主题使用 nonce 样式且不放宽内联脚本策略', () => {
-    const html = renderHistoryWebviewHtml(
+  it('当前文件图标主题使用 nonce 样式且不放宽内联脚本策略', () => {
+    const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
@@ -128,13 +119,14 @@ describe('独立 Webview 壳页面', () => {
     expect(html).not.toContain("'unsafe-inline'");
   });
 
-  it('不再生成由原生视图标题栏承载的内部工具栏', () => {
+  it('生成面向单一工作台的内部工具栏', () => {
     const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
     );
-    expect(html).not.toContain('id="edit-remote-button"');
+    expect(html).toContain('id="edit-remote-button"');
+    expect(html).toContain('id="refresh-button"');
     expect(html).not.toContain('class="pane-header"');
     expect(html).not.toContain('>⋯</button>');
   });

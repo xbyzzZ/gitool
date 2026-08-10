@@ -1,6 +1,6 @@
 ---
 feature: pycharm-commit-workbench-0.3
-status: designed
+status: in-progress
 updated: 2026-08-10
 branch: codex/pycharm-commit-0.3
 commits: 待交付

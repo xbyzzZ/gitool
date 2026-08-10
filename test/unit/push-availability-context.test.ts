@@ -34,7 +34,7 @@ function model(
   };
 }
 
-describe('历史区推送可用状态', () => {
+describe('提交工作台推送可用状态', () => {
   it.each([
     ['没有远程', { hasRemote: false }],
     ['工作区未信任', { trusted: false }],

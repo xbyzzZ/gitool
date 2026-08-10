@@ -1,4 +1,7 @@
 import type { BuiltinRepository } from '../git/builtin-git-api.js';
+import type { AheadBehind } from '../domain/history-model.js';
+import type { GitRunner } from '../git/git-runner.js';
+import { parseAheadBehind } from './ahead-behind.js';
 import type { PushResult } from './push-service.js';
 
 export interface PushAllRequest {
@@ -17,6 +20,32 @@ function currentBranch(repository: BuiltinRepository): string {
 }
 
 export class SyncService {
+  constructor(private readonly git?: GitRunner) {}
+
+  async aheadBehind(repositoryRoot: string): Promise<AheadBehind> {
+    if (this.git === undefined) {
+      throw new Error('Git 命令服务尚未配置');
+    }
+    const upstreamResult = await this.git.run(repositoryRoot, [
+      'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}',
+    ], { allowFailure: true });
+    if (upstreamResult.exitCode !== 0) {
+      return { kind: 'no-upstream' };
+    }
+    const upstream = upstreamResult.stdout.trim();
+    if (upstream.length === 0) {
+      throw new Error('Git 上游名称为空');
+    }
+    const countResult = await this.git.runForMachineParsing(repositoryRoot, [
+      'rev-list', '--left-right', '--count', 'HEAD...@{upstream}',
+    ]);
+    return {
+      kind: 'ready',
+      upstream,
+      ...parseAheadBehind(countResult.rawStdout),
+    };
+  }
+
   async fetch(repository: BuiltinRepository): Promise<void> {
     await repository.fetch();
   }
