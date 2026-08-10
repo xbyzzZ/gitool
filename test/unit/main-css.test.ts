@@ -31,6 +31,7 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('.history-commit-row')).toMatch(/height:\s*28px/u);
     expect(readRule('.history-file-icon')).toMatch(/width:\s*16px/u);
     expect(readRule('.history-commit-copy')).toMatch(/align-items:\s*center/u);
+    expect(readRule('.history-subject')).toMatch(/font-weight:\s*400/u);
     expect(readRule('.history-refs')).toMatch(/max-width:\s*min\(38%, 220px\)/u);
     expect(readRule('.commit-ref.local')).toMatch(/max-width:\s*112px/u);
     expect(stylesheet).toMatch(
