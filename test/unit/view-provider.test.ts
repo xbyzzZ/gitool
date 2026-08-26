@@ -222,6 +222,7 @@ interface ViewHarness {
   readonly view: vscode.WebviewView;
   readonly receive: (message: unknown) => void;
   readonly postMessage: ReturnType<typeof vi.fn>;
+  readonly emitVisibility: (visible: boolean) => void;
 }
 
 function createViewHarness(options: {
@@ -250,10 +251,21 @@ function createViewHarness(options: {
       }
     },
   });
-  const view = {
+  const visibilityListeners = new Set<() => unknown>();
+  const viewState = {
     webview,
+    visible: true,
+    onDidChangeVisibility: (listener: () => unknown) => {
+      visibilityListeners.add(listener);
+      return {
+        dispose: () => {
+          visibilityListeners.delete(listener);
+        },
+      };
+    },
     onDidDispose: () => ({ dispose: vi.fn() }),
-  } as unknown as vscode.WebviewView;
+  };
+  const view = viewState as unknown as vscode.WebviewView;
   return {
     view,
     postMessage,
@@ -262,6 +274,12 @@ function createViewHarness(options: {
         throw new Error('Webview 消息监听器尚未注册');
       }
       messageListener(message);
+    },
+    emitVisibility: (visible: boolean) => {
+      viewState.visible = visible;
+      for (const listener of visibilityListeners) {
+        listener();
+      }
     },
   };
 }
@@ -369,6 +387,22 @@ describe('GitoolViewProvider', () => {
     expect(harness.view.webview.options.localResourceRoots).toContainEqual(
       expect.objectContaining({ fsPath: '/theme/latest' }),
     );
+  });
+
+  it('视图重新可见时刷新当前仓库快照', async () => {
+    const created = createServiceDouble();
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    await provider.resolveWebviewView(harness.view);
+    created.refresh.mockClear();
+
+    harness.emitVisibility(false);
+    expect(created.refresh).not.toHaveBeenCalled();
+
+    harness.emitVisibility(true);
+    await vi.waitFor(() => {
+      expect(created.refresh).toHaveBeenCalledOnce();
+    });
   });
 
   it('Webview 首次就绪时只刷新当前仓库快照', async () => {

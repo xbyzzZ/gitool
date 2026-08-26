@@ -436,6 +436,7 @@ function registerReadyRuntime(
     disposables.push(vscode.window.registerWebviewViewProvider(
       GitoolViewProvider.viewType,
       provider,
+      { webviewOptions: { retainContextWhenHidden: true } },
     ));
     const viewActions = new GitoolViewActions({
       service: repositoryService,

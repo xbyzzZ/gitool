@@ -255,6 +255,26 @@ describe('RepositoryService', () => {
     expect(service.getViewModel().hasHeadCommit).toBe(true);
   });
 
+  it('启动时已打开的仓库会自动读取文件状态', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root);
+    repository.onStatus(() => {
+      repository.setChanges({
+        working: [change(root, 'changed.ts')],
+      });
+    });
+    const { service } = createService([repository]);
+
+    await vi.waitFor(() => {
+      expect(service.getViewModel()).toMatchObject({
+        currentRepositoryId: root,
+        changeCount: 1,
+        changes: [{ id: 'changed.ts' }],
+      });
+    });
+    expect(repository.statusCalls).toBeGreaterThanOrEqual(1);
+  });
+
   it('服务启动后才打开的首个仓库会自动读取文件状态和提交历史', async () => {
     const root = '/workspace/repo-a';
     const repository = new TestRepository(root);
@@ -622,7 +642,7 @@ describe('RepositoryService', () => {
       selectedIds: ['a.ts'],
     })).resolves.toMatchObject({ commitHash: 'abc123' });
 
-    expect(repository.statusCalls).toBe(1);
+    expect(repository.statusCalls).toBe(2);
     expect(commit).toHaveBeenCalledTimes(1);
   });
 
@@ -646,7 +666,7 @@ describe('RepositoryService', () => {
       selectedIds: ['a.ts'],
     })).rejects.toThrow('仓库状态已变化，请刷新后重试');
 
-    expect(repository.statusCalls).toBe(1);
+    expect(repository.statusCalls).toBe(2);
     expect(commit).not.toHaveBeenCalled();
     expect(service.getViewModel()).toMatchObject({
       version: 1,
@@ -677,7 +697,7 @@ describe('RepositoryService', () => {
       fileIds: ['a.ts'],
     })).rejects.toThrow('仓库状态已变化，请刷新后重试');
 
-    expect(repository.statusCalls).toBe(1);
+    expect(repository.statusCalls).toBe(2);
     expect(trash).not.toHaveBeenCalled();
   });
 
@@ -698,7 +718,7 @@ describe('RepositoryService', () => {
       selectedIds: ['a.ts'],
     })).rejects.toThrow('仓库状态已变化，请刷新后重试');
 
-    expect(repository.statusCalls).toBe(1);
+    expect(repository.statusCalls).toBe(2);
     expect(commit).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
     expect(service.getViewModel()).toMatchObject({
@@ -742,7 +762,7 @@ describe('RepositoryService', () => {
       version: 0,
     })).rejects.toThrow('仓库状态已变化，请刷新后重试');
 
-    expect(repository.statusCalls).toBe(3);
+    expect(repository.statusCalls).toBe(4);
     expect(push).toHaveBeenCalledTimes(1);
   });
 

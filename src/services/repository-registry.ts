@@ -223,6 +223,16 @@ export class RepositoryRegistry implements vscode.Disposable {
     return state;
   }
 
+  async primeOpenRepository(id: string): Promise<void> {
+    const state = this.repositories.get(id);
+    if (state === undefined) {
+      throw new Error('仓库不存在或已关闭');
+    }
+    if (await this.refreshSnapshot(state)) {
+      this.notifyChange();
+    }
+  }
+
   async refreshAndValidateWriteSnapshot(
     id: string,
     expectedVersion: number,
@@ -435,12 +445,12 @@ export class RepositoryRegistry implements vscode.Disposable {
     return true;
   }
 
-  private async refreshSnapshot(state: RepositoryContext): Promise<void> {
+  private async refreshSnapshot(state: RepositoryContext): Promise<boolean> {
     await state.repository.status();
     if (this.repositories.get(state.id) !== state) {
       throw new Error('仓库不存在或已关闭');
     }
-    this.synchronizeStateIfChanged(state, true);
+    return this.synchronizeStateIfChanged(state, true);
   }
 
   private applySnapshot(

@@ -154,6 +154,13 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.updateViewMetadata();
         void this.postState();
       }),
+      webviewView.onDidChangeVisibility(() => {
+        if (webviewView.visible) {
+          void this.refreshVisibleRepository().catch((error: unknown) => {
+            this.reportError('刷新', error);
+          });
+        }
+      }),
       webviewView.onDidDispose(() => {
         this.disposeView();
       }),
@@ -258,14 +265,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     const service = this.dependencies.repositoryService;
     switch (message.type) {
       case 'ready':
-        {
-          const model = service.getViewModel();
-          if (model.currentRepositoryId === undefined) {
-            await this.postState();
-          } else {
-            await service.refresh();
-          }
-        }
+        await this.refreshVisibleRepository();
         return;
       case 'refresh':
         await service.refresh();
@@ -565,6 +565,15 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     ) {
       throw new Error('推送上下文缺少已创建提交的哈希');
     }
+  }
+
+  private async refreshVisibleRepository(): Promise<void> {
+    const service = this.dependencies.repositoryService;
+    if (service.getViewModel().currentRepositoryId === undefined) {
+      await this.postState();
+      return;
+    }
+    await service.refresh();
   }
 
   private async postState(

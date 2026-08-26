@@ -21,6 +21,7 @@
     "SCM Providers"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onView:gitool.commitView",
     "onCommand:gitool.refresh"
   ],

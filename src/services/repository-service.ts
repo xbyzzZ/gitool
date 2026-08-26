@@ -98,16 +98,25 @@ export class RepositoryService {
     );
     this.lifecycleListeners.push(
       this.registry.onDidAddRepository((id) => {
-        void this.initializeOpenedRepository(id).catch((error: unknown) => {
-          if (this.registry.get(id) !== undefined) {
+        this.queueOpenedRepositoryInitialization(id);
+      }),
+    );
+    // Registry 构造时就会登记已打开仓库并触发 onDidAddRepository，
+    // 但当时本服务还没挂上监听。内置 Git 会在仓库打开后才异步排队
+    // git status，因此必须补一次快照拉取，否则工作台会显示空变更，
+    // 直到用户打开 SCM 视图。
+    for (const repository of this.getViewModel().repositories) {
+      void this.registry.primeOpenRepository(repository.id).catch(
+        (error: unknown) => {
+          if (this.registry.get(repository.id) !== undefined) {
             this.registry.reportFailure(
               '初始化仓库',
               this.errorMessage(error),
             );
           }
-        });
-      }),
-    );
+        },
+      );
+    }
     this.writeCoordinator = new RepositoryWriteCoordinator({
       registry: this.registry,
       commitService: dependencies.commitService,
@@ -399,6 +408,17 @@ export class RepositoryService {
     }
     this.writeCoordinator.dispose();
     this.registry.dispose();
+  }
+
+  private queueOpenedRepositoryInitialization(id: string): void {
+    void this.initializeOpenedRepository(id).catch((error: unknown) => {
+      if (this.registry.get(id) !== undefined) {
+        this.registry.reportFailure(
+          '初始化仓库',
+          this.errorMessage(error),
+        );
+      }
+    });
   }
 
   private async initializeOpenedRepository(id: string): Promise<void> {

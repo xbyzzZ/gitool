@@ -42,6 +42,10 @@ describe('扩展贡献点', () => {
     expect(manifest.icon).toBe('media/logo.png');
   });
 
+  it('窗口就绪后即激活，不必先点开提交视图', () => {
+    expect(manifest.activationEvents).toContain('onStartupFinished');
+  });
+
   it('0.3 只贡献统一提交工作台', () => {
     expect(manifest.contributes.views.gitool).toEqual([
       { type: 'webview', id: 'gitool.commitView', name: '提交' },
