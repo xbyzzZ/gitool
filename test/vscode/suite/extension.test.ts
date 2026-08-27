@@ -80,6 +80,24 @@ async function git(
 }
 
 suite('Gitool 扩展', () => {
+  test('激活后即可读取变更数，不必先打开提交视图', async () => {
+    const extension = vscode.extensions.getExtension(
+      'gitool.gitool-file-commit',
+    );
+    assert.ok(extension, '扩展应存在');
+    await extension.activate();
+
+    const state = await waitForState(
+      (candidate) => candidate.repositories.length === 2
+        && candidate.changeCount > 0,
+    );
+    assert.equal(
+      state.changeCount,
+      state.changes.length,
+      '未打开提交视图时也应能得到当前仓库全部变更文件数',
+    );
+  });
+
   test('可以激活并只注册统一提交工作台命令', async () => {
     const extension = vscode.extensions.getExtension(
       'gitool.gitool-file-commit',

@@ -46,4 +46,5 @@ export interface BuiltinGitApi {
   readonly onDidOpenRepository: vscode.Event<BuiltinRepository>;
   readonly onDidCloseRepository: vscode.Event<BuiltinRepository>;
   toGitUri(uri: vscode.Uri, ref: string): vscode.Uri;
+  openRepository(root: vscode.Uri): Promise<BuiltinRepository | null>;
 }

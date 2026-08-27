@@ -66,6 +66,7 @@ export interface RepositoryServiceDependencies {
     }, signal?: AbortSignal): Promise<GenerateCommitMessageResult>;
   };
   readonly isWorkspaceTrusted: () => boolean;
+  readonly workspaceFolders?: () => readonly vscode.Uri[];
 }
 
 export interface GenerateRepositoryCommitMessageRequest
@@ -103,8 +104,10 @@ export class RepositoryService {
     );
     // Registry 构造时就会登记已打开仓库并触发 onDidAddRepository，
     // 但当时本服务还没挂上监听。内置 Git 会在仓库打开后才异步排队
-    // git status，因此必须补一次快照拉取，否则工作台会显示空变更，
-    // 直到用户打开 SCM 视图。
+    // git status，因此必须补一次快照拉取。
+    // 更关键的是：Git 首次扫描用 SourceControl 进度，可能一直等到
+    // 用户打开内置 Git 视图才真正 openRepository。工作区文件夹必须
+    // 由 Gitool 主动打开，不能依赖这次扫描。
     for (const repository of this.getViewModel().repositories) {
       void this.registry.primeOpenRepository(repository.id).catch(
         (error: unknown) => {
@@ -117,6 +120,12 @@ export class RepositoryService {
         },
       );
     }
+    void this.ensureWorkspaceRepositories().catch((error: unknown) => {
+      this.registry.reportFailure(
+        '打开工作区仓库',
+        this.errorMessage(error),
+      );
+    });
     this.writeCoordinator = new RepositoryWriteCoordinator({
       registry: this.registry,
       commitService: dependencies.commitService,
@@ -179,6 +188,20 @@ export class RepositoryService {
       }).catch(() => undefined);
     }
     return model;
+  }
+
+  async ensureWorkspaceRepositories(): Promise<void> {
+    const folders = this.dependencies.workspaceFolders?.() ?? [];
+    if (folders.length === 0) {
+      return;
+    }
+    await Promise.all(
+      folders.map((folder) => this.dependencies.gitApi.openRepository(folder)),
+    );
+    await Promise.all(
+      this.getViewModel().repositories.map((repository) =>
+        this.registry.primeOpenRepository(repository.id)),
+    );
   }
 
   async refresh(): Promise<RepositoryViewModel> {

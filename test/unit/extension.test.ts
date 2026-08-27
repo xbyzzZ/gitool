@@ -1,6 +1,9 @@
 import type * as vscode from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BuiltinGitApi } from '../../src/git/builtin-git-api.js';
+import type {
+  BuiltinGitApi,
+  BuiltinRepository,
+} from '../../src/git/builtin-git-api.js';
 
 interface RegistrationState {
   readonly activeCommands: Map<string, vscode.Disposable>;
@@ -78,6 +81,7 @@ const mocks = vi.hoisted(() => {
         id,
       );
       return {
+        badge: undefined as vscode.ViewBadge | undefined,
         description: undefined,
         onDidChangeCheckboxState: vi.fn(() => ({ dispose: vi.fn() })),
         dispose: () => {
@@ -115,6 +119,9 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('vscode', () => ({
   EventEmitter: mocks.EventEmitter,
+  TreeItem: class TreeItem {
+    constructor(readonly label: string) {}
+  },
   commands: {
     registerCommand: mocks.registerCommand,
     executeCommand: mocks.executeCommand,
@@ -139,8 +146,10 @@ vi.mock('vscode', () => ({
   workspace: {
     fs: { delete: mocks.deleteFile },
     isTrusted: true,
+    workspaceFolders: undefined,
     onDidGrantWorkspaceTrust: mocks.onDidGrantWorkspaceTrust,
     onDidChangeConfiguration: mocks.onDidChangeConfiguration,
+    onDidChangeWorkspaceFolders: vi.fn(() => ({ dispose: vi.fn() })),
     registerTextDocumentContentProvider:
       mocks.registerTextDocumentContentProvider,
   },
@@ -165,10 +174,12 @@ function eventFor(
   };
 }
 
-function gitApi(): BuiltinGitApi {
+function gitApi(
+  repositories: readonly BuiltinRepository[] = [],
+): BuiltinGitApi {
   return {
     git: { path: '/usr/bin/git' },
-    repositories: [],
+    repositories,
     onDidOpenRepository: eventFor(
       mocks.state.gitOpenListeners,
     ) as vscode.Event<never>,
@@ -176,6 +187,33 @@ function gitApi(): BuiltinGitApi {
       mocks.state.gitCloseListeners,
     ) as vscode.Event<never>,
     toGitUri: (uri) => uri,
+    openRepository: () => Promise.resolve(null),
+  };
+}
+
+function repositoryWithChanges(
+  root = '/workspace/repo',
+  files: readonly string[] = ['a.ts', 'b.ts'],
+): BuiltinRepository {
+  return {
+    rootUri: { fsPath: root } as vscode.Uri,
+    state: {
+      HEAD: { name: 'main' },
+      remotes: [],
+      indexChanges: [],
+      workingTreeChanges: files.map((path) => ({
+        uri: { fsPath: `${root}/${path}` } as vscode.Uri,
+        status: 5,
+      })),
+      untrackedChanges: [],
+      mergeChanges: [],
+      onDidChange: () => ({ dispose: vi.fn() }),
+    },
+    status: () => Promise.resolve(),
+    fetch: () => Promise.resolve(),
+    pull: () => Promise.resolve(),
+    push: () => Promise.resolve(),
+    setBranchUpstream: () => Promise.resolve(),
   };
 }
 
@@ -231,6 +269,24 @@ beforeEach(() => {
 });
 
 describe('扩展激活', () => {
+  it('激活后立刻把变更数写到活动栏徽标，不必先解析提交视图', async () => {
+    mocks.state.gitExtension = gitExtension(() => ({
+      getAPI: () => gitApi([repositoryWithChanges()]),
+    }));
+
+    const runtime = await activate(context());
+
+    expect(runtime.mode).toBe('ready');
+    expect(mocks.createTreeView).toHaveBeenCalledOnce();
+    expect(mocks.createTreeView.mock.results[0]?.value).toMatchObject({
+      badge: {
+        value: 2,
+        tooltip: 'Gitool：2 个变更文件',
+      },
+    });
+    expect(mocks.state.registeredProviders).toHaveLength(1);
+  });
+
   it('正常激活只注册统一提交工作台', async () => {
     mocks.state.gitExtension = gitExtension(() => ({
       getAPI: () => gitApi(),
@@ -241,11 +297,14 @@ describe('扩展激活', () => {
     expect(runtime.mode).toBe('ready');
     expect([...mocks.state.activeViews.keys()]).toEqual([
       'gitool.commitView',
+      'gitool.activityBadge',
     ]);
     expect(mocks.state.registeredWebviewIds).toEqual([
       'gitool.commitView',
     ]);
-    expect(mocks.createTreeView).not.toHaveBeenCalled();
+    expect(mocks.createTreeView.mock.calls[0]?.[0]).toBe(
+      'gitool.activityBadge',
+    );
   });
 
   it('内置 Git 缺失时进入 Git 不可用模式', async () => {
@@ -313,6 +372,7 @@ describe('扩展激活', () => {
 
     expect(runtime.mode).toBe('initialization-failed');
     expect(mocks.state.viewDisposals).toEqual([
+      'gitool.activityBadge',
       'gitool.commitView',
     ]);
     expect(mocks.state.commandDisposals).toEqual([
@@ -339,7 +399,7 @@ describe('扩展激活', () => {
 
     const nextRuntime: GitoolRuntime = await activate(context());
     expect(nextRuntime.mode).toBe('ready');
-    expect(mocks.state.activeViews.size).toBe(1);
+    expect(mocks.state.activeViews.size).toBe(2);
     expect(mocks.state.activeCommands.size).toBe(6);
     expect([...mocks.state.activeContentProviders.keys()]).toEqual([]);
     expect(mocks.state.contentProviderDisposals).toEqual([]);

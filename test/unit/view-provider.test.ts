@@ -127,6 +127,7 @@ interface ServiceDouble {
   readonly setRemoteUrl: ReturnType<typeof vi.fn>;
   readonly addRemote: ReturnType<typeof vi.fn>;
   readonly refresh: ReturnType<typeof vi.fn>;
+  readonly ensureWorkspaceRepositories: ReturnType<typeof vi.fn>;
   readonly refreshHistory: ReturnType<typeof vi.fn>;
   readonly loadCommitDetails: ReturnType<typeof vi.fn>;
   readonly fetchHistory: ReturnType<typeof vi.fn>;
@@ -147,6 +148,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
   const setRemoteUrl = vi.fn();
   const addRemote = vi.fn();
   const refresh = vi.fn().mockResolvedValue(initialModel);
+  const ensureWorkspaceRepositories = vi.fn().mockResolvedValue(undefined);
   const refreshHistory = vi.fn().mockResolvedValue(undefined);
   const loadCommitDetails = vi.fn();
   const fetchHistory = vi.fn().mockResolvedValue(undefined);
@@ -172,6 +174,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     reportFailure,
     reportPushFailure: vi.fn().mockReturnValue(true),
     refresh,
+    ensureWorkspaceRepositories,
     selectRepository: vi.fn(),
     setFileSelected: vi.fn(),
     setGroup: vi.fn(),
@@ -202,6 +205,7 @@ function createServiceDouble(initialModel = model()): ServiceDouble {
     reportFailure,
     setRemoteUrl,
     addRemote,
+    ensureWorkspaceRepositories,
     refresh,
     refreshHistory,
     loadCommitDetails,
@@ -328,6 +332,36 @@ beforeEach(() => {
 });
 
 describe('GitoolViewProvider', () => {
+  it('解析视图时立即写入工作台 HTML，不等待文件图标主题', async () => {
+    let resolveTheme: ((theme: {
+      readonly css: string;
+      readonly classForPath: () => string;
+      readonly localResourceRoots: readonly vscode.Uri[];
+    }) => void) | undefined;
+    const load = vi.fn().mockReturnValue(new Promise((resolve) => {
+      resolveTheme = resolve;
+    }));
+    const provider = createProvider(
+      createServiceDouble().service,
+      createSelectionStore(),
+      load,
+    );
+    const harness = createViewHarness();
+
+    await provider.resolveWebviewView(harness.view);
+
+    expect(harness.view.webview.html).toContain('commit-workbench');
+    expect(harness.view.webview.html).not.toContain('.theme-late {}');
+    resolveTheme?.({
+      css: '.theme-late {}',
+      classForPath: () => 'theme-late',
+      localResourceRoots: [uri('/theme/late')],
+    });
+    await vi.waitFor(() => {
+      expect(harness.view.webview.html).toContain('.theme-late {}');
+    });
+  });
+
   it('在写入 Webview HTML 前注册消息监听以接住首次 ready', async () => {
     const created = createServiceDouble();
     const provider = createProvider(created.service);
@@ -414,22 +448,44 @@ describe('GitoolViewProvider', () => {
     harness.receive({ type: 'ready' });
 
     await vi.waitFor(() => {
+      expect(created.ensureWorkspaceRepositories).toHaveBeenCalledOnce();
       expect(created.refresh).toHaveBeenCalledOnce();
     });
     expect(created.refreshHistory).not.toHaveBeenCalled();
   });
 
-  it('在活动栏徽标显示当前仓库改动文件数并在清空后移除', async () => {
+  it('没有当前仓库时先打开工作区仓库再刷新', async () => {
+    const { currentRepositoryId: _unused, ...withoutRepository } = model({
+      repositories: [],
+      changes: [],
+      selectedIds: [],
+      changeCount: 0,
+    });
+    void _unused;
+    const created = createServiceDouble(withoutRepository);
+    created.ensureWorkspaceRepositories.mockImplementation(() => {
+      created.getViewModel.mockReturnValue(model());
+    });
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    await provider.resolveWebviewView(harness.view);
+
+    harness.receive({ type: 'ready' });
+
+    await vi.waitFor(() => {
+      expect(created.ensureWorkspaceRepositories).toHaveBeenCalledOnce();
+      expect(created.refresh).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('提交视图标题旁显示当前仓库改动文件数并在清空后移除', async () => {
     const created = createServiceDouble(model({ changeCount: 4 }));
     const provider = createProvider(created.service);
     const harness = createViewHarness();
 
     await provider.resolveWebviewView(harness.view);
 
-    expect(harness.view.badge).toEqual({
-      value: 4,
-      tooltip: 'Gitool：4 个变更文件',
-    });
+    expect(harness.view.description).toBe('4 个变更');
 
     created.getViewModel.mockReturnValue(model({
       changes: [],
@@ -438,7 +494,7 @@ describe('GitoolViewProvider', () => {
     }));
     created.fireChange();
     await vi.waitFor(() => {
-      expect(harness.view.badge).toBeUndefined();
+      expect(harness.view.description).toBe('');
     });
   });
 

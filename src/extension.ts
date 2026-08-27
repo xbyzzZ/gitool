@@ -19,6 +19,7 @@ import {
 } from './services/trash-service.js';
 import { GitoolViewProvider } from './webview/view-provider.js';
 import type { RepositoryViewModel } from './domain/view-model.js';
+import { ActivityBadge } from './views/activity-badge.js';
 import {
   GitoolViewActions,
   registerViewCommands,
@@ -227,26 +228,38 @@ function escapeHtml(value: string): string {
     .replaceAll('\'', '&#39;');
 }
 
+function renderStaticWebviewHtml(
+  title: string,
+  heading: string,
+  message: string,
+): string {
+  return [
+    '<!doctype html>',
+    '<html lang="zh-CN">',
+    '<head>',
+    '<meta charset="UTF-8">',
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+    `<title>${escapeHtml(title)}</title>`,
+    '</head>',
+    '<body>',
+    `<h2>${escapeHtml(heading)}</h2>`,
+    `<p>${escapeHtml(message)}</p>`,
+    '</body>',
+    '</html>',
+  ].join('');
+}
+
 class ErrorViewProvider implements vscode.WebviewViewProvider {
   constructor(private readonly content: ErrorViewContent) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
     view.webview.options = { enableScripts: false };
-    view.webview.html = [
-      '<!doctype html>',
-      '<html lang="zh-CN">',
-      '<head>',
-      '<meta charset="UTF-8">',
-      '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';">',
-      '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-      `<title>${escapeHtml(this.content.title)}</title>`,
-      '</head>',
-      '<body>',
-      `<h2>${escapeHtml(this.content.heading)}</h2>`,
-      `<p>${escapeHtml(this.content.message)}</p>`,
-      '</body>',
-      '</html>',
-    ].join('');
+    view.webview.html = renderStaticWebviewHtml(
+      this.content.title,
+      this.content.heading,
+      this.content.message,
+    );
   }
 }
 
@@ -269,6 +282,7 @@ function isBuiltinGitApi(value: unknown): value is BuiltinGitApi {
     readonly onDidOpenRepository?: unknown;
     readonly onDidCloseRepository?: unknown;
     readonly toGitUri?: unknown;
+    readonly openRepository?: unknown;
   };
   const git = candidate.git;
   return typeof git === 'object'
@@ -277,7 +291,8 @@ function isBuiltinGitApi(value: unknown): value is BuiltinGitApi {
     && Array.isArray(candidate.repositories)
     && typeof candidate.onDidOpenRepository === 'function'
     && typeof candidate.onDidCloseRepository === 'function'
-    && typeof candidate.toGitUri === 'function';
+    && typeof candidate.toGitUri === 'function'
+    && typeof candidate.openRepository === 'function';
 }
 
 type GitApiAcquisition =
@@ -407,6 +422,10 @@ function registerReadyRuntime(
     const aiModelSelectionStore = new AiModelSelectionStore(
       context.workspaceState,
     );
+    const workspaceFolders = (): readonly vscode.Uri[] =>
+      (vscode.workspace.workspaceFolders ?? [])
+        .filter((folder) => folder.uri.scheme === 'file')
+        .map((folder) => folder.uri);
     const repositoryService = new RepositoryService({
       gitApi,
       commitService: new CommitService(git),
@@ -424,8 +443,19 @@ function registerReadyRuntime(
         ? createTestAiService()
         : createAiService(git),
       isWorkspaceTrusted: () => vscode.workspace.isTrusted,
+      workspaceFolders,
     });
     disposables.push(repositoryService);
+    disposables.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      void repositoryService.ensureWorkspaceRepositories().catch(
+        (error: unknown) => {
+          const message = errorMessage(error);
+          if (!repositoryService.reportFailure('打开工作区仓库', message)) {
+            void vscode.window.showErrorMessage(`Gitool：${message}`);
+          }
+        },
+      );
+    }));
     const provider = new GitoolViewProvider({
       extensionUri: context.extensionUri,
       gitApi,
@@ -438,6 +468,7 @@ function registerReadyRuntime(
       provider,
       { webviewOptions: { retainContextWhenHidden: true } },
     ));
+    disposables.push(new ActivityBadge(repositoryService));
     const viewActions = new GitoolViewActions({
       service: repositoryService,
       gitApi,

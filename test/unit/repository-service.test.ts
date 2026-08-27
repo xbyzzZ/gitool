@@ -137,11 +137,23 @@ class TestGitApi implements BuiltinGitApi {
   readonly closed = createEvent<BuiltinRepository>();
   readonly onDidOpenRepository = this.opened.event;
   readonly onDidCloseRepository = this.closed.event;
+  readonly openCalls: vscode.Uri[] = [];
+  openImpl: ((root: vscode.Uri) => Promise<BuiltinRepository | null>) | undefined;
 
   constructor(readonly repositories: readonly BuiltinRepository[]) {}
 
   toGitUri(value: vscode.Uri): vscode.Uri {
     return value;
+  }
+
+  async openRepository(root: vscode.Uri): Promise<BuiltinRepository | null> {
+    this.openCalls.push(root);
+    if (this.openImpl !== undefined) {
+      return await this.openImpl(root);
+    }
+    return this.repositories.find(
+      (repository) => repository.rootUri.fsPath === root.fsPath,
+    ) ?? null;
   }
 }
 
@@ -153,6 +165,7 @@ function createService(
   repositories: readonly BuiltinRepository[],
   trusted = true,
   overrides: Partial<RepositoryServiceDependencies> = {},
+  configureGitApi?: (gitApi: TestGitApi) => void,
 ): {
   readonly service: RepositoryService;
   readonly commit: ReturnType<typeof vi.fn>;
@@ -185,6 +198,7 @@ function createService(
     url: 'https://example.test/repo.git',
   });
   const gitApi = new TestGitApi(repositories);
+  configureGitApi?.(gitApi);
   const service = new RepositoryService({
     gitApi,
     selectionStore: new SelectionStore(),
@@ -253,6 +267,35 @@ describe('RepositoryService', () => {
     await service.refresh();
 
     expect(service.getViewModel().hasHeadCommit).toBe(true);
+  });
+
+  it('Git 尚未扫描仓库时会主动打开工作区文件夹并读取变更', async () => {
+    const root = '/workspace/repo-a';
+    const repository = new TestRepository(root);
+    repository.onStatus(() => {
+      repository.setChanges({
+        working: [change(root, 'changed.ts')],
+      });
+    });
+    const folder = uri(root);
+    const { service, gitApi } = createService([], true, {
+      workspaceFolders: () => [folder],
+    }, (api) => {
+      api.openImpl = () => {
+        api.opened.fire(repository);
+        return Promise.resolve(repository);
+      };
+    });
+
+    await vi.waitFor(() => {
+      expect(service.getViewModel()).toMatchObject({
+        currentRepositoryId: root,
+        changeCount: 1,
+        changes: [{ id: 'changed.ts' }],
+      });
+    });
+    expect(gitApi.openCalls).toEqual([folder]);
+    expect(repository.statusCalls).toBeGreaterThanOrEqual(1);
   });
 
   it('启动时已打开的仓库会自动读取文件状态', async () => {

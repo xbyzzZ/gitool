@@ -121,6 +121,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   private readonly viewActions: GitoolViewActions;
   private disposed = false;
   private themeLoadSequence = 0;
+  private clientReady = false;
   private fileIconTheme: Pick<LoadedFileIconTheme, 'classForPath'> = {
     classForPath: () => undefined,
   };
@@ -142,10 +143,18 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     );
   }
 
+  // 必须立刻写入 HTML，不能 await 图标主题；否则首屏空白，要点第二次才出变更。
+  // eslint-disable-next-line @typescript-eslint/require-await
   async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
     this.disposeView();
     this.view = webviewView;
     this.webview = webviewView.webview;
+    this.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.dependencies.extensionUri, 'media'),
+      ],
+    };
     this.viewDisposables = [
       this.webview.onDidReceiveMessage((input: unknown) => {
         void this.handleInput(input);
@@ -165,8 +174,13 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.disposeView();
       }),
     ];
-    await this.reloadFileIconTheme();
+    this.webview.html = renderCommitWebviewHtml(
+      this.webview,
+      this.dependencies.extensionUri,
+      randomBytes(16).toString('hex'),
+    );
     this.updateViewMetadata();
+    void this.reloadFileIconTheme();
   }
 
   dispose(): void {
@@ -182,6 +196,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
 
   private disposeView(): void {
     this.themeLoadSequence += 1;
+    this.clientReady = false;
     this.aiController?.abort();
     this.aiController = undefined;
     if (this.view !== undefined) {
@@ -230,6 +245,10 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         ...theme.localResourceRoots,
       ],
     };
+    if (this.clientReady) {
+      void this.postState();
+      return;
+    }
     webview.html = renderCommitWebviewHtml(
       webview,
       this.dependencies.extensionUri,
@@ -239,6 +258,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleInput(input: unknown): Promise<void> {
+    this.clientReady = true;
     let message: WebviewMessage;
     try {
       message = parseWebviewMessage(input);
@@ -265,6 +285,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     const service = this.dependencies.repositoryService;
     switch (message.type) {
       case 'ready':
+        this.clientReady = true;
         await this.refreshVisibleRepository();
         return;
       case 'refresh':
@@ -369,13 +390,9 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     const model = this.dependencies.repositoryService.getViewModel();
-    const count = model.changeCount;
-    view.badge = count === 0
-      ? undefined
-      : {
-          value: count,
-          tooltip: `Gitool：${String(count)} 个变更文件`,
-        };
+    view.description = model.changeCount === 0
+      ? ''
+      : `${String(model.changeCount)} 个变更`;
   }
 
   private async generateCommitMessage(
@@ -569,6 +586,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
 
   private async refreshVisibleRepository(): Promise<void> {
     const service = this.dependencies.repositoryService;
+    await service.ensureWorkspaceRepositories();
     if (service.getViewModel().currentRepositoryId === undefined) {
       await this.postState();
       return;
@@ -581,7 +599,7 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     selectedDensity?: CommitMessageDensity,
   ): Promise<void> {
     const webview = this.webview;
-    if (webview === undefined) {
+    if (webview === undefined || !this.clientReady) {
       return;
     }
     const model = this.dependencies.repositoryService.getViewModel();
