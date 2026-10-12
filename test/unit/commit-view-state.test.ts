@@ -87,6 +87,13 @@ describe('提交信息展示状态', () => {
     });
   });
 
+  it('运行中不在反馈区显示进度文字，由按钮加载态表达', () => {
+    expect(operationFeedback({
+      kind: 'running',
+      action: 'commit',
+    })).toEqual({ message: '', error: '', retry: false });
+  });
+
   it('完整提交成功不显示成功文字', () => {
     expect(operationFeedback({
       kind: 'commit-succeeded',

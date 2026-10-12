@@ -107,8 +107,8 @@ export function renderCommitWebviewHtml(
         <textarea id="commit-message" rows="5" placeholder="输入本次提交信息" spellcheck="true"></textarea>
         <footer class="commit-footer">
           <div class="primary-actions">
-            <button id="commit-button" class="primary commit-text-button" type="button" aria-label="提交所选文件">提交</button>
-            <button id="commit-push-button" class="secondary commit-text-button" type="button" aria-label="提交并推送所选文件">提交并推送</button>
+            <button id="commit-button" class="primary commit-text-button" type="button" aria-label="提交所选文件"><span>提交</span></button>
+            <button id="commit-push-button" class="secondary commit-text-button" type="button" aria-label="提交并推送所选文件"><span>提交并推送</span></button>
           </div>
           <p id="selection-summary" class="selection-summary">已选择 0 / 0</p>
           <div class="ai-actions">

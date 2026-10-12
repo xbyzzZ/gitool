@@ -94,8 +94,8 @@ describe('独立 Webview 壳页面', () => {
       'nonce-123',
     );
 
-    expect(html).toContain('>提交</button>');
-    expect(html).toContain('>提交并推送</button>');
+    expect(html).toContain('<span>提交</span>');
+    expect(html).toContain('<span>提交并推送</span>');
     expect(html).toContain('codicon-cloud-upload');
   });
 

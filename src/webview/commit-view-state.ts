@@ -43,18 +43,6 @@ export interface CommitControlState {
   readonly canOpenAiSettings: boolean;
 }
 
-const actionLabels: Readonly<Record<
-  Extract<OperationState, { readonly kind: 'running' }>['action'],
-  string
->> = {
-  commit: '正在提交所选文件…',
-  push: '正在推送提交…',
-  trash: '正在移入废纸篓…',
-  remote: '正在修改远程 URL…',
-  fetch: '正在刷新远程状态…',
-  pull: '正在从远程拉取…',
-};
-
 export function densityPresentation(
   density: CommitMessageDensity,
 ): DensityPresentation {
@@ -102,7 +90,7 @@ export function operationFeedback(
       return { message: '', error: '', retry: false };
     case 'running':
       return {
-        message: actionLabels[operation.action],
+        message: '',
         error: '',
         retry: false,
       };

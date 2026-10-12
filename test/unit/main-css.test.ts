@@ -37,6 +37,13 @@ describe('工作台紧凑布局样式', () => {
     expect(stylesheet).toContain('.codicon-modifier-spin');
   });
 
+  it('按钮加载态使用旋转圆环并隐藏原内容', () => {
+    expect(readRule('button.is-loading')).toMatch(/position:\s*relative/u);
+    expect(readRule('button.is-loading::after')).toMatch(/border-radius:\s*50%/u);
+    expect(readRule('button.is-loading::after')).toMatch(/animation:/u);
+    expect(readRule('button.is-loading > *')).toMatch(/visibility:\s*hidden/u);
+  });
+
   it('AI 生成与设置按钮使用与工具栏一致的图标按钮尺寸', () => {
     expect(readRule('.commit-footer .icon-button')).toMatch(/width:\s*28px/u);
     expect(readRule('.commit-footer .icon-button')).toMatch(/height:\s*28px/u);

@@ -183,6 +183,34 @@ input:disabled {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
+button.is-loading {
+  position: relative;
+  pointer-events: none;
+}
+
+button.is-loading > * {
+  visibility: hidden;
+}
+
+button.is-loading::after {
+  position: absolute;
+  inset: 0;
+  width: 13px;
+  height: 13px;
+  margin: auto;
+  border: 2px solid currentcolor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: gitool-spin 800ms linear infinite;
+  content: "";
+}
+
+@keyframes gitool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .feedback {
   min-height: 16px;
 }
@@ -394,6 +422,8 @@ input:disabled {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
 .commit-workbench {

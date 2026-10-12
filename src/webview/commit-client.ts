@@ -127,6 +127,7 @@ let sequence = 0;
 let density: CommitMessageDensity = 'standard';
 let persisted = readPersistedState(vscode.getState());
 let revealedFeedbackKey: string | undefined;
+let commitFlow: 'commit' | 'commit-push' | undefined;
 let fileIconClasses: readonly (string | null)[] = [];
 const collapsedSections = new Set<ChangeSectionKind>(['untracked']);
 
@@ -178,6 +179,11 @@ function updateRepository(model: RepositoryViewModel): void {
   controls.repositorySummary.textContent = model.currentRepositoryId === undefined
     ? '打开一个 Git 仓库后可提交文件'
     : `${branch} · ${model.upstream === undefined ? '未设置上游' : `上游 ${model.upstream}`}`;
+}
+
+function setButtonLoading(button: HTMLButtonElement, loading: boolean): void {
+  button.classList.toggle('is-loading', loading);
+  button.setAttribute('aria-busy', loading ? 'true' : 'false');
 }
 
 function render(model: RepositoryViewModel): void {
@@ -281,6 +287,27 @@ function render(model: RepositoryViewModel): void {
   controls.pullButton.disabled = !canWrite || model.sync.kind !== 'ready';
   controls.pushAllButton.disabled = locallyBusy || !canPushAll(model);
   controls.editRemoteButton.disabled = !canWrite;
+  const runningAction = model.operation.kind === 'running'
+    ? model.operation.action
+    : undefined;
+  const commitInFlight = commitFlow !== undefined
+    && (pendingRequestId !== undefined || runningAction !== undefined);
+  setButtonLoading(
+    controls.commitButton,
+    commitInFlight && commitFlow === 'commit',
+  );
+  setButtonLoading(
+    controls.commitPushButton,
+    commitInFlight && commitFlow === 'commit-push',
+  );
+  setButtonLoading(controls.pullButton, runningAction === 'pull');
+  setButtonLoading(
+    controls.pushAllButton,
+    runningAction === 'push' && commitFlow !== 'commit-push',
+  );
+  setButtonLoading(controls.trashButton, runningAction === 'trash');
+  setButtonLoading(controls.editRemoteButton, runningAction === 'remote');
+  setButtonLoading(controls.refreshButton, runningAction === 'fetch');
   const aiPresentation = aiControlPresentation(density, aiGenerating);
   controls.aiGenerateIcon.hidden = aiPresentation.generating;
   controls.aiGenerateLoading.hidden = !aiPresentation.generating;
@@ -448,6 +475,8 @@ function submit(push: boolean): void {
   if (scope !== undefined) {
     cancelMessageTimer();
     pendingMessage = message;
+    commitFlow = push ? 'commit-push' : 'commit';
+    render(model);
     post({ type: push ? 'commitAndPush' : 'commit', ...scope, message });
   }
 }
@@ -521,6 +550,7 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
   if (state.acknowledgedRequestId === pendingRequestId) {
     pendingRequestId = undefined;
     pendingPresentation = undefined;
+    commitFlow = undefined;
   }
   if (state.acknowledgedRequestId === aiSettingsRequestId) {
     aiSettingsRequestId = undefined;
