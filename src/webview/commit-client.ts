@@ -1,5 +1,6 @@
 import type { RepositoryViewModel } from '../domain/view-model.js';
 import type { ChangeSectionKind } from '../domain/change-groups.js';
+import type { CommitDetails } from '../domain/history-model.js';
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
 import type { AiModelSelection } from '../services/ai-model-selection-store.js';
 import { canPushAll } from '../views/push-availability-context.js';
@@ -15,6 +16,10 @@ import {
   type PendingRequestPresentation,
 } from './request-state.js';
 import { renderChangeList } from './commit-change-renderer.js';
+import {
+  renderHistoryList,
+  type RenderedHistoryFile,
+} from './history-renderer.js';
 import {
   bindDockResizer,
   clampCommitDockHeight,
@@ -39,9 +44,18 @@ interface StateMessage {
   readonly fileIconClasses?: readonly (string | null)[];
 }
 
+interface CommitDetailsMessage {
+  readonly type: 'commitDetails';
+  readonly repositoryId: string;
+  readonly version: number;
+  readonly details: CommitDetails;
+  readonly fileIconClasses?: readonly (string | null)[];
+}
+
 interface PersistedState {
   readonly densities: Readonly<Record<string, CommitMessageDensity>>;
   readonly dockHeight?: number;
+  readonly view?: 'commit' | 'history';
 }
 
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -72,9 +86,12 @@ function readPersistedState(value: unknown): PersistedState {
     }
   }
   const dockHeight = readPersistedDockHeight(value);
-  return dockHeight !== undefined
-    ? { densities, dockHeight }
-    : { densities };
+  const view = value.view === 'history' ? 'history' as const : undefined;
+  return {
+    densities,
+    ...(dockHeight === undefined ? {} : { dockHeight }),
+    ...(view === undefined ? {} : { view }),
+  };
 }
 
 const vscode = acquireVsCodeApi();
@@ -112,6 +129,12 @@ const controls = {
   pullButton: element('pull-button') as HTMLButtonElement,
   pushAllButton: element('push-all-button') as HTMLButtonElement,
   editRemoteButton: element('edit-remote-button') as HTMLButtonElement,
+  viewSwitchButton: element('view-switch-button') as HTMLButtonElement,
+  viewSwitchIcon: element('view-switch-icon'),
+  commitView: element('commit-view'),
+  historyView: element('history-view'),
+  historyList: element('history-list'),
+  historyStatus: element('history-status') as HTMLParagraphElement,
   commitResizer: element('commit-resizer'),
 };
 
@@ -128,6 +151,11 @@ let density: CommitMessageDensity = 'standard';
 let persisted = readPersistedState(vscode.getState());
 let revealedFeedbackKey: string | undefined;
 let commitFlow: 'commit' | 'commit-push' | undefined;
+let currentView: 'commit' | 'history' = 'commit';
+const expandedCommits = new Set<string>();
+const commitDetailsCache = new Map<string, readonly RenderedHistoryFile[]>();
+const pendingDetails = new Set<string>();
+let historyScopeKey = '';
 let fileIconClasses: readonly (string | null)[] = [];
 const collapsedSections = new Set<ChangeSectionKind>(['untracked']);
 
@@ -151,6 +179,28 @@ function applyDockHeight(requestedHeight: number, persist: boolean): void {
 }
 
 applyDockHeight(persisted.dockHeight ?? defaultCommitDockHeight, false);
+
+function applyView(view: 'commit' | 'history', persist: boolean): void {
+  currentView = view;
+  const historyMode = view === 'history';
+  controls.commitView.hidden = historyMode;
+  controls.historyView.hidden = !historyMode;
+  controls.viewSwitchIcon.classList.toggle('codicon-history', !historyMode);
+  controls.viewSwitchIcon.classList.toggle('codicon-git-commit', historyMode);
+  const label = historyMode ? '切换到提交视图' : '切换到历史视图';
+  controls.viewSwitchButton.setAttribute('aria-label', label);
+  controls.viewSwitchButton.title = label;
+  controls.viewSwitchButton.setAttribute('aria-pressed', String(historyMode));
+  if (persist) {
+    persisted = { ...persisted, view };
+    vscode.setState(persisted);
+  }
+  if (historyMode && currentModel?.history.kind === 'idle') {
+    post({ type: 'refresh' });
+  }
+}
+
+applyView(persisted.view ?? 'commit', false);
 
 function post(message: WebviewMessage): void {
   vscode.postMessage(message);
@@ -186,8 +236,53 @@ function setButtonLoading(button: HTMLButtonElement, loading: boolean): void {
   button.setAttribute('aria-busy', loading ? 'true' : 'false');
 }
 
+function toggleCommitExpanded(hash: string, expanded: boolean): void {
+  if (!expanded) {
+    expandedCommits.delete(hash);
+  } else {
+    expandedCommits.add(hash);
+    if (!commitDetailsCache.has(hash) && !pendingDetails.has(hash)
+      && currentModel?.currentRepositoryId !== undefined) {
+      pendingDetails.add(hash);
+      sequence += 1;
+      post({
+        type: 'loadCommitDetails',
+        repositoryId: currentModel.currentRepositoryId,
+        version: currentModel.version,
+        hash,
+        requestId: `details-${String(sequence)}`,
+      });
+    }
+  }
+  if (currentModel !== undefined) {
+    render(currentModel);
+  }
+}
+
+function openCommitDiff(hash: string, path: string): void {
+  if (currentModel?.currentRepositoryId === undefined) {
+    return;
+  }
+  sequence += 1;
+  post({
+    type: 'openCommitDiff',
+    repositoryId: currentModel.currentRepositoryId,
+    version: currentModel.version,
+    hash,
+    path,
+    requestId: `diff-${String(sequence)}`,
+  });
+}
+
 function render(model: RepositoryViewModel): void {
   currentModel = model;
+  const scopeKey = `${model.currentRepositoryId ?? ''}:${String(model.version)}`;
+  if (scopeKey !== historyScopeKey) {
+    historyScopeKey = scopeKey;
+    expandedCommits.clear();
+    commitDetailsCache.clear();
+    pendingDetails.clear();
+  }
   if (currentRepositoryId !== model.currentRepositoryId) {
     currentRepositoryId = model.currentRepositoryId;
     density = currentRepositoryId === undefined
@@ -199,6 +294,18 @@ function render(model: RepositoryViewModel): void {
     : 'false');
   controls.loadingStatus.hidden = true;
   updateRepository(model);
+  renderHistoryList(
+    controls.historyList,
+    controls.historyStatus,
+    model.history,
+    expandedCommits,
+    commitDetailsCache,
+    {
+      toggleCommit: toggleCommitExpanded,
+      openCommitDiff,
+    },
+    Date.now(),
+  );
   renderChangeList(
     controls.changesList,
     model.changes,
@@ -271,6 +378,7 @@ function render(model: RepositoryViewModel): void {
 
   controls.repositorySelect.disabled = running || locallyBusy
     || model.repositories.length < 2;
+  const commitOnlyUnavailable = currentView === 'history';
   controls.commitMessage.disabled = !canWrite;
   controls.commitButton.disabled = !canCommit;
   controls.commitPushButton.disabled = !canCommitAndPush;
@@ -279,11 +387,14 @@ function render(model: RepositoryViewModel): void {
     : !canGenerateCommitMessage;
   controls.aiSettingsButton.disabled = !canOpenAiSettings;
   controls.refreshButton.disabled = running || locallyBusy;
-  controls.selectAllButton.disabled = !canWrite || model.changeCount === 0;
-  controls.clearSelectionButton.disabled = !canWrite || model.selectedIds.length === 0;
-  controls.trashButton.disabled = !canWrite || !model.changes.some(
-    (change) => change.untracked && model.selectedIds.includes(change.id),
-  );
+  controls.selectAllButton.disabled = commitOnlyUnavailable || !canWrite
+    || model.changeCount === 0;
+  controls.clearSelectionButton.disabled = commitOnlyUnavailable || !canWrite
+    || model.selectedIds.length === 0;
+  controls.trashButton.disabled = commitOnlyUnavailable || !canWrite
+    || !model.changes.some(
+      (change) => change.untracked && model.selectedIds.includes(change.id),
+    );
   controls.pullButton.disabled = !canWrite || model.sync.kind !== 'ready';
   controls.pushAllButton.disabled = locallyBusy || !canPushAll(model);
   controls.editRemoteButton.disabled = !canWrite;
@@ -382,6 +493,10 @@ controls.repositorySelect.addEventListener('change', () => {
 
 controls.refreshButton.addEventListener('click', () => {
   post({ type: 'refresh' });
+});
+
+controls.viewSwitchButton.addEventListener('click', () => {
+  applyView(currentView === 'history' ? 'commit' : 'history', true);
 });
 
 function setAllGroups(selected: boolean): void {
@@ -539,9 +654,31 @@ controls.aiGenerateButton.addEventListener('click', () => {
 
 window.addEventListener('message', (event: MessageEvent<unknown>) => {
   const message = event.data;
-  if (typeof message !== 'object' || message === null
-    || !('type' in message) || message.type !== 'state'
-    || !('model' in message)) {
+  if (typeof message !== 'object' || message === null || !('type' in message)) {
+    return;
+  }
+  if (message.type === 'commitDetails' && 'details' in message) {
+    const detailsMessage = message as CommitDetailsMessage;
+    if (currentModel === undefined) {
+      return;
+    }
+    if (detailsMessage.repositoryId !== currentModel.currentRepositoryId
+      || detailsMessage.version !== currentModel.version) {
+      return;
+    }
+    const icons = detailsMessage.fileIconClasses ?? [];
+    commitDetailsCache.set(
+      detailsMessage.details.hash,
+      detailsMessage.details.files.map((file, index) => ({
+        file,
+        iconClass: icons[index] ?? null,
+      })),
+    );
+    pendingDetails.delete(detailsMessage.details.hash);
+    render(currentModel);
+    return;
+  }
+  if (message.type !== 'state' || !('model' in message)) {
     return;
   }
   const state = message as StateMessage;

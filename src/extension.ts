@@ -9,6 +9,7 @@ import {
   type AiSelectedChangeContext,
 } from './services/commit-message-ai-service.js';
 import { RepositoryOperationLock } from './services/operation-lock.js';
+import { HistoryService } from './services/history-service.js';
 import { PushService } from './services/push-service.js';
 import { RemoteService } from './services/remote-service.js';
 import { RepositoryService } from './services/repository-service.js';
@@ -429,6 +430,7 @@ function registerReadyRuntime(
     const repositoryService = new RepositoryService({
       gitApi,
       commitService: new CommitService(git),
+      historyService: new HistoryService(git),
       pushService: new PushService(),
       remoteService: new RemoteService(git),
       trashService: new TrashService({
@@ -446,6 +448,10 @@ function registerReadyRuntime(
       workspaceFolders,
     });
     disposables.push(repositoryService);
+    disposables.push(vscode.workspace.registerTextDocumentContentProvider(
+      'gitool-empty',
+      { provideTextDocumentContent: () => '' },
+    ));
     disposables.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
       void repositoryService.ensureWorkspaceRepositories().catch(
         (error: unknown) => {

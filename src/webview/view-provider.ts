@@ -86,6 +86,10 @@ function messageAction(message: WebviewMessage): string {
       return '生成提交信息';
     case 'selectAiSettings':
       return 'AI 设置';
+    case 'loadCommitDetails':
+      return '读取提交文件';
+    case 'openCommitDiff':
+      return '打开历史文件差异';
     case 'cancelCommitMessageGeneration':
       return '取消生成提交信息';
   }
@@ -376,6 +380,12 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
           message.repositoryId,
           message.currentDensity,
         );
+      case 'loadCommitDetails':
+        await this.sendCommitDetails(message);
+        return;
+      case 'openCommitDiff':
+        await this.openCommitDiff(message);
+        return;
       case 'cancelCommitMessageGeneration':
         this.requireRepository(message.repositoryId);
         this.aiController?.abort();
@@ -518,6 +528,71 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     }
     this.requireRepository(repositoryId);
     return selected.density;
+  }
+
+  private async sendCommitDetails(
+    message: Extract<WebviewMessage, { readonly type: 'loadCommitDetails' }>,
+  ): Promise<void> {
+    this.requireScope(message.repositoryId, message.version);
+    const details = await this.dependencies.repositoryService.loadCommitDetails({
+      repositoryId: message.repositoryId,
+      version: message.version,
+      hash: message.hash,
+    });
+    await this.webview?.postMessage({
+      type: 'commitDetails',
+      repositoryId: message.repositoryId,
+      version: message.version,
+      details,
+      fileIconClasses: details.files.map((file) =>
+        this.fileIconTheme.classForPath(file.path) ?? null),
+    });
+  }
+
+  private async openCommitDiff(
+    message: Extract<WebviewMessage, { readonly type: 'openCommitDiff' }>,
+  ): Promise<void> {
+    this.requireScope(message.repositoryId, message.version);
+    const service = this.dependencies.repositoryService;
+    const repository = service.getRepository(message.repositoryId);
+    if (repository === undefined) {
+      throw new Error('当前仓库不存在或已关闭');
+    }
+    const details = await service.loadCommitDetails({
+      repositoryId: message.repositoryId,
+      version: message.version,
+      hash: message.hash,
+    });
+    const file = details.files.find((item) => item.path === message.path);
+    if (file === undefined) {
+      throw new Error('文件不属于所选历史提交');
+    }
+    const originalPath = file.originalPath ?? file.path;
+    const emptyUri = vscode.Uri.from({
+      scheme: 'gitool-empty',
+      path: `/${details.hash}/${file.path}`,
+    });
+    const leftUri = file.status.startsWith('A')
+      ? emptyUri
+      : this.dependencies.gitApi.toGitUri(
+        vscode.Uri.joinPath(repository.rootUri, originalPath),
+        details.parentHash ?? details.hash,
+      );
+    const rightUri = file.status.startsWith('D')
+      ? emptyUri
+      : this.dependencies.gitApi.toGitUri(
+        vscode.Uri.joinPath(repository.rootUri, file.path),
+        details.hash,
+      );
+    const pathLabel = file.originalPath === undefined
+      ? file.path
+      : `${file.originalPath} → ${file.path}`;
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      leftUri,
+      rightUri,
+      `${pathLabel}（历史提交 ${details.hash.slice(0, 7)}）`,
+    );
   }
 
   private requireRepository(repositoryId: string): RepositoryViewModel {

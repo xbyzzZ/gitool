@@ -1175,4 +1175,100 @@ describe('GitoolViewProvider', () => {
       action: 'commit',
     });
   });
+
+  it('读取历史提交文件并回传文件图标类名', async () => {
+    const created = createServiceDouble();
+    created.loadCommitDetails.mockResolvedValue({
+      hash: 'a'.repeat(40),
+      parentHash: 'b'.repeat(40),
+      files: [
+        { status: 'M', path: 'src/extension.ts' },
+        { status: 'A', path: 'docs/guide.md' },
+      ],
+    });
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    await provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'loadCommitDetails',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      hash: 'a'.repeat(40),
+      requestId: 'details-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.loadCommitDetails).toHaveBeenCalledWith({
+        repositoryId: '/workspace/repo',
+        version: 0,
+        hash: 'a'.repeat(40),
+      });
+      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'commitDetails',
+        repositoryId: '/workspace/repo',
+        version: 0,
+        fileIconClasses: ['gitool-file-icon-test', null],
+      }));
+    });
+  });
+
+  it('打开历史提交文件差异时对比父提交与当前提交', async () => {
+    const created = createServiceDouble();
+    created.loadCommitDetails.mockResolvedValue({
+      hash: 'a'.repeat(40),
+      parentHash: 'b'.repeat(40),
+      files: [{ status: 'M', path: 'src/extension.ts' }],
+    });
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    await provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'openCommitDiff',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      hash: 'a'.repeat(40),
+      path: 'src/extension.ts',
+      requestId: 'diff-1',
+    });
+
+    await vi.waitFor(() => {
+      expect(vscodeMocks.executeCommand).toHaveBeenCalledWith(
+        'vscode.diff',
+        expect.objectContaining({ path: '/workspace/repo/src/extension.ts' }),
+        expect.objectContaining({ path: '/workspace/repo/src/extension.ts' }),
+        `src/extension.ts（历史提交 ${'a'.repeat(7)}）`,
+      );
+    });
+  });
+
+  it('历史新增文件的差异左侧使用空文档', async () => {
+    const created = createServiceDouble();
+    created.loadCommitDetails.mockResolvedValue({
+      hash: 'a'.repeat(40),
+      files: [{ status: 'A', path: 'docs/guide.md' }],
+    });
+    const provider = createProvider(created.service);
+    const harness = createViewHarness();
+    await provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'openCommitDiff',
+      repositoryId: '/workspace/repo',
+      version: 0,
+      hash: 'a'.repeat(40),
+      path: 'docs/guide.md',
+      requestId: 'diff-2',
+    });
+
+    await vi.waitFor(() => {
+      expect(vscodeMocks.executeCommand).toHaveBeenCalledWith(
+        'vscode.diff',
+        expect.objectContaining({ scheme: 'gitool-empty' }),
+        expect.objectContaining({ path: '/workspace/repo/docs/guide.md' }),
+        `docs/guide.md（历史提交 ${'a'.repeat(7)}）`,
+      );
+    });
+  });
 });

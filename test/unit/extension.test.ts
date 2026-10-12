@@ -314,17 +314,23 @@ describe('扩展激活', () => {
     expect(await resolveLastProviderHtml()).toContain('请启用内置 Git');
   });
 
-  it('正常运行时不再注册历史差异空文档提供器', async () => {
+  it('正常运行时注册历史差异空文档提供器', async () => {
     mocks.state.gitExtension = gitExtension(() => ({
       getAPI: () => gitApi(),
     }));
 
     const runtime = await activate(context());
 
-    expect(mocks.registerTextDocumentContentProvider).not.toHaveBeenCalled();
+    expect(mocks.registerTextDocumentContentProvider).toHaveBeenCalledOnce();
+    expect(
+      mocks.registerTextDocumentContentProvider.mock.calls[0]?.[0],
+    ).toBe('gitool-empty');
+    expect([...mocks.state.activeContentProviders.keys()]).toEqual([
+      'gitool-empty',
+    ]);
     runtime.dispose();
     expect(mocks.state.activeContentProviders.size).toBe(0);
-    expect(mocks.state.contentProviderDisposals).toEqual([]);
+    expect(mocks.state.contentProviderDisposals).toEqual(['gitool-empty']);
   });
 
   it.each([
@@ -388,7 +394,7 @@ describe('扩展激活', () => {
     expect(mocks.state.activeViews.size).toBe(1);
     expect(mocks.state.activeCommands.size).toBe(1);
     expect([...mocks.state.activeContentProviders.keys()]).toEqual([]);
-    expect(mocks.state.contentProviderDisposals).toEqual([]);
+    expect(mocks.state.contentProviderDisposals).toEqual(['gitool-empty']);
 
     const html = await resolveLastProviderHtml();
     expect(html).toContain('Gitool 初始化失败');
@@ -401,7 +407,9 @@ describe('扩展激活', () => {
     expect(nextRuntime.mode).toBe('ready');
     expect(mocks.state.activeViews.size).toBe(2);
     expect(mocks.state.activeCommands.size).toBe(6);
-    expect([...mocks.state.activeContentProviders.keys()]).toEqual([]);
-    expect(mocks.state.contentProviderDisposals).toEqual([]);
+    expect([...mocks.state.activeContentProviders.keys()]).toEqual([
+      'gitool-empty',
+    ]);
+    expect(mocks.state.contentProviderDisposals).toEqual(['gitool-empty']);
   });
 });

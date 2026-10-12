@@ -62,8 +62,29 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('id="edit-remote-button"');
     expect(html).toContain('id="ai-generate-button"');
     expect(html).toContain('id="ai-settings-button"');
-    expect(html).not.toContain('id="history-list"');
+    expect(html).toContain('id="view-switch-button"');
+    expect(html).toContain('id="commit-view"');
+    expect(html).toContain('id="history-list"');
     expect(html).not.toContain('class="pane-resizer"');
+  });
+
+  it('历史视图默认隐藏并通过视图切换按钮切换', () => {
+    const html = renderCommitWebviewHtml(
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
+    );
+
+    expect(html).toContain(
+      'id="history-view" class="view-pane history-view" aria-label="提交历史" hidden',
+    );
+    expect(html).toContain(
+      'id="view-switch-icon" class="codicon codicon-history"',
+    );
+    expect(html.indexOf('id="view-switch-button"'))
+      .toBeGreaterThan(html.indexOf('id="edit-remote-button"'));
+    expect(html.indexOf('id="history-view"'))
+      .toBeGreaterThan(html.indexOf('id="commit-view"'));
   });
 
   it('AI 生成按钮使用机器人图标并保留紧凑加载状态', () => {

@@ -1,3 +1,5 @@
+import { isFullGitObjectId } from '../domain/git-object-id.js';
+
 export type WebviewMessage =
   | { readonly type: 'ready' }
   | { readonly type: 'refresh' }
@@ -72,6 +74,21 @@ export type WebviewMessage =
     readonly type: 'pull' | 'pushAll';
     readonly repositoryId: string;
     readonly version: number;
+    readonly requestId: string;
+  }
+  | {
+    readonly type: 'loadCommitDetails';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly hash: string;
+    readonly requestId: string;
+  }
+  | {
+    readonly type: 'openCommitDiff';
+    readonly repositoryId: string;
+    readonly version: number;
+    readonly hash: string;
+    readonly path: string;
     readonly requestId: string;
   }
   | {
@@ -331,6 +348,38 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
         type: input.type,
         repositoryId: requireRepositoryId(input),
         currentDensity: input.currentDensity,
+        requestId: requireRequestId(input),
+      };
+    case 'loadCommitDetails':
+      requireExactKeys(input, [
+        'type', 'repositoryId', 'version', 'hash', 'requestId',
+      ]);
+      if (!isFullGitObjectId(input.hash)) {
+        invalid('hash');
+      }
+      return {
+        type: input.type,
+        repositoryId: requireRepositoryId(input),
+        version: requireVersion(input),
+        hash: input.hash,
+        requestId: requireRequestId(input),
+      };
+    case 'openCommitDiff':
+      requireExactKeys(input, [
+        'type', 'repositoryId', 'version', 'hash', 'path', 'requestId',
+      ]);
+      if (!isFullGitObjectId(input.hash)) {
+        invalid('hash');
+      }
+      if (!isNonEmptyString(input.path)) {
+        invalid('path');
+      }
+      return {
+        type: input.type,
+        repositoryId: requireRepositoryId(input),
+        version: requireVersion(input),
+        hash: input.hash,
+        path: input.path,
         requestId: requireRequestId(input),
       };
     case 'commit':

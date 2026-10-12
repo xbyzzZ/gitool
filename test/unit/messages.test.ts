@@ -250,6 +250,40 @@ describe('parseWebviewMessage', () => {
         requestId: 'request-5',
       },
     ],
+    [
+      {
+        type: 'loadCommitDetails',
+        repositoryId: '/repo/a',
+        version: 2,
+        hash: 'a'.repeat(40),
+        requestId: 'details-1',
+      },
+      {
+        type: 'loadCommitDetails',
+        repositoryId: '/repo/a',
+        version: 2,
+        hash: 'a'.repeat(40),
+        requestId: 'details-1',
+      },
+    ],
+    [
+      {
+        type: 'openCommitDiff',
+        repositoryId: '/repo/a',
+        version: 2,
+        hash: 'b'.repeat(64),
+        path: 'src/extension.ts',
+        requestId: 'diff-1',
+      },
+      {
+        type: 'openCommitDiff',
+        repositoryId: '/repo/a',
+        version: 2,
+        hash: 'b'.repeat(64),
+        path: 'src/extension.ts',
+        requestId: 'diff-1',
+      },
+    ],
   ])('接受协议内消息 %#', (input, expected) => {
     expect(parseWebviewMessage(input)).toEqual(expected);
   });

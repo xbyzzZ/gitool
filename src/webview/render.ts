@@ -81,6 +81,7 @@ export function renderCommitWebviewHtml(
           <button id="clear-selection-button" class="icon-button" type="button" aria-label="清空文件选择" title="清空文件选择"><span class="codicon codicon-clear-all" aria-hidden="true"></span></button>
           <button id="trash-button" class="icon-button danger-toolbar-button" type="button" aria-label="舍弃所选未跟踪文件" title="舍弃所选未跟踪文件"><span class="codicon codicon-trash" aria-hidden="true"></span></button>
           <button id="edit-remote-button" class="icon-button" type="button" aria-label="远程仓库设置" title="远程仓库设置"><span class="codicon codicon-settings-gear" aria-hidden="true"></span></button>
+          <button id="view-switch-button" class="icon-button" type="button" aria-label="切换到历史视图" title="切换到历史视图" aria-pressed="false"><span id="view-switch-icon" class="codicon codicon-history" aria-hidden="true"></span></button>
         </div>
         <div class="toolbar-group toolbar-group-end">
           <button id="pull-button" class="icon-button" type="button" aria-label="从远程拉取" title="从远程拉取"><span class="codicon codicon-cloud-download" aria-hidden="true"></span></button>
@@ -92,6 +93,7 @@ export function renderCommitWebviewHtml(
         <select id="repository-select" aria-label="选择 Git 仓库" hidden></select>
         <p id="repository-summary">正在读取仓库…</p>
       </section>
+      <div id="commit-view" class="view-pane">
       <section class="changes-pane" aria-label="当前变更">
         <p id="loading-status" class="changes-status" role="status">正在读取仓库状态…</p>
         <div id="changes-list" class="changes-list" aria-label="变更文件列表"></div>
@@ -121,6 +123,11 @@ export function renderCommitWebviewHtml(
             </button>
           </div>
         </footer>
+      </section>
+      </div>
+      <section id="history-view" class="view-pane history-view" aria-label="提交历史" hidden>
+        <p id="history-status" class="changes-status" role="status">正在读取提交历史…</p>
+        <div id="history-list" class="history-list" aria-label="提交历史列表"></div>
       </section>
     </main>`,
     fileIconThemeCss,
