@@ -37,22 +37,17 @@ describe('工作台紧凑布局样式', () => {
     expect(stylesheet).toContain('.codicon-modifier-spin');
   });
 
-  it('AI 生成按钮使用可读文字宽度并保留紧凑加载状态', () => {
-    expect(readRule('.ai-density-text-button')).toMatch(/min-width:\s*48px/u);
-    expect(readRule('.ai-density-text-button')).toMatch(/height:\s*28px/u);
+  it('AI 生成与设置按钮使用与工具栏一致的图标按钮尺寸', () => {
+    expect(readRule('.commit-footer .icon-button')).toMatch(/width:\s*28px/u);
+    expect(readRule('.commit-footer .icon-button')).toMatch(/height:\s*28px/u);
+    expect(readRule('.commit-footer .icon-button')).toMatch(/border-color:/u);
     expect(readRule('[hidden]')).toMatch(/display:\s*none\s*!important/u);
     expect(stylesheet).not.toContain('.ai-density-star');
   });
 
-  it('模型名称按钮在窄侧边栏弹性截断且保留独立分组', () => {
-    expect(readRule('.ai-actions')).toMatch(/gap:\s*4px/u);
-    expect(readRule('.ai-menu-button')).toMatch(
-      /border-radius:\s*0 2px 2px 0/u,
-    );
-    expect(readRule('.ai-model-button')).toMatch(/min-width:\s*56px/u);
-    expect(readRule('.ai-model-button')).toMatch(/max-width:\s*112px/u);
-    expect(readRule('.ai-model-name')).toMatch(/text-overflow:\s*ellipsis/u);
-    expect(readRule('.ai-model-name')).toMatch(/white-space:\s*nowrap/u);
+  it('AI 图标按钮在底部保持独立分组', () => {
+    expect(readRule('.ai-actions')).toMatch(/gap:\s*6px/u);
+    expect(readRule('.ai-density-loading')).toMatch(/font-size:\s*14px/u);
   });
 
   it('生成内容选择不再渲染受 Webview 高度限制的弹层', () => {
@@ -60,11 +55,16 @@ describe('工作台紧凑布局样式', () => {
     expect(stylesheet).not.toContain('.ai-density-option-copy');
   });
 
-  it('AI 文字档位与模型按钮保持独立分组', () => {
-    expect(readRule('.ai-density-text-button')).toMatch(/padding:\s*0 7px/u);
-    expect(readRule('.commit-actions')).toMatch(
+  it('AI 按钮与提交按钮在底部分组排布', () => {
+    expect(readRule('.commit-footer')).toMatch(
       /justify-content:\s*space-between/u,
     );
+    expect(readRule('.commit-text-button')).toMatch(/border-radius:\s*4px/u);
+    expect(readRule('.selection-summary')).toMatch(/flex:\s*1/u);
+    expect(stylesheet).not.toContain('.ai-menu-button');
+    expect(stylesheet).not.toContain('.ai-density-actions');
+    expect(stylesheet).not.toContain('.commit-meta-row');
+    expect(stylesheet).not.toContain('.ai-model-name');
   });
 
   it('统一工作台固定底部提交区且中间列表承担滚动', () => {
@@ -72,6 +72,7 @@ describe('工作台紧凑布局样式', () => {
     expect(readRule('body')).toMatch(/overflow:\s*hidden/u);
     expect(readRule('.commit-dock')).toMatch(/flex:\s*none/u);
     expect(readRule('.commit-dock')).toMatch(/min-height:\s*156px/u);
+    expect(readRule('.commit-dock .feedback')).toMatch(/min-height:\s*0/u);
     expect(readRule('.commit-resizer')).toMatch(/cursor:\s*row-resize/u);
     expect(readRule('.commit-resizer')).toMatch(/touch-action:\s*none/u);
     expect(stylesheet).toMatch(

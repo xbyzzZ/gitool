@@ -80,6 +80,7 @@ export function renderCommitWebviewHtml(
           <button id="select-all-button" class="icon-button" type="button" aria-label="选择全部变更" title="选择全部变更"><span class="codicon codicon-check-all" aria-hidden="true"></span></button>
           <button id="clear-selection-button" class="icon-button" type="button" aria-label="清空文件选择" title="清空文件选择"><span class="codicon codicon-clear-all" aria-hidden="true"></span></button>
           <button id="trash-button" class="icon-button danger-toolbar-button" type="button" aria-label="舍弃所选未跟踪文件" title="舍弃所选未跟踪文件"><span class="codicon codicon-trash" aria-hidden="true"></span></button>
+          <button id="edit-remote-button" class="icon-button" type="button" aria-label="远程仓库设置" title="远程仓库设置"><span class="codicon codicon-settings-gear" aria-hidden="true"></span></button>
         </div>
         <div class="toolbar-group toolbar-group-end">
           <button id="pull-button" class="icon-button" type="button" aria-label="从远程拉取" title="从远程拉取"><span class="codicon codicon-cloud-download" aria-hidden="true"></span></button>
@@ -102,32 +103,23 @@ export function renderCommitWebviewHtml(
           <p id="error-status" class="error-status" role="alert" hidden></p>
           <button id="retry-push-button" class="secondary retry-push-button" type="button" aria-label="重试推送当前提交" hidden>重试推送</button>
         </section>
-        <div class="commit-meta-row">
-          <div class="ai-actions">
-            <div class="ai-density-actions">
-              <button id="ai-generate-button" class="ai-button ai-density-text-button" type="button" aria-label="生成提交信息：标准（标题 + 2–4 条关键变化）" title="生成提交信息：标准（标题 + 2–4 条关键变化）">
-                <span id="ai-generate-label">标准</span>
-                <span id="ai-generate-loading" class="codicon codicon-loading ai-density-loading" aria-hidden="true" hidden></span>
-              </button>
-              <button id="ai-density-button" class="ai-menu-button" type="button" aria-label="选择生成内容（当前：标准）" title="选择生成内容（当前：标准）">
-                <span class="codicon codicon-chevron-down" aria-hidden="true"></span>
-              </button>
-            </div>
-            <button id="ai-model-button" class="ai-model-button" type="button" aria-label="选择 AI 模型（自动选择）" title="选择 AI 模型（自动选择）">
-              <span id="ai-model-name" class="ai-model-name">自动选择</span>
-              <span class="codicon codicon-chevron-down ai-model-chevron" aria-hidden="true"></span>
-            </button>
-          </div>
-          <p id="selection-summary" class="selection-summary">已选择 0 / 0</p>
-        </div>
         <label class="visually-hidden" for="commit-message">提交信息</label>
         <textarea id="commit-message" rows="5" placeholder="输入本次提交信息" spellcheck="true"></textarea>
         <footer class="commit-footer">
           <div class="primary-actions">
-            <button id="commit-button" class="secondary commit-text-button" type="button" aria-label="提交所选文件">提交</button>
+            <button id="commit-button" class="primary commit-text-button" type="button" aria-label="提交所选文件">提交</button>
             <button id="commit-push-button" class="secondary commit-text-button" type="button" aria-label="提交并推送所选文件">提交并推送</button>
           </div>
-          <button id="edit-remote-button" class="icon-button" type="button" aria-label="远程仓库设置" title="远程仓库设置"><span class="codicon codicon-settings-gear" aria-hidden="true"></span></button>
+          <p id="selection-summary" class="selection-summary">已选择 0 / 0</p>
+          <div class="ai-actions">
+            <button id="ai-generate-button" class="icon-button" type="button" aria-label="生成提交信息：标准（标题 + 2–4 条关键变化）" title="生成提交信息：标准（标题 + 2–4 条关键变化）">
+              <span id="ai-generate-icon" class="codicon codicon-hubot" aria-hidden="true"></span>
+              <span id="ai-generate-loading" class="codicon codicon-loading ai-density-loading" aria-hidden="true" hidden></span>
+            </button>
+            <button id="ai-settings-button" class="icon-button" type="button" aria-label="AI 设置（当前模型：自动选择）" title="AI 设置（当前模型：自动选择）">
+              <span class="codicon codicon-settings-gear" aria-hidden="true"></span>
+            </button>
+          </div>
         </footer>
       </section>
     </main>`,

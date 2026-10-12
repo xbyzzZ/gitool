@@ -10,7 +10,6 @@ export interface AiControlPresentation {
   readonly densityText: string;
   readonly generating: boolean;
   readonly generateLabel: string;
-  readonly densityLabel: string;
 }
 
 export interface DensityPresentation {
@@ -18,7 +17,7 @@ export interface DensityPresentation {
   readonly description: string;
 }
 
-export interface AiModelControlPresentation {
+export interface AiSettingsPresentation {
   readonly name: string;
   readonly label: string;
 }
@@ -41,7 +40,7 @@ export interface CommitControlState {
   readonly canCommit: boolean;
   readonly canCommitAndPush: boolean;
   readonly canGenerateCommitMessage: boolean;
-  readonly canSelectAiDensity: boolean;
+  readonly canOpenAiSettings: boolean;
 }
 
 const actionLabels: Readonly<Record<
@@ -82,16 +81,15 @@ export function aiControlPresentation(
     generateLabel: generating
       ? '取消 AI 生成'
       : `生成提交信息：${label}（${description}）`,
-    densityLabel: `选择生成内容（当前：${label}）`,
   };
 }
 
-export function aiModelControlPresentation(
+export function aiSettingsPresentation(
   selection: AiModelSelection | undefined,
   selecting: boolean,
-): AiModelControlPresentation {
+): AiSettingsPresentation {
   const name = selecting ? '正在选择' : (selection?.name ?? '自动选择');
-  return { name, label: `选择 AI 模型（${name}）` };
+  return { name, label: `AI 设置（当前模型：${name}）` };
 }
 
 export function operationFeedback(
@@ -146,6 +144,6 @@ export function commitControlState(
     canGenerateCommitMessage: canWrite
       && !input.aiGenerating
       && model.selectedIds.length > 0,
-    canSelectAiDensity: canWrite && !input.aiGenerating,
+    canOpenAiSettings: canWrite && !input.aiGenerating,
   };
 }

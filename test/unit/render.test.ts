@@ -61,27 +61,30 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('id="trash-button"');
     expect(html).toContain('id="edit-remote-button"');
     expect(html).toContain('id="ai-generate-button"');
-    expect(html).toContain('id="ai-model-button"');
-    expect(html).toContain('id="ai-model-name"');
-    expect(html).toContain('>自动选择</span>');
+    expect(html).toContain('id="ai-settings-button"');
     expect(html).not.toContain('id="history-list"');
     expect(html).not.toContain('class="pane-resizer"');
   });
 
-  it('AI 按钮默认渲染标准文字和加载节点', () => {
+  it('AI 生成按钮使用机器人图标并保留紧凑加载状态', () => {
     const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
     );
 
-    expect(html).toContain('id="ai-generate-label">标准</span>');
-    expect(html).toContain('class="ai-button ai-density-text-button"');
-    expect(html).not.toContain('ai-density-star');
-    expect(html).not.toContain('<svg');
+    expect(html).toContain(
+      'id="ai-generate-icon" class="codicon codicon-hubot"',
+    );
+    expect(html).toMatch(
+      /id="ai-settings-button"[^>]*>\s*<span class="codicon codicon-settings-gear"/u,
+    );
     expect(html).toContain(
       'id="ai-generate-loading" class="codicon codicon-loading ai-density-loading" aria-hidden="true" hidden',
     );
+    expect(html).not.toContain('id="ai-generate-label"');
+    expect(html).not.toContain('ai-density-star');
+    expect(html).not.toContain('<svg');
   });
 
   it('提交操作使用 PyCharm 风格文字按钮', () => {
@@ -91,21 +94,39 @@ describe('独立 Webview 壳页面', () => {
       'nonce-123',
     );
 
-    expect(html).toContain('codicon-chevron-down');
-    expect(html).not.toContain('codicon-hubot');
     expect(html).toContain('>提交</button>');
     expect(html).toContain('>提交并推送</button>');
     expect(html).toContain('codicon-cloud-upload');
   });
 
-  it('生成内容按钮委托宿主选择且不渲染受视图高度限制的菜单', () => {
+  it('远程设置齿轮位于顶部工具栏，AI 图标按钮位于提交按钮旁', () => {
     const html = renderCommitWebviewHtml(
       createWebview(),
       createExtensionUri(),
       'nonce-123',
     );
 
-    expect(html).toContain('id="ai-density-button"');
+    expect(html.indexOf('id="edit-remote-button"'))
+      .toBeLessThan(html.indexOf('class="changes-pane"'));
+    expect(html.indexOf('id="ai-generate-button"'))
+      .toBeGreaterThan(html.indexOf('id="commit-message"'));
+    expect(html.indexOf('id="ai-settings-button"'))
+      .toBeGreaterThan(html.indexOf('id="commit-push-button"'));
+    expect(html).toContain('id="selection-summary"');
+    expect(html).not.toContain('commit-meta-row');
+    expect(html).not.toContain('id="ai-density-button"');
+    expect(html).not.toContain('class="ai-density-actions"');
+    expect(html).not.toContain('id="ai-model-name"');
+  });
+
+  it('AI 设置按钮委托宿主选择且不渲染受视图高度限制的菜单', () => {
+    const html = renderCommitWebviewHtml(
+      createWebview(),
+      createExtensionUri(),
+      'nonce-123',
+    );
+
+    expect(html).toContain('id="ai-settings-button"');
     expect(html).not.toContain('id="ai-density-menu"');
     expect(html).not.toContain('role="menuitemradio"');
   });

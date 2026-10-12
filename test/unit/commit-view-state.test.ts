@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import {
   aiControlPresentation,
-  aiModelControlPresentation,
+  aiSettingsPresentation,
   commitControlState,
   densityPresentation,
   operationFeedback,
@@ -54,7 +54,6 @@ describe('提交信息展示状态', () => {
       densityText: label,
       generating: false,
       generateLabel: `生成提交信息：${label}（${description}）`,
-      densityLabel: `选择生成内容（当前：${label}）`,
     });
   });
 
@@ -64,28 +63,27 @@ describe('提交信息展示状态', () => {
       densityText: '详细',
       generating: true,
       generateLabel: '取消 AI 生成',
-      densityLabel: '选择生成内容（当前：详细）',
     });
   });
 
   it('展示自动、显式模型和选择中的可见名称及完整文案', () => {
-    expect(aiModelControlPresentation(undefined, false)).toEqual({
+    expect(aiSettingsPresentation(undefined, false)).toEqual({
       name: '自动选择',
-      label: '选择 AI 模型（自动选择）',
+      label: 'AI 设置（当前模型：自动选择）',
     });
-    expect(aiModelControlPresentation({
+    expect(aiSettingsPresentation({
       id: 'model-1',
       name: 'GPT-5.1-Codex-Max',
     }, false)).toEqual({
       name: 'GPT-5.1-Codex-Max',
-      label: '选择 AI 模型（GPT-5.1-Codex-Max）',
+      label: 'AI 设置（当前模型：GPT-5.1-Codex-Max）',
     });
-    expect(aiModelControlPresentation({
+    expect(aiSettingsPresentation({
       id: 'model-1',
       name: 'GPT-5.1-Codex-Max',
     }, true)).toEqual({
       name: '正在选择',
-      label: '选择 AI 模型（正在选择）',
+      label: 'AI 设置（当前模型：正在选择）',
     });
   });
 
@@ -131,7 +129,7 @@ describe('提交信息展示状态', () => {
     });
   });
 
-  it('未选择文件时允许预先选择生成档位但不允许生成', () => {
+  it('未选择文件时允许预先打开 AI 设置但不允许生成', () => {
     expect(commitControlState({
       ...model(true),
       selectedIds: [],
@@ -141,21 +139,21 @@ describe('提交信息展示状态', () => {
       message: '',
     })).toMatchObject({
       canGenerateCommitMessage: false,
-      canSelectAiDensity: true,
+      canOpenAiSettings: true,
     });
   });
 
-  it('生成中、操作忙碌或工作区不可写时禁止切换档位', () => {
+  it('生成中、操作忙碌或工作区不可写时禁止打开 AI 设置', () => {
     expect(commitControlState(model(true), {
       locallyBusy: false,
       aiGenerating: true,
       message: '',
-    }).canSelectAiDensity).toBe(false);
+    }).canOpenAiSettings).toBe(false);
     expect(commitControlState(model(true), {
       locallyBusy: true,
       aiGenerating: false,
       message: '',
-    }).canSelectAiDensity).toBe(false);
+    }).canOpenAiSettings).toBe(false);
     expect(commitControlState({
       ...model(true),
       operation: { kind: 'running', action: 'commit' },
@@ -163,7 +161,7 @@ describe('提交信息展示状态', () => {
       locallyBusy: false,
       aiGenerating: false,
       message: '',
-    }).canSelectAiDensity).toBe(false);
+    }).canOpenAiSettings).toBe(false);
     expect(commitControlState({
       ...model(true),
       trusted: false,
@@ -171,6 +169,6 @@ describe('提交信息展示状态', () => {
       locallyBusy: false,
       aiGenerating: false,
       message: '',
-    }).canSelectAiDensity).toBe(false);
+    }).canOpenAiSettings).toBe(false);
   });
 });

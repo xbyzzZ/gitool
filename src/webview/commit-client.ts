@@ -5,7 +5,7 @@ import type { AiModelSelection } from '../services/ai-model-selection-store.js';
 import { canPushAll } from '../views/push-availability-context.js';
 import {
   aiControlPresentation,
-  aiModelControlPresentation,
+  aiSettingsPresentation,
   commitControlState,
   operationFeedback,
 } from './commit-view-state.js';
@@ -97,11 +97,9 @@ const controls = {
   commitButton: element('commit-button') as HTMLButtonElement,
   commitPushButton: element('commit-push-button') as HTMLButtonElement,
   aiGenerateButton: element('ai-generate-button') as HTMLButtonElement,
-  aiGenerateLabel: element('ai-generate-label'),
+  aiGenerateIcon: element('ai-generate-icon'),
   aiGenerateLoading: element('ai-generate-loading'),
-  aiDensityButton: element('ai-density-button') as HTMLButtonElement,
-  aiModelButton: element('ai-model-button') as HTMLButtonElement,
-  aiModelName: element('ai-model-name'),
+  aiSettingsButton: element('ai-settings-button') as HTMLButtonElement,
   loadingStatus: element('loading-status') as HTMLParagraphElement,
   operationStatus: element('operation-status') as HTMLParagraphElement,
   errorStatus: element('error-status') as HTMLParagraphElement,
@@ -123,8 +121,7 @@ let currentAiModelSelection: AiModelSelection | undefined;
 let pendingMessage: string | undefined;
 let messageTimer: number | undefined;
 let pendingRequestId: string | undefined;
-let modelSelectionRequestId: string | undefined;
-let densitySelectionRequestId: string | undefined;
+let aiSettingsRequestId: string | undefined;
 let pendingPresentation: PendingRequestPresentation | undefined;
 let sequence = 0;
 let density: CommitMessageDensity = 'standard';
@@ -251,8 +248,7 @@ function render(model: RepositoryViewModel): void {
   const running = model.operation.kind === 'running';
   const hasConflict = model.changes.some((change) => change.conflicted);
   const locallyBusy = pendingRequestId !== undefined
-    || modelSelectionRequestId !== undefined
-    || densitySelectionRequestId !== undefined;
+    || aiSettingsRequestId !== undefined;
   const aiGenerating = model.ai.kind === 'generating'
     || pendingPresentation === 'ai-button';
   const {
@@ -260,7 +256,7 @@ function render(model: RepositoryViewModel): void {
     canCommit,
     canCommitAndPush,
     canGenerateCommitMessage,
-    canSelectAiDensity,
+    canOpenAiSettings,
   } = commitControlState(model, {
     locallyBusy,
     aiGenerating,
@@ -275,8 +271,7 @@ function render(model: RepositoryViewModel): void {
   controls.aiGenerateButton.disabled = aiGenerating
     ? false
     : !canGenerateCommitMessage;
-  controls.aiDensityButton.disabled = !canSelectAiDensity;
-  controls.aiModelButton.disabled = !canWrite || locallyBusy || aiGenerating;
+  controls.aiSettingsButton.disabled = !canOpenAiSettings;
   controls.refreshButton.disabled = running || locallyBusy;
   controls.selectAllButton.disabled = !canWrite || model.changeCount === 0;
   controls.clearSelectionButton.disabled = !canWrite || model.selectedIds.length === 0;
@@ -287,7 +282,7 @@ function render(model: RepositoryViewModel): void {
   controls.pushAllButton.disabled = locallyBusy || !canPushAll(model);
   controls.editRemoteButton.disabled = !canWrite;
   const aiPresentation = aiControlPresentation(density, aiGenerating);
-  controls.aiGenerateLabel.textContent = aiPresentation.densityText;
+  controls.aiGenerateIcon.hidden = aiPresentation.generating;
   controls.aiGenerateLoading.hidden = !aiPresentation.generating;
   controls.aiGenerateLoading.classList.toggle(
     'codicon-modifier-spin',
@@ -295,15 +290,12 @@ function render(model: RepositoryViewModel): void {
   );
   controls.aiGenerateButton.setAttribute('aria-label', aiPresentation.generateLabel);
   controls.aiGenerateButton.title = aiPresentation.generateLabel;
-  controls.aiDensityButton.setAttribute('aria-label', aiPresentation.densityLabel);
-  controls.aiDensityButton.title = aiPresentation.densityLabel;
-  const modelPresentation = aiModelControlPresentation(
+  const settingsPresentation = aiSettingsPresentation(
     currentAiModelSelection,
-    modelSelectionRequestId !== undefined,
+    aiSettingsRequestId !== undefined,
   );
-  controls.aiModelName.textContent = modelPresentation.name;
-  controls.aiModelButton.setAttribute('aria-label', modelPresentation.label);
-  controls.aiModelButton.title = modelPresentation.label;
+  controls.aiSettingsButton.setAttribute('aria-label', settingsPresentation.label);
+  controls.aiSettingsButton.title = settingsPresentation.label;
 
   const feedback = operationFeedback(model.operation);
   controls.operationStatus.textContent = feedback.message;
@@ -476,35 +468,20 @@ controls.retryPushButton.addEventListener('click', () => {
   }
 });
 
-controls.aiDensityButton.addEventListener('click', () => {
+controls.aiSettingsButton.addEventListener('click', () => {
   const model = currentModel;
   if (model?.currentRepositoryId === undefined
-    || densitySelectionRequestId !== undefined) {
+    || aiSettingsRequestId !== undefined) {
     return;
   }
   sequence += 1;
-  densitySelectionRequestId = `ai-density-${String(sequence)}`;
+  aiSettingsRequestId = `ai-settings-${String(sequence)}`;
   render(model);
   post({
-    type: 'selectCommitMessageDensity',
+    type: 'selectAiSettings',
     repositoryId: model.currentRepositoryId,
     currentDensity: density,
-    requestId: densitySelectionRequestId,
-  });
-});
-controls.aiModelButton.addEventListener('click', () => {
-  const model = currentModel;
-  if (model?.currentRepositoryId === undefined
-    || modelSelectionRequestId !== undefined) {
-    return;
-  }
-  sequence += 1;
-  modelSelectionRequestId = `ai-model-${String(sequence)}`;
-  render(model);
-  post({
-    type: 'selectAiModel',
-    repositoryId: model.currentRepositoryId,
-    requestId: modelSelectionRequestId,
+    requestId: aiSettingsRequestId,
   });
 });
 controls.aiGenerateButton.addEventListener('click', () => {
@@ -545,11 +522,8 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
     pendingRequestId = undefined;
     pendingPresentation = undefined;
   }
-  if (state.acknowledgedRequestId === modelSelectionRequestId) {
-    modelSelectionRequestId = undefined;
-  }
-  if (state.acknowledgedRequestId === densitySelectionRequestId) {
-    densitySelectionRequestId = undefined;
+  if (state.acknowledgedRequestId === aiSettingsRequestId) {
+    aiSettingsRequestId = undefined;
     if (state.selectedDensity !== undefined
       && currentRepositoryId !== undefined) {
       density = state.selectedDensity;

@@ -22,9 +22,10 @@ const messagesWithExtraFields: readonly unknown[] = [
     extra: true,
   },
   {
-    type: 'selectAiModel',
+    type: 'selectAiSettings',
     repositoryId: '/repo/a',
-    requestId: 'request-model',
+    currentDensity: 'standard',
+    requestId: 'request-settings',
     modelId: '伪造模型',
   },
   { type: 'trash', version: 0, fileIds: ['a.ts'], recursive: true },
@@ -207,28 +208,16 @@ describe('parseWebviewMessage', () => {
     ),
     [
       {
-        type: 'selectAiModel',
-        repositoryId: '/repo/a',
-        requestId: 'request-model',
-      },
-      {
-        type: 'selectAiModel',
-        repositoryId: '/repo/a',
-        requestId: 'request-model',
-      },
-    ],
-    [
-      {
-        type: 'selectCommitMessageDensity',
+        type: 'selectAiSettings',
         repositoryId: '/repo/a',
         currentDensity: 'standard',
-        requestId: 'request-density',
+        requestId: 'request-settings',
       },
       {
-        type: 'selectCommitMessageDensity',
+        type: 'selectAiSettings',
         repositoryId: '/repo/a',
         currentDensity: 'standard',
-        requestId: 'request-density',
+        requestId: 'request-settings',
       },
     ],
     [
@@ -398,10 +387,10 @@ describe('parseWebviewMessage', () => {
       requestId: 'request-1',
     },
     {
-      type: 'selectCommitMessageDensity',
+      type: 'selectAiSettings',
       repositoryId: '/repo/a',
       currentDensity: 'verbose',
-      requestId: 'request-density',
+      requestId: 'request-settings',
     },
     {
       type: 'generateCommitMessage',

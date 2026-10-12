@@ -592,23 +592,42 @@ describe('GitoolViewProvider', () => {
     });
   });
 
-  it('通过宿主 Quick Pick 选择生成内容并回传所选档位', async () => {
+  it('通过 AI 设置菜单选择生成详细程度并回传所选档位', async () => {
     const created = createServiceDouble();
-    vscodeMocks.showQuickPick.mockImplementation(
-      (items: readonly unknown[]) => Promise.resolve(items[2]),
-    );
+    vscodeMocks.showQuickPick
+      .mockImplementationOnce(
+        (items: readonly unknown[]) => Promise.resolve(items[1]),
+      )
+      .mockImplementationOnce(
+        (items: readonly unknown[]) => Promise.resolve(items[2]),
+      );
     const provider = createProvider(created.service);
     const harness = createViewHarness();
     await provider.resolveWebviewView(harness.view);
 
     harness.receive({
-      type: 'selectCommitMessageDensity',
+      type: 'selectAiSettings',
       repositoryId: '/workspace/repo',
       currentDensity: 'standard',
-      requestId: 'density-1',
+      requestId: 'ai-settings-1',
     });
 
     await vi.waitFor(() => {
+      expect(vscodeMocks.showQuickPick).toHaveBeenCalledWith([
+        {
+          label: '$(hubot) 选择模型',
+          description: '当前：自动选择',
+          action: 'model',
+        },
+        {
+          label: '$(list-ordered) 生成详细程度',
+          description: '当前：标准 · 标题 + 2–4 条关键变化',
+          action: 'density',
+        },
+      ], {
+        title: 'Gitool：AI 提交信息设置',
+        placeHolder: '选择要调整的 AI 生成选项',
+      });
       expect(vscodeMocks.showQuickPick).toHaveBeenCalledWith([
         {
           label: '精简',
@@ -632,8 +651,36 @@ describe('GitoolViewProvider', () => {
       expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
         type: 'state',
         selectedDensity: 'detailed',
-        acknowledgedRequestId: 'density-1',
+        acknowledgedRequestId: 'ai-settings-1',
       }));
+    });
+  });
+
+  it('取消 AI 设置菜单时不改变模型与档位', async () => {
+    const created = createServiceDouble();
+    vscodeMocks.showQuickPick.mockResolvedValue(undefined);
+    const store = createSelectionStore({
+      '/workspace/repo': { id: 'model-1', name: '模型一' },
+    });
+    const provider = createProvider(created.service, store);
+    const harness = createViewHarness();
+    await provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'selectAiSettings',
+      repositoryId: '/workspace/repo',
+      currentDensity: 'standard',
+      requestId: 'ai-settings-cancel',
+    });
+
+    await vi.waitFor(() => {
+      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        acknowledgedRequestId: 'ai-settings-cancel',
+      }));
+    });
+    expect(store.get('/workspace/repo')).toEqual({
+      id: 'model-1',
+      name: '模型一',
     });
   });
 
@@ -649,17 +696,22 @@ describe('GitoolViewProvider', () => {
         family: 'family-2', version: '2', maxInputTokens: 16_384,
       },
     ]);
-    vscodeMocks.showQuickPick.mockImplementation(
-      (items: readonly unknown[]) => Promise.resolve(items[2]),
-    );
+    vscodeMocks.showQuickPick
+      .mockImplementationOnce(
+        (items: readonly unknown[]) => Promise.resolve(items[0]),
+      )
+      .mockImplementationOnce(
+        (items: readonly unknown[]) => Promise.resolve(items[2]),
+      );
     const store = createSelectionStore();
     const provider = createProvider(created.service, store);
     const harness = createViewHarness();
     await provider.resolveWebviewView(harness.view);
 
     harness.receive({
-      type: 'selectAiModel',
+      type: 'selectAiSettings',
       repositoryId: '/workspace/repo',
+      currentDensity: 'standard',
       requestId: 'select-model-1',
     });
 
@@ -701,7 +753,11 @@ describe('GitoolViewProvider', () => {
       id: 'model-1', name: '模型一', vendor: 'copilot',
       family: 'family-1', version: '1', maxInputTokens: 8192,
     }]);
-    vscodeMocks.showQuickPick.mockResolvedValue(undefined);
+    vscodeMocks.showQuickPick
+      .mockImplementationOnce(
+        (items: readonly unknown[]) => Promise.resolve(items[0]),
+      )
+      .mockResolvedValue(undefined);
     const store = createSelectionStore({
       '/workspace/repo': { id: 'model-1', name: '模型一' },
     });
@@ -710,8 +766,9 @@ describe('GitoolViewProvider', () => {
     await provider.resolveWebviewView(harness.view);
 
     harness.receive({
-      type: 'selectAiModel',
+      type: 'selectAiSettings',
       repositoryId: '/workspace/repo',
+      currentDensity: 'standard',
       requestId: 'select-model-cancel',
     });
 
@@ -743,8 +800,9 @@ describe('GitoolViewProvider', () => {
     await provider.resolveWebviewView(harness.view);
 
     harness.receive({
-      type: 'selectAiModel',
+      type: 'selectAiSettings',
       repositoryId: '/workspace/repo',
+      currentDensity: 'standard',
       requestId: 'select-model-auto',
     });
 
@@ -770,8 +828,9 @@ describe('GitoolViewProvider', () => {
     await provider.resolveWebviewView(harness.view);
 
     harness.receive({
-      type: 'selectAiModel',
+      type: 'selectAiSettings',
       repositoryId: '/workspace/repo',
+      currentDensity: 'standard',
       requestId: 'select-model-empty',
     });
 

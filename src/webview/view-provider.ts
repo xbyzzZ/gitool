@@ -11,6 +11,7 @@ import type {
 } from '../services/ai-model-selection-store.js';
 import type { PushResult } from '../services/push-service.js';
 import { GitoolViewActions } from '../views/view-actions.js';
+import { densityPresentation } from './commit-view-state.js';
 import { parseWebviewMessage, type WebviewMessage } from './messages.js';
 import { renderCommitWebviewHtml } from './render.js';
 import {
@@ -41,6 +42,10 @@ interface AiModelQuickPickItem extends vscode.QuickPickItem {
 
 interface DensityQuickPickItem extends vscode.QuickPickItem {
   readonly density: CommitMessageDensity;
+}
+
+interface AiSettingsQuickPickItem extends vscode.QuickPickItem {
+  readonly action: 'model' | 'density';
 }
 
 function errorMessage(error: unknown): string {
@@ -79,10 +84,8 @@ function messageAction(message: WebviewMessage): string {
       return '推送全部本地提交';
     case 'generateCommitMessage':
       return '生成提交信息';
-    case 'selectAiModel':
-      return '选择 AI 模型';
-    case 'selectCommitMessageDensity':
-      return '选择生成内容';
+    case 'selectAiSettings':
+      return 'AI 设置';
     case 'cancelCommitMessageGeneration':
       return '取消生成提交信息';
   }
@@ -368,11 +371,8 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
       case 'generateCommitMessage':
         await this.generateCommitMessage(message);
         return;
-      case 'selectAiModel':
-        await this.selectAiModel(message.repositoryId);
-        return;
-      case 'selectCommitMessageDensity':
-        return this.selectCommitMessageDensity(
+      case 'selectAiSettings':
+        return this.selectAiSettings(
           message.repositoryId,
           message.currentDensity,
         );
@@ -420,6 +420,40 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
         this.aiController = undefined;
       }
     }
+  }
+
+  private async selectAiSettings(
+    repositoryId: string,
+    currentDensity: CommitMessageDensity,
+  ): Promise<CommitMessageDensity | undefined> {
+    this.requireRepository(repositoryId);
+    const selection = this.dependencies.aiModelSelectionStore.get(repositoryId);
+    const density = densityPresentation(currentDensity);
+    const items: readonly AiSettingsQuickPickItem[] = [
+      {
+        label: '$(hubot) 选择模型',
+        description: `当前：${selection?.name ?? '自动选择'}`,
+        action: 'model',
+      },
+      {
+        label: '$(list-ordered) 生成详细程度',
+        description: `当前：${density.label} · ${density.description}`,
+        action: 'density',
+      },
+    ];
+    const selected = await vscode.window.showQuickPick(items, {
+      title: 'Gitool：AI 提交信息设置',
+      placeHolder: '选择要调整的 AI 生成选项',
+    });
+    if (selected === undefined) {
+      return undefined;
+    }
+    this.requireRepository(repositoryId);
+    if (selected.action === 'model') {
+      await this.selectAiModel(repositoryId);
+      return undefined;
+    }
+    return this.selectCommitMessageDensity(repositoryId, currentDensity);
   }
 
   private async selectAiModel(repositoryId: string): Promise<void> {
