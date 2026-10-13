@@ -1,14 +1,35 @@
 ---
 feature: workbench-history-redesign
-status: in-progress
+status: delivered
 updated: 2026-10-13
 branch: feat/workbench-history-redesign
-commits: <交付时填写>
+commits: 3d408c5..2d97b51
 ---
 
 # 提交工作台与历史视图视觉复刻（design/ 原型）
 
 ## Report
+
+**已构建**
+
+- 工作台与历史视图按 `design/` 两个原型完整复刻：`media/main.css` 重写为固定深色设计 token（纯黑背景、SF 字体栈、胶囊按钮、lane 色板），不再引用 `--vscode-*` 主题变量；`render.ts` 骨架全部改用内联 SVG，codicon 依赖与资源文件一并移除。
+- 工作台：三态自定义勾选、整行点选（accent 竖条）、彩色状态徽章、悬浮"打开 diff"、组折叠动画、空态；提交坞含字符计数、Tab 缩进、空信息抖动校验、拖条 min150/max40% 视口；舍弃按钮为两步内联确认，语义仍仅限未跟踪文件（系统废纸篓 + 宿主模态确认）。
+- AI 设置由宿主 Quick Pick 改为 webview 内弹层：新增 `setAiModel` 消息（'auto' 清除持久化）与 state 消息的 `aiModels` 字段；档位仍由 webview 端持久化。`selectAiSettings` 与 QuickPick 流程删除，`ai-model-selector.md` 已标注被本特性取代。
+- 历史视图：返回链接 + 标题 + 客户端搜索（subject/author/完整哈希）+ 分支 chip；条目双行结构、refs 徽章、hash 复制 toast；graph 改为覆盖层 SVG，沿用真实 lane 拓扑，merge/当前提交节点样式按原型；单条目展开。
+
+**验证**
+
+- `npm run check`（tsc + eslint strictTypeChecked + vitest）：35 个测试文件 419 项全部通过。
+- `npm run build`（esbuild，含 media/commit.js）：通过；`git diff --check`：通过。
+- `npm run test:vscode`：**PRE-EXISTING** 失败——main 基线（3d408c5）在 VS Code 1.141.0 下以同样方式失败（.code-workspace 被当作 JS 入口加载），与本次改动无关。
+- 独立审查：首轮 1 个关键问题（舍弃武装态 aria-label 与行为相反）+ 若干次要项；修复提交 2d97b51 经复审全部关闭，分支获批准。
+
+**过程记录**
+
+- 并行子代理拆分按文件所有权切分（CSS/骨架 → 客户端+协议 ∥ 历史渲染器），关键在于先冻结 DOM 契约（ID/类名清单）再并行；期间 `tsc --noEmit` 作为跨代理契约校验器。
+- 原型弹层是独立页面语境，移植时保留了扩展特有的运行态：操作反馈条、加载状态行、多仓库切换、CSP+nonce；这些以新增类名融入原型体系而非改造原型类名。
+- 原型的两步舍弃在原型里第二次点击只是取消，移植语义是第二次点击执行；审查发现并修复了由此产生的 aria-label 反转问题——复刻交互时文案必须按实际语义重写。
+- 舍弃按钮刻意不接 `git checkout/restore` 式跟踪文件舍弃，保持仓库既有的废纸篓安全语义。
 
 ## [S1] 问题
 
@@ -67,11 +88,11 @@ commits: <交付时填写>
 
 ## Tasks
 
-- [ ] T1: 重写 `media/main.css` 为原型设计 token + 全部组件样式（工作台 + 历史 + 弹层 + toast + 断点），更新 main.css 契约测试 — acceptance: 契约测试通过且样式键与原型 token 一致 (covers: S2)
-- [ ] T2: `src/webview/render.ts` HTML 骨架按原型复刻（工具栏/仓库条/提交坞/历史头部，自定义 SVG 图标替换 Codicon，保留 CSP+nonce）— acceptance: render 单测通过，HTML 含原型结构与 `data-od-id` 等价标识 (covers: S2)
-- [ ] T3: `commit-change-renderer.ts` 复刻（三态 cbx、行选中 accent 条、彩色状态徽章、悬浮 diff 链接、折叠动画、空态）— acceptance: renderer 单测更新通过 (covers: S2; depends: T1)
-- [ ] T4: `commit-client.ts` + `commit-workbench-layout.ts` 交互复刻（全选切换、两步舍弃、字符计数、Tab 缩进、空信息抖动、拖条 min150/max40%）— acceptance: 对应单测通过 (covers: S2; depends: T2, T3)
-- [ ] T5: AI 弹层 + 协议扩展（`messages.ts` 增 `setAiModel` 删 `selectAiSettings`、state 增 `aiModels`、view-provider 接线、webview 弹层组件）— acceptance: messages/view-provider 单测通过，弹层交互在 Extension Host 测试或单测中可验证 (covers: S2; depends: T2)
-- [ ] T6: `history-renderer.ts` 复刻（搜索过滤、hash 复制 toast、覆盖层 graph、徽章样式、单展开）— acceptance: history 单测更新通过 (covers: S2; depends: T1)
-- [ ] T7: 清理失效代码（edit-remote 按钮、Quick Pick AI 流程、旧样式类）并同步 README/ai-model-selector.md 标注 — acceptance: 无死引用，`npm run check` 通过 (covers: S2; depends: T2-T6)
-- [ ] T8: 全量验证 `npm run check` + `npm run build` + `npm run test:vscode` — acceptance: 全部通过并记录 (covers: S2; depends: T7)
+- [x] T1: 重写 `media/main.css` 为原型设计 token + 全部组件样式（工作台 + 历史 + 弹层 + toast + 断点），更新 main.css 契约测试 — acceptance: 契约测试通过且样式键与原型 token 一致 (covers: S2)
+- [x] T2: `src/webview/render.ts` HTML 骨架按原型复刻（工具栏/仓库条/提交坞/历史头部，自定义 SVG 图标替换 Codicon，保留 CSP+nonce）— acceptance: render 单测通过，HTML 含原型结构与 `data-od-id` 等价标识 (covers: S2)
+- [x] T3: `commit-change-renderer.ts` 复刻（三态 cbx、行选中 accent 条、彩色状态徽章、悬浮 diff 链接、折叠动画、空态）— acceptance: renderer 单测更新通过 (covers: S2; depends: T1)
+- [x] T4: `commit-client.ts` + `commit-workbench-layout.ts` 交互复刻（全选切换、两步舍弃、字符计数、Tab 缩进、空信息抖动、拖条 min150/max40%）— acceptance: 对应单测通过 (covers: S2; depends: T2, T3)
+- [x] T5: AI 弹层 + 协议扩展（`messages.ts` 增 `setAiModel` 删 `selectAiSettings`、state 增 `aiModels`、view-provider 接线、webview 弹层组件）— acceptance: messages/view-provider 单测通过，弹层交互在 Extension Host 测试或单测中可验证 (covers: S2; depends: T2)
+- [x] T6: `history-renderer.ts` 复刻（搜索过滤、hash 复制 toast、覆盖层 graph、徽章样式、单展开）— acceptance: history 单测更新通过 (covers: S2; depends: T1)
+- [x] T7: 清理失效代码（edit-remote 按钮、Quick Pick AI 流程、旧样式类）并同步 README/ai-model-selector.md 标注 — acceptance: 无死引用，`npm run check` 通过 (covers: S2; depends: T2-T6)
+- [x] T8: 全量验证 `npm run check` + `npm run build` + `npm run test:vscode` — acceptance: 全部通过并记录 (covers: S2; depends: T7)
