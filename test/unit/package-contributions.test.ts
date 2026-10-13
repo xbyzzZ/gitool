@@ -46,9 +46,9 @@ describe('扩展贡献点', () => {
     expect(manifest.activationEvents).toContain('onStartupFinished');
   });
 
-  it('0.3 只贡献统一提交工作台，并用隐藏树视图承载活动栏徽标', () => {
+  it('只贡献统一工作台视图，并用隐藏树视图承载活动栏徽标', () => {
     expect(manifest.contributes.views.gitool).toEqual([
-      { type: 'webview', id: 'gitool.commitView', name: '提交' },
+      { type: 'webview', id: 'gitool.commitView', name: 'Gitool' },
       { id: 'gitool.activityBadge', name: '变更', visibility: 'hidden' },
     ]);
   });

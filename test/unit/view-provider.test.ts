@@ -227,6 +227,7 @@ interface ViewHarness {
   readonly receive: (message: unknown) => void;
   readonly postMessage: ReturnType<typeof vi.fn>;
   readonly emitVisibility: (visible: boolean) => void;
+  readonly emitDispose: () => void;
 }
 
 function createViewHarness(options: {
@@ -256,9 +257,25 @@ function createViewHarness(options: {
     },
   });
   const visibilityListeners = new Set<() => unknown>();
+  const disposeListeners = new Set<() => unknown>();
+  let disposed = false;
+  let description: string | undefined;
+  // 模拟 VS Code 的语义：视图销毁后 badge/description 的 setter 抛错
+  const assertNotDisposed = (): void => {
+    if (disposed) {
+      throw new Error('Webview is disposed');
+    }
+  };
   const viewState = {
     webview,
     visible: true,
+    get description() {
+      return description;
+    },
+    set description(value: string | undefined) {
+      assertNotDisposed();
+      description = value;
+    },
     onDidChangeVisibility: (listener: () => unknown) => {
       visibilityListeners.add(listener);
       return {
@@ -267,7 +284,14 @@ function createViewHarness(options: {
         },
       };
     },
-    onDidDispose: () => ({ dispose: vi.fn() }),
+    onDidDispose: (listener: () => unknown) => {
+      disposeListeners.add(listener);
+      return {
+        dispose: () => {
+          disposeListeners.delete(listener);
+        },
+      };
+    },
   };
   const view = viewState as unknown as vscode.WebviewView;
   return {
@@ -282,6 +306,12 @@ function createViewHarness(options: {
     emitVisibility: (visible: boolean) => {
       viewState.visible = visible;
       for (const listener of visibilityListeners) {
+        listener();
+      }
+    },
+    emitDispose: () => {
+      disposed = true;
+      for (const listener of disposeListeners) {
         listener();
       }
     },
@@ -437,6 +467,21 @@ describe('GitoolViewProvider', () => {
     await vi.waitFor(() => {
       expect(created.refresh).toHaveBeenCalledOnce();
     });
+  });
+
+  it('视图销毁后重新解析不抛错并写入新 HTML', async () => {
+    const created = createServiceDouble();
+    const provider = createProvider(created.service);
+    const first = createViewHarness();
+    await provider.resolveWebviewView(first.view);
+
+    first.emitDispose();
+    created.fireChange();
+    const second = createViewHarness();
+    await provider.resolveWebviewView(second.view);
+
+    expect(second.view.webview.html).toContain('commit-workbench');
+    expect(second.view.description).toBe('1 个变更');
   });
 
   it('Webview 首次就绪时只刷新当前仓库快照', async () => {

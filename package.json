@@ -41,7 +41,7 @@
         {
           "type": "webview",
           "id": "gitool.commitView",
-          "name": "提交"
+          "name": "Gitool"
         },
         {
           "id": "gitool.activityBadge",

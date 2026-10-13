@@ -195,10 +195,9 @@ export class GitoolViewProvider implements vscode.WebviewViewProvider {
     this.clientReady = false;
     this.aiController?.abort();
     this.aiController = undefined;
-    if (this.view !== undefined) {
-      this.view.badge = undefined;
-      this.view.description = '';
-    }
+    // 不能在这里写旧视图的 badge/description：onDidDispose 触发时视图已销毁，
+    // setter 会抛 'Webview is disposed' 并中断清理；新视图的元数据由
+    // resolveWebviewView 里的 updateViewMetadata 重新写入。
     this.view = undefined;
     this.webview = undefined;
     for (const disposable of this.viewDisposables.splice(0)) {
