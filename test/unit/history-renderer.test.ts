@@ -113,11 +113,13 @@ describe('historyListMarkup', () => {
     expect(view.markup).toContain('class="origin-txt">origin/main</span>');
   });
 
-  it('引用颜色按名称哈希稳定分配且互不相同', () => {
-    expect(refColorClass('main')).toBe(refColorClass('main'));
-    expect(refColorClass('main')).toMatch(/^ref-c[1-6]$/u);
+  it('主干固定蓝色，其余引用哈希到剩余五色且稳定', () => {
+    expect(refColorClass('main')).toBe('ref-c1');
+    expect(refColorClass('master')).toBe('ref-c1');
     expect(refColorClass('feature/x')).toBe(refColorClass('feature/x'));
-    const palette = new Set(['main', 'develop', 'feature/x', 'release/1.0', 'hotfix', 'origin/main']
+    expect(refColorClass('feature/x')).toMatch(/^ref-c[2-6]$/u);
+    expect(refColorClass('origin/main')).toMatch(/^ref-c[2-6]$/u);
+    const palette = new Set(['develop', 'feature/x', 'release/1.0', 'hotfix', 'bugfix/login']
       .map(refColorClass));
     expect(palette.size).toBeGreaterThan(2);
   });

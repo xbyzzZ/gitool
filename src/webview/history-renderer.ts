@@ -81,13 +81,16 @@ function commitKind(commit: CommitGraphNode): 'merge' | 'current' | 'normal' {
   return isCurrentCommit(commit) ? 'current' : 'normal';
 }
 
-/* 分支名哈希 → 6 色引用调色板，同名引用颜色稳定、不同分支易区分 */
+/* 主干（main/master）固定蓝色；其余引用名哈希到剩余 5 色，同名稳定、不同分支易区分 */
 export function refColorClass(name: string): string {
+  if (name === 'main' || name === 'master') {
+    return 'ref-c1';
+  }
   let hash = 0;
   for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) % 6;
+    hash = (hash * 31 + name.charCodeAt(i)) % 5;
   }
-  return `ref-c${String(hash + 1)}`;
+  return `ref-c${String(hash + 2)}`;
 }
 
 function refBadge(ref: CommitRef): string {
