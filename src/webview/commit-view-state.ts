@@ -5,6 +5,19 @@ import type {
 import type { CommitMessageDensity } from '../services/commit-message-ai-service.js';
 import type { AiModelSelection } from '../services/ai-model-selection-store.js';
 
+export interface AiModelInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+}
+
+export interface AiMenuItem {
+  readonly action: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly checked: boolean;
+}
+
 export interface AiControlPresentation {
   readonly density: CommitMessageDensity;
   readonly densityText: string;
@@ -32,7 +45,6 @@ export interface OperationFeedback {
 export interface CommitControlInput {
   readonly locallyBusy: boolean;
   readonly aiGenerating: boolean;
-  readonly message: string;
 }
 
 export interface CommitControlState {
@@ -67,17 +79,62 @@ export function aiControlPresentation(
     densityText: label,
     generating,
     generateLabel: generating
-      ? '取消 AI 生成'
-      : `生成提交信息：${label}（${description}）`,
+      ? '取消生成'
+      : `生成提交信息（${label}：${description}）`,
   };
 }
 
 export function aiSettingsPresentation(
   selection: AiModelSelection | undefined,
-  selecting: boolean,
 ): AiSettingsPresentation {
-  const name = selecting ? '正在选择' : (selection?.name ?? '自动选择');
-  return { name, label: `AI 设置（当前模型：${name}）` };
+  const name = selection?.name ?? '自动选择';
+  return { name, label: `AI 设置（模型：${name}）` };
+}
+
+export function aiModelMenuItems(
+  models: readonly AiModelInfo[] | undefined,
+  selection: AiModelSelection | undefined,
+): {
+  readonly items: readonly AiMenuItem[];
+  readonly modelsUnavailable: boolean;
+} {
+  const auto: AiMenuItem = {
+    action: 'model:auto',
+    title: '自动选择',
+    description: '优先 Copilot，否则使用任意可用模型',
+    checked: selection === undefined,
+  };
+  const items = (models ?? []).map((model): AiMenuItem => ({
+    action: `model:${model.id}`,
+    title: model.name,
+    ...(model.description === undefined
+      ? {}
+      : { description: model.description }),
+    checked: selection?.id === model.id,
+  }));
+  return {
+    items: [auto, ...items],
+    modelsUnavailable: models === undefined || models.length === 0,
+  };
+}
+
+export function aiDensityMenuItems(
+  density: CommitMessageDensity,
+): readonly AiMenuItem[] {
+  const densities: readonly CommitMessageDensity[] = [
+    'compact',
+    'standard',
+    'detailed',
+  ];
+  return densities.map((candidate) => {
+    const presentation = densityPresentation(candidate);
+    return {
+      action: `density:${candidate}`,
+      title: presentation.label,
+      description: presentation.description,
+      checked: candidate === density,
+    };
+  });
 }
 
 export function operationFeedback(
@@ -123,8 +180,7 @@ export function commitControlState(
     && !input.locallyBusy
     && !hasConflict;
   const canCommit = canWrite
-    && model.selectedIds.length > 0
-    && input.message.trim().length > 0;
+    && model.selectedIds.length > 0;
   return {
     canWrite,
     canCommit,

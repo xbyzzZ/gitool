@@ -22,11 +22,10 @@ const messagesWithExtraFields: readonly unknown[] = [
     extra: true,
   },
   {
-    type: 'selectAiSettings',
+    type: 'setAiModel',
     repositoryId: '/repo/a',
-    currentDensity: 'standard',
-    requestId: 'request-settings',
-    modelId: '伪造模型',
+    modelId: 'auto',
+    currentDensity: '伪造档位',
   },
   { type: 'trash', version: 0, fileIds: ['a.ts'], recursive: true },
   JSON.parse('{"type":"ready","__proto__":{"polluted":true}}') as unknown,
@@ -208,16 +207,26 @@ describe('parseWebviewMessage', () => {
     ),
     [
       {
-        type: 'selectAiSettings',
+        type: 'setAiModel',
         repositoryId: '/repo/a',
-        currentDensity: 'standard',
-        requestId: 'request-settings',
+        modelId: 'auto',
       },
       {
-        type: 'selectAiSettings',
+        type: 'setAiModel',
         repositoryId: '/repo/a',
-        currentDensity: 'standard',
-        requestId: 'request-settings',
+        modelId: 'auto',
+      },
+    ],
+    [
+      {
+        type: 'setAiModel',
+        repositoryId: '/repo/a',
+        modelId: 'copilot/gpt-4.1',
+      },
+      {
+        type: 'setAiModel',
+        repositoryId: '/repo/a',
+        modelId: 'copilot/gpt-4.1',
       },
     ],
     [
@@ -421,10 +430,22 @@ describe('parseWebviewMessage', () => {
       requestId: 'request-1',
     },
     {
-      type: 'selectAiSettings',
+      type: 'setAiModel',
       repositoryId: '/repo/a',
-      currentDensity: 'verbose',
-      requestId: 'request-settings',
+      modelId: '',
+    },
+    {
+      type: 'setAiModel',
+      repositoryId: '/repo/a',
+      modelId: '   ',
+    },
+    {
+      type: 'setAiModel',
+      repositoryId: '/repo/a',
+    },
+    {
+      type: 'setAiModel',
+      modelId: 'auto',
     },
     {
       type: 'generateCommitMessage',

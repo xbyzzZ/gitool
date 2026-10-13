@@ -592,99 +592,65 @@ describe('GitoolViewProvider', () => {
     });
   });
 
-  it('通过 AI 设置菜单选择生成详细程度并回传所选档位', async () => {
+  it('state 消息携带映射后的 AI 模型列表', async () => {
     const created = createServiceDouble();
-    vscodeMocks.showQuickPick
-      .mockImplementationOnce(
-        (items: readonly unknown[]) => Promise.resolve(items[1]),
-      )
-      .mockImplementationOnce(
-        (items: readonly unknown[]) => Promise.resolve(items[2]),
-      );
+    created.listAiModels.mockResolvedValue([
+      {
+        id: 'model-1', name: '模型一', vendor: 'copilot',
+        family: 'family-1', version: '1', maxInputTokens: 8192,
+      },
+      {
+        id: 'model-2', name: '模型二', vendor: '',
+        family: '', version: '', maxInputTokens: 0,
+      },
+    ]);
     const provider = createProvider(created.service);
     const harness = createViewHarness();
     await provider.resolveWebviewView(harness.view);
 
-    harness.receive({
-      type: 'selectAiSettings',
-      repositoryId: '/workspace/repo',
-      currentDensity: 'standard',
-      requestId: 'ai-settings-1',
-    });
+    harness.receive({ type: 'ready' });
 
     await vi.waitFor(() => {
-      expect(vscodeMocks.showQuickPick).toHaveBeenCalledWith([
-        {
-          label: '$(hubot) 选择模型',
-          description: '当前：自动选择',
-          action: 'model',
-        },
-        {
-          label: '$(list-ordered) 生成详细程度',
-          description: '当前：标准 · 标题 + 2–4 条关键变化',
-          action: 'density',
-        },
-      ], {
-        title: 'Gitool：AI 提交信息设置',
-        placeHolder: '选择要调整的 AI 生成选项',
-      });
-      expect(vscodeMocks.showQuickPick).toHaveBeenCalledWith([
-        {
-          label: '精简',
-          description: '仅生成一行标题',
-          density: 'compact',
-        },
-        {
-          label: '$(check) 标准',
-          description: '标题 + 2–4 条关键变化',
-          density: 'standard',
-        },
-        {
-          label: '详细',
-          description: '标题 + 行为及兼容说明',
-          density: 'detailed',
-        },
-      ], {
-        title: 'Gitool：选择生成内容',
-        placeHolder: '选择 AI 提交信息的内容详细程度',
-      });
       expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
         type: 'state',
-        selectedDensity: 'detailed',
-        acknowledgedRequestId: 'ai-settings-1',
+        aiModels: [
+          { id: 'model-1', name: '模型一', description: 'copilot · family-1 · 1' },
+          { id: 'model-2', name: '模型二' },
+        ],
       }));
     });
   });
 
-  it('取消 AI 设置菜单时不改变模型与档位', async () => {
+  it('读取 AI 模型列表失败时省略 aiModels 字段且只请求一次', async () => {
     const created = createServiceDouble();
-    vscodeMocks.showQuickPick.mockResolvedValue(undefined);
-    const store = createSelectionStore({
-      '/workspace/repo': { id: 'model-1', name: '模型一' },
-    });
-    const provider = createProvider(created.service, store);
+    created.listAiModels.mockRejectedValue(new Error('无语言模型 API'));
+    const provider = createProvider(created.service);
     const harness = createViewHarness();
     await provider.resolveWebviewView(harness.view);
 
-    harness.receive({
-      type: 'selectAiSettings',
-      repositoryId: '/workspace/repo',
-      currentDensity: 'standard',
-      requestId: 'ai-settings-cancel',
-    });
+    harness.receive({ type: 'ready' });
 
     await vi.waitFor(() => {
-      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-        acknowledgedRequestId: 'ai-settings-cancel',
-      }));
+      expect(harness.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'state' }),
+      );
     });
-    expect(store.get('/workspace/repo')).toEqual({
-      id: 'model-1',
-      name: '模型一',
+    const stateCount = harness.postMessage.mock.calls.filter(
+      ([message]) => (message as { readonly type: string }).type === 'state',
+    ).length;
+    expect(stateCount).toBeGreaterThan(0);
+    for (const [message] of harness.postMessage.mock.calls) {
+      expect('aiModels' in (message as object)).toBe(false);
+    }
+
+    created.fireChange();
+    await vi.waitFor(() => {
+      expect(harness.postMessage.mock.calls.length).toBeGreaterThan(stateCount);
     });
+    expect(created.listAiModels).toHaveBeenCalledTimes(1);
   });
 
-  it('选择具体 AI 模型后按仓库保存并用于生成', async () => {
+  it('setAiModel 选择具体模型后按仓库保存并用于生成', async () => {
     const created = createServiceDouble();
     created.listAiModels.mockResolvedValue([
       {
@@ -696,23 +662,20 @@ describe('GitoolViewProvider', () => {
         family: 'family-2', version: '2', maxInputTokens: 16_384,
       },
     ]);
-    vscodeMocks.showQuickPick
-      .mockImplementationOnce(
-        (items: readonly unknown[]) => Promise.resolve(items[0]),
-      )
-      .mockImplementationOnce(
-        (items: readonly unknown[]) => Promise.resolve(items[2]),
-      );
+    created.generateCommitMessage.mockResolvedValue({
+      message: '功能：生成信息',
+      excluded: [],
+      modelId: 'model-2',
+    });
     const store = createSelectionStore();
     const provider = createProvider(created.service, store);
     const harness = createViewHarness();
     await provider.resolveWebviewView(harness.view);
 
     harness.receive({
-      type: 'selectAiSettings',
+      type: 'setAiModel',
       repositoryId: '/workspace/repo',
-      currentDensity: 'standard',
-      requestId: 'select-model-1',
+      modelId: 'model-2',
     });
 
     await vi.waitFor(() => {
@@ -724,7 +687,6 @@ describe('GitoolViewProvider', () => {
     expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: 'state',
       aiModelSelection: { id: 'model-2', name: '模型二' },
-      acknowledgedRequestId: 'select-model-1',
     }));
 
     harness.receive({
@@ -747,17 +709,8 @@ describe('GitoolViewProvider', () => {
     });
   });
 
-  it('取消模型选择时保留当前仓库原选择', async () => {
+  it('setAiModel 选择 auto 时清除当前仓库显式模型', async () => {
     const created = createServiceDouble();
-    created.listAiModels.mockResolvedValue([{
-      id: 'model-1', name: '模型一', vendor: 'copilot',
-      family: 'family-1', version: '1', maxInputTokens: 8192,
-    }]);
-    vscodeMocks.showQuickPick
-      .mockImplementationOnce(
-        (items: readonly unknown[]) => Promise.resolve(items[0]),
-      )
-      .mockResolvedValue(undefined);
     const store = createSelectionStore({
       '/workspace/repo': { id: 'model-1', name: '模型一' },
     });
@@ -766,83 +719,50 @@ describe('GitoolViewProvider', () => {
     await provider.resolveWebviewView(harness.view);
 
     harness.receive({
-      type: 'selectAiSettings',
+      type: 'setAiModel',
       repositoryId: '/workspace/repo',
-      currentDensity: 'standard',
-      requestId: 'select-model-cancel',
+      modelId: 'auto',
     });
 
     await vi.waitFor(() => {
-      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-        acknowledgedRequestId: 'select-model-cancel',
-      }));
+      expect(store.get('/workspace/repo')).toBeUndefined();
+    });
+    expect(harness.postMessage).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        aiModelSelection: expect.anything() as unknown,
+      }),
+    );
+  });
+
+  it('setAiModel 选择未知模型时报错且保留原选择', async () => {
+    const created = createServiceDouble();
+    created.listAiModels.mockResolvedValue([{
+      id: 'model-1', name: '模型一', vendor: 'copilot',
+      family: 'family-1', version: '1', maxInputTokens: 8192,
+    }]);
+    const store = createSelectionStore({
+      '/workspace/repo': { id: 'model-1', name: '模型一' },
+    });
+    const provider = createProvider(created.service, store);
+    const harness = createViewHarness();
+    await provider.resolveWebviewView(harness.view);
+
+    harness.receive({
+      type: 'setAiModel',
+      repositoryId: '/workspace/repo',
+      modelId: 'ghost-model',
+    });
+
+    await vi.waitFor(() => {
+      expect(created.reportFailure).toHaveBeenCalledWith(
+        '设置 AI 模型',
+        '所选 AI 模型不可用',
+      );
     });
     expect(store.get('/workspace/repo')).toEqual({
       id: 'model-1',
       name: '模型一',
     });
-  });
-
-  it('选择自动模式时清除当前仓库显式模型', async () => {
-    const created = createServiceDouble();
-    created.listAiModels.mockResolvedValue([{
-      id: 'model-1', name: '模型一', vendor: 'copilot',
-      family: 'family-1', version: '1', maxInputTokens: 8192,
-    }]);
-    vscodeMocks.showQuickPick.mockImplementation(
-      (items: readonly unknown[]) => Promise.resolve(items[0]),
-    );
-    const store = createSelectionStore({
-      '/workspace/repo': { id: 'model-1', name: '模型一' },
-    });
-    const provider = createProvider(created.service, store);
-    const harness = createViewHarness();
-    await provider.resolveWebviewView(harness.view);
-
-    harness.receive({
-      type: 'selectAiSettings',
-      repositoryId: '/workspace/repo',
-      currentDensity: 'standard',
-      requestId: 'select-model-auto',
-    });
-
-    await vi.waitFor(() => {
-      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-        acknowledgedRequestId: 'select-model-auto',
-      }));
-    });
-    expect(store.get('/workspace/repo')).toBeUndefined();
-  });
-
-  it('没有可用模型时仍允许清除失效的显式选择', async () => {
-    const created = createServiceDouble();
-    created.listAiModels.mockResolvedValue([]);
-    vscodeMocks.showQuickPick.mockImplementation(
-      (items: readonly unknown[]) => Promise.resolve(items[0]),
-    );
-    const store = createSelectionStore({
-      '/workspace/repo': { id: 'missing-model', name: '已失效模型' },
-    });
-    const provider = createProvider(created.service, store);
-    const harness = createViewHarness();
-    await provider.resolveWebviewView(harness.view);
-
-    harness.receive({
-      type: 'selectAiSettings',
-      repositoryId: '/workspace/repo',
-      currentDensity: 'standard',
-      requestId: 'select-model-empty',
-    });
-
-    await vi.waitFor(() => {
-      expect(vscodeMocks.showQuickPick).toHaveBeenCalledWith([
-        expect.objectContaining({ label: '自动选择（推荐）' }),
-      ], expect.any(Object));
-      expect(harness.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-        acknowledgedRequestId: 'select-model-empty',
-      }));
-    });
-    expect(store.get('/workspace/repo')).toBeUndefined();
   });
 
   it('重建 Webview 后从工作区状态恢复当前仓库模型', async () => {
@@ -1109,6 +1029,7 @@ describe('GitoolViewProvider', () => {
         model: initialModel,
         acknowledgedRequestId: 'request-1',
         fileIconClasses: ['gitool-file-icon-test'],
+        aiModels: [],
       });
     });
   });

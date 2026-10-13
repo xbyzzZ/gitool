@@ -1,4 +1,4 @@
-export type ScopedRequestMode = 'write' | 'ai' | 'host-prompt';
+export type ScopedRequestMode = 'write' | 'ai';
 export type PendingRequestPresentation = 'global-status' | 'ai-button';
 
 interface BeginScopedRequestInput {
@@ -16,26 +16,23 @@ interface ScopedRequest {
 
 interface BeginScopedRequestResult {
   readonly scope: ScopedRequest;
-  readonly pendingRequestId?: string;
-  readonly pendingPresentation?: PendingRequestPresentation;
+  readonly pendingRequestId: string;
+  readonly pendingPresentation: PendingRequestPresentation;
 }
 
 export function beginScopedRequest(
   input: BeginScopedRequestInput,
 ): BeginScopedRequestResult {
-  const prefix = input.mode === 'host-prompt' ? 'prompt' : input.mode;
-  const requestId = `${prefix}-${String(input.sequence)}`;
+  const requestId = `${input.mode}-${String(input.sequence)}`;
   return {
     scope: {
       repositoryId: input.repositoryId,
       version: input.version,
       requestId,
     },
-    ...(input.mode === 'host-prompt' ? {} : {
-      pendingRequestId: requestId,
-      pendingPresentation: input.mode === 'ai'
-        ? 'ai-button' as const
-        : 'global-status' as const,
-    }),
+    pendingRequestId: requestId,
+    pendingPresentation: input.mode === 'ai'
+      ? 'ai-button' as const
+      : 'global-status' as const,
   };
 }

@@ -43,11 +43,6 @@ function documentShell(
   additionalCss = '',
 ): string {
   const styleUri = escapeAttribute(mediaUri(webview, extensionUri, 'main.css'));
-  const codiconStyleUri = escapeAttribute(mediaUri(
-    webview,
-    extensionUri,
-    'codicon.css',
-  ));
   const scriptUri = escapeAttribute(mediaUri(
     webview,
     extensionUri,
@@ -61,7 +56,6 @@ function documentShell(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${safeCspSource} 'nonce-${safeNonce}'; font-src ${safeCspSource}; img-src ${safeCspSource}; script-src 'nonce-${safeNonce}';">
-  <link rel="stylesheet" href="${codiconStyleUri}">
   <link rel="stylesheet" href="${styleUri}">
   ${additionalCss.length === 0 ? '' : `<style nonce="${safeNonce}">${additionalCss}</style>`}
   <title>${title}</title>

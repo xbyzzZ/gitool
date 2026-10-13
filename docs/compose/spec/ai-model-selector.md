@@ -8,6 +8,8 @@ commits: 17b8fcf..5725292
 
 # AI 模型选择
 
+> 注：宿主侧 Quick Pick 方案已被 `workbench-history-redesign` 取代（2026-10，AI 设置改为 Webview 内弹层）。本文档保留作为历史决策记录。
+
 ## Report
 
 - 当前模型按钮已改为直接显示“自动选择”“正在选择”或显式模型名称，保留完整标题和无障碍文案，点击继续打开宿主侧 Quick Pick。

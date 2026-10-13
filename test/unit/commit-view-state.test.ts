@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { RepositoryViewModel } from '../../src/domain/view-model.js';
 import {
   aiControlPresentation,
+  aiDensityMenuItems,
+  aiModelMenuItems,
   aiSettingsPresentation,
   commitControlState,
   densityPresentation,
@@ -53,38 +55,95 @@ describe('提交信息展示状态', () => {
       density,
       densityText: label,
       generating: false,
-      generateLabel: `生成提交信息：${label}（${description}）`,
+      generateLabel: `生成提交信息（${label}：${description}）`,
     });
   });
 
-  it('AI 生成中保留密度并输出加载状态', () => {
+  it('AI 生成中保留密度并输出取消文案', () => {
     expect(aiControlPresentation('detailed', true)).toEqual({
       density: 'detailed',
       densityText: '详细',
       generating: true,
-      generateLabel: '取消 AI 生成',
+      generateLabel: '取消生成',
     });
   });
 
-  it('展示自动、显式模型和选择中的可见名称及完整文案', () => {
-    expect(aiSettingsPresentation(undefined, false)).toEqual({
+  it('展示自动与显式模型的 AI 设置按钮文案', () => {
+    expect(aiSettingsPresentation(undefined)).toEqual({
       name: '自动选择',
-      label: 'AI 设置（当前模型：自动选择）',
+      label: 'AI 设置（模型：自动选择）',
     });
     expect(aiSettingsPresentation({
       id: 'model-1',
       name: 'GPT-5.1-Codex-Max',
-    }, false)).toEqual({
+    })).toEqual({
       name: 'GPT-5.1-Codex-Max',
-      label: 'AI 设置（当前模型：GPT-5.1-Codex-Max）',
+      label: 'AI 设置（模型：GPT-5.1-Codex-Max）',
     });
-    expect(aiSettingsPresentation({
-      id: 'model-1',
-      name: 'GPT-5.1-Codex-Max',
-    }, true)).toEqual({
-      name: '正在选择',
-      label: 'AI 设置（当前模型：正在选择）',
+  });
+
+  it('模型菜单以自动选择开头并按当前选择勾选', () => {
+    const menu = aiModelMenuItems([
+      { id: 'model-1', name: '模型一', description: 'copilot · family-1' },
+      { id: 'model-2', name: '模型二' },
+    ], { id: 'model-2', name: '模型二' });
+
+    expect(menu.modelsUnavailable).toBe(false);
+    expect(menu.items).toEqual([
+      {
+        action: 'model:auto',
+        title: '自动选择',
+        description: '优先 Copilot，否则使用任意可用模型',
+        checked: false,
+      },
+      {
+        action: 'model:model-1',
+        title: '模型一',
+        description: 'copilot · family-1',
+        checked: false,
+      },
+      {
+        action: 'model:model-2',
+        title: '模型二',
+        checked: true,
+      },
+    ]);
+  });
+
+  it('自动选择在无显式模型时勾选且模型缺失时标记不可用', () => {
+    expect(aiModelMenuItems(undefined, undefined)).toEqual({
+      modelsUnavailable: true,
+      items: [{
+        action: 'model:auto',
+        title: '自动选择',
+        description: '优先 Copilot，否则使用任意可用模型',
+        checked: true,
+      }],
     });
+    expect(aiModelMenuItems([], undefined).modelsUnavailable).toBe(true);
+  });
+
+  it('密度菜单输出三档并勾选当前档位', () => {
+    expect(aiDensityMenuItems('standard')).toEqual([
+      {
+        action: 'density:compact',
+        title: '精简',
+        description: '仅生成一行标题',
+        checked: false,
+      },
+      {
+        action: 'density:standard',
+        title: '标准',
+        description: '标题 + 2–4 条关键变化',
+        checked: true,
+      },
+      {
+        action: 'density:detailed',
+        title: '详细',
+        description: '标题 + 行为及兼容说明',
+        checked: false,
+      },
+    ]);
   });
 
   it('运行中不在反馈区显示进度文字，由按钮加载态表达', () => {
@@ -118,7 +177,6 @@ describe('提交信息展示状态', () => {
     expect(commitControlState(model(false), {
       locallyBusy: false,
       aiGenerating: false,
-      message: '功能：测试推送状态',
     })).toMatchObject({
       canCommit: true,
       canCommitAndPush: false,
@@ -129,22 +187,31 @@ describe('提交信息展示状态', () => {
     expect(commitControlState(model(true), {
       locallyBusy: false,
       aiGenerating: false,
-      message: '功能：测试推送状态',
     })).toMatchObject({
       canCommit: true,
       canCommitAndPush: true,
     });
   });
 
-  it('未选择文件时允许预先打开 AI 设置但不允许生成', () => {
+  it('空提交信息不禁用提交按钮，由点击时的抖动提示校验', () => {
+    expect(commitControlState({
+      ...model(true),
+      commitMessage: '',
+    }, {
+      locallyBusy: false,
+      aiGenerating: false,
+    }).canCommit).toBe(true);
+  });
+
+  it('未选择文件时允许预先打开 AI 设置但不允许生成与提交', () => {
     expect(commitControlState({
       ...model(true),
       selectedIds: [],
     }, {
       locallyBusy: false,
       aiGenerating: false,
-      message: '',
     })).toMatchObject({
+      canCommit: false,
       canGenerateCommitMessage: false,
       canOpenAiSettings: true,
     });
@@ -154,12 +221,10 @@ describe('提交信息展示状态', () => {
     expect(commitControlState(model(true), {
       locallyBusy: false,
       aiGenerating: true,
-      message: '',
     }).canOpenAiSettings).toBe(false);
     expect(commitControlState(model(true), {
       locallyBusy: true,
       aiGenerating: false,
-      message: '',
     }).canOpenAiSettings).toBe(false);
     expect(commitControlState({
       ...model(true),
@@ -167,7 +232,6 @@ describe('提交信息展示状态', () => {
     }, {
       locallyBusy: false,
       aiGenerating: false,
-      message: '',
     }).canOpenAiSettings).toBe(false);
     expect(commitControlState({
       ...model(true),
@@ -175,7 +239,6 @@ describe('提交信息展示状态', () => {
     }, {
       locallyBusy: false,
       aiGenerating: false,
-      message: '',
     }).canOpenAiSettings).toBe(false);
   });
 });

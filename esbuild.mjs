@@ -1,12 +1,5 @@
 import { build } from 'esbuild';
-import { copyFileSync, existsSync } from 'node:fs';
-
-for (const fileName of ['codicon.css', 'codicon.ttf']) {
-  copyFileSync(
-    `node_modules/@vscode/codicons/dist/${fileName}`,
-    `media/${fileName}`,
-  );
-}
+import { existsSync } from 'node:fs';
 
 const builds = [];
 

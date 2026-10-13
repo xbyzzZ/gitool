@@ -38,8 +38,8 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain("script-src 'nonce-nonce-123'");
     expect(html).toContain("style-src vscode-webview://gitool");
     expect(html).toContain("font-src vscode-webview://gitool");
-    expect(html).toContain('/media/codicon.css');
     expect(html).toContain('/media/main.css');
+    expect(html).not.toContain('codicon');
     expect(html).toContain('<script nonce="nonce-123"');
     expect(html).toContain('<html lang="zh-CN">');
     expect(html).not.toContain("'unsafe-inline'");

@@ -1,20 +1,10 @@
-export const minimumCommitDockHeight = 156;
-export const compactMinimumCommitDockHeight = 112;
+export const minimumCommitDockHeight = 150;
 export const defaultCommitDockHeight = 240;
 
-const compactViewportMaximum = 360;
-
-export function minimumCommitDockHeightForViewport(
-  viewportHeight: number,
-): number {
-  return viewportHeight <= compactViewportMaximum
-    ? compactMinimumCommitDockHeight
-    : minimumCommitDockHeight;
-}
-
-function reservedHeight(viewportHeight: number): number {
-  return viewportHeight <= compactViewportMaximum ? 89 : 113;
-}
+const dockViewportRatio = 0.4;
+const keyboardStep = 16;
+const popoverViewportMargin = 8;
+const popoverAnchorGap = 6;
 
 export function readPersistedDockHeight(value: unknown): number | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)
@@ -34,21 +24,25 @@ export function persistDockHeight<T extends object>(
   return { ...state, dockHeight: height };
 }
 
+export function maximumCommitDockHeight(viewportHeight: number): number {
+  const safeViewport = Number.isFinite(viewportHeight)
+    ? Math.max(0, viewportHeight)
+    : 0;
+  return Math.max(
+    minimumCommitDockHeight,
+    Math.floor(safeViewport * dockViewportRatio),
+  );
+}
+
 export function clampCommitDockHeight(
   requestedHeight: number,
   viewportHeight: number,
 ): number {
-  const safeViewport = Number.isFinite(viewportHeight)
-    ? Math.max(0, viewportHeight)
-    : 0;
-  const minimum = minimumCommitDockHeightForViewport(safeViewport);
-  const maximum = Math.max(minimum, Math.floor(
-    safeViewport - reservedHeight(safeViewport),
-  ));
+  const maximum = maximumCommitDockHeight(viewportHeight);
   const requested = Number.isFinite(requestedHeight)
     ? Math.round(requestedHeight)
     : defaultCommitDockHeight;
-  return Math.min(maximum, Math.max(minimum, requested));
+  return Math.min(maximum, Math.max(minimumCommitDockHeight, requested));
 }
 
 export function dockResizerAriaValues(
@@ -56,8 +50,8 @@ export function dockResizerAriaValues(
   viewportHeight: number,
 ): { readonly minimum: number; readonly maximum: number; readonly current: number } {
   return {
-    minimum: minimumCommitDockHeightForViewport(viewportHeight),
-    maximum: clampCommitDockHeight(Number.MAX_SAFE_INTEGER, viewportHeight),
+    minimum: minimumCommitDockHeight,
+    maximum: maximumCommitDockHeight(viewportHeight),
     current: clampCommitDockHeight(currentHeight, viewportHeight),
   };
 }
@@ -81,16 +75,42 @@ export function dockHeightFromKey(
 ): number | undefined {
   switch (key) {
     case 'ArrowUp':
-      return clampCommitDockHeight(currentHeight + 10, viewportHeight);
+      return clampCommitDockHeight(currentHeight + keyboardStep, viewportHeight);
     case 'ArrowDown':
-      return clampCommitDockHeight(currentHeight - 10, viewportHeight);
+      return clampCommitDockHeight(currentHeight - keyboardStep, viewportHeight);
     case 'Home':
-      return minimumCommitDockHeightForViewport(viewportHeight);
+      return minimumCommitDockHeight;
     case 'End':
-      return clampCommitDockHeight(Number.MAX_SAFE_INTEGER, viewportHeight);
+      return maximumCommitDockHeight(viewportHeight);
     default:
       return undefined;
   }
+}
+
+export function popoverHorizontalOffset(
+  anchorLeft: number,
+  popoverWidth: number,
+  viewportWidth: number,
+): number {
+  const safeViewport = Number.isFinite(viewportWidth)
+    ? Math.max(0, viewportWidth)
+    : 0;
+  const safeWidth = Number.isFinite(popoverWidth)
+    ? Math.max(0, popoverWidth)
+    : 0;
+  const maximum = Math.max(
+    popoverViewportMargin,
+    safeViewport - safeWidth - popoverViewportMargin,
+  );
+  const left = Number.isFinite(anchorLeft) ? anchorLeft : popoverViewportMargin;
+  return Math.round(Math.min(Math.max(left, popoverViewportMargin), maximum));
+}
+
+export function popoverBottomOffset(
+  anchorTop: number,
+  viewportHeight: number,
+): number {
+  return Math.round(viewportHeight - anchorTop) + popoverAnchorGap;
 }
 
 export interface DockResizerBindingOptions {
@@ -116,7 +136,7 @@ export function bindDockResizer(options: DockResizerBindingOptions): void {
       clientY: event.clientY,
       height: options.getDockHeight(),
     };
-    options.resizer.classList.add('is-dragging');
+    options.resizer.classList.add('dragging');
     options.resizer.setPointerCapture(event.pointerId);
   });
   options.target.addEventListener('pointermove', (event: PointerEvent) => {
@@ -141,7 +161,7 @@ export function bindDockResizer(options: DockResizerBindingOptions): void {
       return;
     }
     session = undefined;
-    options.resizer.classList.remove('is-dragging');
+    options.resizer.classList.remove('dragging');
     options.applyHeight(options.getDockHeight(), true);
     releaseCapture(event.pointerId);
   });
@@ -150,7 +170,7 @@ export function bindDockResizer(options: DockResizerBindingOptions): void {
       return;
     }
     session = undefined;
-    options.resizer.classList.remove('is-dragging');
+    options.resizer.classList.remove('dragging');
     options.applyHeight(options.getDockHeight(), true);
     releaseCapture(event.pointerId);
   });
@@ -161,7 +181,7 @@ export function bindDockResizer(options: DockResizerBindingOptions): void {
         return;
       }
       session = undefined;
-      options.resizer.classList.remove('is-dragging');
+      options.resizer.classList.remove('dragging');
       options.applyHeight(options.getDockHeight(), true);
     },
   );

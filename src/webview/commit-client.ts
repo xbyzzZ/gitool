@@ -6,9 +6,13 @@ import type { AiModelSelection } from '../services/ai-model-selection-store.js';
 import { canPushAll } from '../views/push-availability-context.js';
 import {
   aiControlPresentation,
+  aiDensityMenuItems,
+  aiModelMenuItems,
   aiSettingsPresentation,
   commitControlState,
   operationFeedback,
+  type AiMenuItem,
+  type AiModelInfo,
 } from './commit-view-state.js';
 import type { WebviewMessage } from './messages.js';
 import {
@@ -17,6 +21,7 @@ import {
 } from './request-state.js';
 import { renderChangeList } from './commit-change-renderer.js';
 import {
+  renderHistoryGraph,
   renderHistoryList,
   type RenderedHistoryFile,
 } from './history-renderer.js';
@@ -26,6 +31,8 @@ import {
   defaultCommitDockHeight,
   dockResizerAriaValues,
   persistDockHeight,
+  popoverBottomOffset,
+  popoverHorizontalOffset,
   readPersistedDockHeight,
 } from './commit-workbench-layout.js';
 
@@ -39,7 +46,7 @@ interface StateMessage {
   readonly type: 'state';
   readonly model: RepositoryViewModel;
   readonly aiModelSelection?: AiModelSelection;
-  readonly selectedDensity?: CommitMessageDensity;
+  readonly aiModels?: readonly AiModelInfo[];
   readonly acknowledgedRequestId?: string;
   readonly fileIconClasses?: readonly (string | null)[];
 }
@@ -72,6 +79,15 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('\'', '&#39;');
+}
+
 function readPersistedState(value: unknown): PersistedState {
   if (!isObject(value)) {
     return { densities: {} };
@@ -100,51 +116,57 @@ if (layoutElement === null) {
   throw new Error('缺少提交信息主布局');
 }
 const layout = layoutElement;
-const commitDockElement = document.querySelector<HTMLElement>('.commit-dock');
-if (commitDockElement === null) {
-  throw new Error('缺少提交信息区域');
-}
-const commitDock = commitDockElement;
 const controls = {
   repositorySelect: element('repository-select') as HTMLSelectElement,
-  repositorySummary: element('repository-summary') as HTMLParagraphElement,
-  changesList: element('changes-list'),
-  selectionSummary: element('selection-summary') as HTMLParagraphElement,
-  commitMessage: element('commit-message') as HTMLTextAreaElement,
-  commitButton: element('commit-button') as HTMLButtonElement,
-  commitPushButton: element('commit-push-button') as HTMLButtonElement,
-  aiGenerateButton: element('ai-generate-button') as HTMLButtonElement,
-  aiGenerateIcon: element('ai-generate-icon'),
-  aiGenerateLoading: element('ai-generate-loading'),
-  aiSettingsButton: element('ai-settings-button') as HTMLButtonElement,
+  branchName: element('branchName'),
+  upstreamText: element('upstreamText'),
+  changesList: element('changeList'),
   loadingStatus: element('loading-status') as HTMLParagraphElement,
+  selectedCount: element('selCount'),
+  selectedTotal: element('selTotal'),
+  commitMessage: element('message') as HTMLTextAreaElement,
+  charCount: element('charCount'),
+  commitButton: element('btnCommit') as HTMLButtonElement,
+  commitPushButton: element('btnCommitPush') as HTMLButtonElement,
+  aiGenerateButton: element('btnAiGen') as HTMLButtonElement,
+  aiGenerateIcon: element('aiGenIcon'),
+  aiSettingsButton: element('btnAiSettings') as HTMLButtonElement,
   operationStatus: element('operation-status') as HTMLParagraphElement,
   errorStatus: element('error-status') as HTMLParagraphElement,
   retryPushButton: element('retry-push-button') as HTMLButtonElement,
   feedback: element('operation-feedback'),
-  refreshButton: element('refresh-button') as HTMLButtonElement,
-  selectAllButton: element('select-all-button') as HTMLButtonElement,
-  clearSelectionButton: element('clear-selection-button') as HTMLButtonElement,
-  trashButton: element('trash-button') as HTMLButtonElement,
-  pullButton: element('pull-button') as HTMLButtonElement,
-  pushAllButton: element('push-all-button') as HTMLButtonElement,
-  editRemoteButton: element('edit-remote-button') as HTMLButtonElement,
-  viewSwitchButton: element('view-switch-button') as HTMLButtonElement,
-  viewSwitchIcon: element('view-switch-icon'),
+  refreshButton: element('btnRefresh') as HTMLButtonElement,
+  refreshIcon: element('refreshIcon'),
+  selectAllButton: element('btnSelectAll') as HTMLButtonElement,
+  discardButton: element('btnDiscard') as HTMLButtonElement,
+  discardIcon: element('discardIcon'),
+  discardText: element('discardText'),
+  historyButton: element('btnHistory') as HTMLButtonElement,
+  pullButton: element('btnPull') as HTMLButtonElement,
+  pushAllButton: element('btnPush') as HTMLButtonElement,
   commitView: element('commit-view'),
   historyView: element('history-view'),
-  historyList: element('history-list'),
+  backButton: element('btnBack') as HTMLButtonElement,
+  searchInput: element('search-input') as HTMLInputElement,
+  historyBranchName: element('historyBranchName'),
   historyStatus: element('history-status') as HTMLParagraphElement,
-  commitResizer: element('commit-resizer'),
+  historyList: element('commit-list'),
+  graphHost: element('graph-host'),
+  toast: element('toast'),
+  splitter: element('splitter'),
+  dock: element('dock'),
 };
 
 let currentModel: RepositoryViewModel | undefined;
 let currentRepositoryId: string | undefined;
 let currentAiModelSelection: AiModelSelection | undefined;
+let currentAiModels: readonly AiModelInfo[] | undefined;
 let pendingMessage: string | undefined;
 let messageTimer: number | undefined;
+let invalidTimer: number | undefined;
+let toastTimer: number | undefined;
+let graphFrame = 0;
 let pendingRequestId: string | undefined;
-let aiSettingsRequestId: string | undefined;
 let pendingPresentation: PendingRequestPresentation | undefined;
 let sequence = 0;
 let density: CommitMessageDensity = 'standard';
@@ -152,6 +174,7 @@ let persisted = readPersistedState(vscode.getState());
 let revealedFeedbackKey: string | undefined;
 let commitFlow: 'commit' | 'commit-push' | undefined;
 let currentView: 'commit' | 'history' = 'commit';
+let discardArmed = false;
 const expandedCommits = new Set<string>();
 const commitDetailsCache = new Map<string, readonly RenderedHistoryFile[]>();
 const pendingDetails = new Set<string>();
@@ -162,16 +185,10 @@ const collapsedSections = new Set<ChangeSectionKind>(['untracked']);
 function applyDockHeight(requestedHeight: number, persist: boolean): void {
   const height = clampCommitDockHeight(requestedHeight, window.innerHeight);
   const aria = dockResizerAriaValues(height, window.innerHeight);
-  commitDock.style.height = `${String(height)}px`;
-  controls.commitResizer.setAttribute('aria-valuenow', String(aria.current));
-  controls.commitResizer.setAttribute(
-    'aria-valuemin',
-    String(aria.minimum),
-  );
-  controls.commitResizer.setAttribute(
-    'aria-valuemax',
-    String(aria.maximum),
-  );
+  controls.dock.style.height = `${String(height)}px`;
+  controls.splitter.setAttribute('aria-valuenow', String(aria.current));
+  controls.splitter.setAttribute('aria-valuemin', String(aria.minimum));
+  controls.splitter.setAttribute('aria-valuemax', String(aria.maximum));
   if (persist) {
     persisted = persistDockHeight(persisted, height);
     vscode.setState(persisted);
@@ -180,37 +197,57 @@ function applyDockHeight(requestedHeight: number, persist: boolean): void {
 
 applyDockHeight(persisted.dockHeight ?? defaultCommitDockHeight, false);
 
+function post(message: WebviewMessage): void {
+  vscode.postMessage(message);
+}
+
+function scheduleGraphRender(): void {
+  if (currentView !== 'history') {
+    return;
+  }
+  window.cancelAnimationFrame(graphFrame);
+  graphFrame = window.requestAnimationFrame(() => {
+    const model = currentModel;
+    if (model === undefined) {
+      return;
+    }
+    renderHistoryGraph(
+      controls.graphHost,
+      controls.historyList,
+      model.history.commits,
+    );
+  });
+}
+
 function applyView(view: 'commit' | 'history', persist: boolean): void {
   currentView = view;
   const historyMode = view === 'history';
   controls.commitView.hidden = historyMode;
   controls.historyView.hidden = !historyMode;
-  controls.viewSwitchIcon.classList.toggle('codicon-history', !historyMode);
-  controls.viewSwitchIcon.classList.toggle('codicon-git-commit', historyMode);
-  const label = historyMode ? '切换到提交视图' : '切换到历史视图';
-  controls.viewSwitchButton.setAttribute('aria-label', label);
-  controls.viewSwitchButton.title = label;
-  controls.viewSwitchButton.setAttribute('aria-pressed', String(historyMode));
+  controls.historyButton.setAttribute('aria-pressed', String(historyMode));
   if (persist) {
     persisted = { ...persisted, view };
     vscode.setState(persisted);
   }
-  if (historyMode && currentModel?.history.kind === 'idle') {
-    post({ type: 'refresh' });
+  if (historyMode) {
+    scheduleGraphRender();
+    if (currentModel?.history.kind === 'idle') {
+      post({ type: 'refresh' });
+    }
   }
 }
 
 applyView(persisted.view ?? 'commit', false);
-
-function post(message: WebviewMessage): void {
-  vscode.postMessage(message);
-}
 
 function cancelMessageTimer(): void {
   if (messageTimer !== undefined) {
     window.clearTimeout(messageTimer);
     messageTimer = undefined;
   }
+}
+
+function branchLabel(model: RepositoryViewModel): string {
+  return model.detached ? '游离 HEAD' : (model.branch ?? '未识别分支');
 }
 
 function updateRepository(model: RepositoryViewModel): void {
@@ -225,10 +262,17 @@ function updateRepository(model: RepositoryViewModel): void {
   }
   controls.repositorySelect.replaceChildren(fragment);
   controls.repositorySelect.hidden = model.repositories.length < 2;
-  const branch = model.detached ? '游离 HEAD' : (model.branch ?? '未识别分支');
-  controls.repositorySummary.textContent = model.currentRepositoryId === undefined
-    ? '打开一个 Git 仓库后可提交文件'
-    : `${branch} · ${model.upstream === undefined ? '未设置上游' : `上游 ${model.upstream}`}`;
+  if (model.currentRepositoryId === undefined) {
+    controls.branchName.textContent = '…';
+    controls.upstreamText.textContent = '打开一个 Git 仓库后可提交文件';
+    controls.historyBranchName.textContent = '…';
+    return;
+  }
+  controls.branchName.textContent = branchLabel(model);
+  controls.upstreamText.textContent = model.upstream === undefined
+    ? '未设置上游'
+    : `上游 ${model.upstream}`;
+  controls.historyBranchName.textContent = branchLabel(model);
 }
 
 function setButtonLoading(button: HTMLButtonElement, loading: boolean): void {
@@ -236,10 +280,52 @@ function setButtonLoading(button: HTMLButtonElement, loading: boolean): void {
   button.setAttribute('aria-busy', loading ? 'true' : 'false');
 }
 
+function resetDiscardConfirm(): void {
+  if (!discardArmed) {
+    return;
+  }
+  discardArmed = false;
+  controls.discardButton.classList.remove('confirming');
+  controls.discardButton.setAttribute('aria-label', '舍弃所选更改');
+  controls.discardButton.title = '舍弃所选更改';
+  controls.discardIcon.hidden = false;
+  controls.discardText.hidden = true;
+}
+
+function selectableChanges(
+  model: RepositoryViewModel,
+): RepositoryViewModel['changes'] {
+  return model.changes.filter((change) => !change.conflicted);
+}
+
+function trashableFileIds(model: RepositoryViewModel): readonly string[] {
+  return model.changes
+    .filter((change) => change.untracked
+      && model.selectedIds.includes(change.id))
+    .map((change) => change.id);
+}
+
+function applyHistoryFilter(): void {
+  const query = controls.searchInput.value.trim().toLowerCase();
+  let shown = 0;
+  for (const entry of controls.historyList
+    .querySelectorAll<HTMLElement>('.commit-entry')) {
+    const hit = query.length === 0
+      || (entry.dataset.search ?? '').includes(query);
+    entry.style.display = hit ? '' : 'none';
+    if (hit) {
+      shown += 1;
+    }
+  }
+  controls.historyList.classList.toggle(
+    'is-empty',
+    query.length > 0 && shown === 0,
+  );
+}
+
 function toggleCommitExpanded(hash: string, expanded: boolean): void {
-  if (!expanded) {
-    expandedCommits.delete(hash);
-  } else {
+  expandedCommits.clear();
+  if (expanded) {
     expandedCommits.add(hash);
     if (!commitDetailsCache.has(hash) && !pendingDetails.has(hash)
       && currentModel?.currentRepositoryId !== undefined) {
@@ -274,6 +360,108 @@ function openCommitDiff(hash: string, path: string): void {
   });
 }
 
+function showToast(text: string): void {
+  controls.toast.textContent = text;
+  controls.toast.classList.add('show');
+  if (toastTimer !== undefined) {
+    window.clearTimeout(toastTimer);
+  }
+  toastTimer = window.setTimeout(() => {
+    controls.toast.classList.remove('show');
+    toastTimer = undefined;
+  }, 1600);
+}
+
+function legacyCopyText(text: string): void {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  document.body.append(textarea);
+  textarea.select();
+  try {
+    // 原型要求的兜底复制路径：navigator.clipboard 不可用或被拒时使用
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    document.execCommand('copy');
+  } catch {
+    // 兜底复制失败时仍提示，与原型行为一致
+  }
+  textarea.remove();
+}
+
+function copyHash(hash: string): void {
+  const done = (): void => {
+    showToast(`已复制 ${hash}`);
+  };
+  const clipboard = navigator.clipboard as Clipboard | undefined;
+  if (clipboard !== undefined) {
+    clipboard.writeText(hash).then(done, () => {
+      legacyCopyText(hash);
+      done();
+    });
+    return;
+  }
+  legacyCopyText(hash);
+  done();
+}
+
+const SVG_PI_CHECK = '<svg class="pi-check" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.6l3.2 3.2L13 4.6"/></svg>';
+
+const aiPopover = document.createElement('div');
+aiPopover.className = 'popover';
+aiPopover.setAttribute('role', 'menu');
+aiPopover.hidden = true;
+document.body.append(aiPopover);
+let aiPopoverOpen = false;
+
+function popoverItemMarkup(item: AiMenuItem): string {
+  return `<button class="popover-item" type="button" role="menuitemradio" aria-checked="${String(item.checked)}" data-action="${escapeHtml(item.action)}">`
+    + SVG_PI_CHECK
+    + `<span class="pi-body"><span class="pi-title">${escapeHtml(item.title)}</span>`
+    + (item.description === undefined
+      ? ''
+      : `<span class="pi-desc">${escapeHtml(item.description)}</span>`)
+    + '</span></button>';
+}
+
+function renderAiPopover(): void {
+  const models = aiModelMenuItems(currentAiModels, currentAiModelSelection);
+  const parts = ['<div class="popover-label">AI 模型</div>'];
+  parts.push(...models.items.map(popoverItemMarkup));
+  if (models.modelsUnavailable) {
+    parts.push('<div class="popover-item" aria-disabled="true">'
+      + '<span class="pi-body"><span class="pi-title">暂无可用模型</span></span>'
+      + '</div>');
+  }
+  parts.push('<div class="popover-label">生成详细程度</div>');
+  parts.push(...aiDensityMenuItems(density).map(popoverItemMarkup));
+  aiPopover.innerHTML = parts.join('');
+}
+
+function openAiPopover(): void {
+  renderAiPopover();
+  aiPopover.hidden = false;
+  aiPopoverOpen = true;
+  controls.aiSettingsButton.setAttribute('aria-expanded', 'true');
+  const anchor = controls.aiSettingsButton.getBoundingClientRect();
+  aiPopover.style.left = `${String(popoverHorizontalOffset(
+    anchor.left,
+    aiPopover.offsetWidth,
+    window.innerWidth,
+  ))}px`;
+  aiPopover.style.bottom = `${String(popoverBottomOffset(
+    anchor.top,
+    window.innerHeight,
+  ))}px`;
+}
+
+function closeAiPopover(): void {
+  if (!aiPopoverOpen) {
+    return;
+  }
+  aiPopover.hidden = true;
+  aiPopoverOpen = false;
+  controls.aiSettingsButton.setAttribute('aria-expanded', 'false');
+}
+
 function render(model: RepositoryViewModel): void {
   currentModel = model;
   const scopeKey = `${model.currentRepositoryId ?? ''}:${String(model.version)}`;
@@ -303,9 +491,12 @@ function render(model: RepositoryViewModel): void {
     {
       toggleCommit: toggleCommitExpanded,
       openCommitDiff,
+      copyHash,
     },
     Date.now(),
   );
+  applyHistoryFilter();
+  scheduleGraphRender();
   renderChangeList(
     controls.changesList,
     model.changes,
@@ -352,16 +543,18 @@ function render(model: RepositoryViewModel): void {
       },
     },
   );
-  controls.selectionSummary.textContent = `已选择 ${String(model.selectedIds.length)} / ${String(model.changeCount)}`;
+  resetDiscardConfirm();
+  controls.selectedCount.textContent = String(model.selectedIds.length);
+  controls.selectedTotal.textContent = ` / ${String(model.changeCount)}`;
   if (pendingMessage === undefined || pendingMessage === model.commitMessage) {
     controls.commitMessage.value = model.commitMessage;
     pendingMessage = undefined;
   }
+  controls.charCount.textContent = String(controls.commitMessage.value.length);
 
   const running = model.operation.kind === 'running';
   const hasConflict = model.changes.some((change) => change.conflicted);
-  const locallyBusy = pendingRequestId !== undefined
-    || aiSettingsRequestId !== undefined;
+  const locallyBusy = pendingRequestId !== undefined;
   const aiGenerating = model.ai.kind === 'generating'
     || pendingPresentation === 'ai-button';
   const {
@@ -373,12 +566,10 @@ function render(model: RepositoryViewModel): void {
   } = commitControlState(model, {
     locallyBusy,
     aiGenerating,
-    message: controls.commitMessage.value,
   });
 
   controls.repositorySelect.disabled = running || locallyBusy
     || model.repositories.length < 2;
-  const commitOnlyUnavailable = currentView === 'history';
   controls.commitMessage.disabled = !canWrite;
   controls.commitButton.disabled = !canCommit;
   controls.commitPushButton.disabled = !canCommitAndPush;
@@ -387,17 +578,17 @@ function render(model: RepositoryViewModel): void {
     : !canGenerateCommitMessage;
   controls.aiSettingsButton.disabled = !canOpenAiSettings;
   controls.refreshButton.disabled = running || locallyBusy;
-  controls.selectAllButton.disabled = commitOnlyUnavailable || !canWrite
-    || model.changeCount === 0;
-  controls.clearSelectionButton.disabled = commitOnlyUnavailable || !canWrite
-    || model.selectedIds.length === 0;
-  controls.trashButton.disabled = commitOnlyUnavailable || !canWrite
-    || !model.changes.some(
-      (change) => change.untracked && model.selectedIds.includes(change.id),
-    );
+  const selectable = selectableChanges(model);
+  const allSelected = selectable.length > 0
+    && selectable.every((change) => model.selectedIds.includes(change.id));
+  controls.selectAllButton.disabled = !canWrite || selectable.length === 0;
+  const selectAllLabel = allSelected ? '清空选择' : '全选';
+  controls.selectAllButton.title = selectAllLabel;
+  controls.selectAllButton.setAttribute('aria-label', selectAllLabel);
+  controls.discardButton.disabled = !canWrite
+    || trashableFileIds(model).length === 0;
   controls.pullButton.disabled = !canWrite || model.sync.kind !== 'ready';
   controls.pushAllButton.disabled = locallyBusy || !canPushAll(model);
-  controls.editRemoteButton.disabled = !canWrite;
   const runningAction = model.operation.kind === 'running'
     ? model.operation.action
     : undefined;
@@ -416,22 +607,15 @@ function render(model: RepositoryViewModel): void {
     controls.pushAllButton,
     runningAction === 'push' && commitFlow !== 'commit-push',
   );
-  setButtonLoading(controls.trashButton, runningAction === 'trash');
-  setButtonLoading(controls.editRemoteButton, runningAction === 'remote');
+  setButtonLoading(controls.discardButton, runningAction === 'trash');
   setButtonLoading(controls.refreshButton, runningAction === 'fetch');
+  controls.refreshIcon.classList.toggle('spin', runningAction === 'fetch');
   const aiPresentation = aiControlPresentation(density, aiGenerating);
-  controls.aiGenerateIcon.hidden = aiPresentation.generating;
-  controls.aiGenerateLoading.hidden = !aiPresentation.generating;
-  controls.aiGenerateLoading.classList.toggle(
-    'codicon-modifier-spin',
-    aiPresentation.generating,
-  );
+  setButtonLoading(controls.aiGenerateButton, aiPresentation.generating);
+  controls.aiGenerateIcon.classList.toggle('spin', aiPresentation.generating);
   controls.aiGenerateButton.setAttribute('aria-label', aiPresentation.generateLabel);
   controls.aiGenerateButton.title = aiPresentation.generateLabel;
-  const settingsPresentation = aiSettingsPresentation(
-    currentAiModelSelection,
-    aiSettingsRequestId !== undefined,
-  );
+  const settingsPresentation = aiSettingsPresentation(currentAiModelSelection);
   controls.aiSettingsButton.setAttribute('aria-label', settingsPresentation.label);
   controls.aiSettingsButton.title = settingsPresentation.label;
 
@@ -495,8 +679,20 @@ controls.refreshButton.addEventListener('click', () => {
   post({ type: 'refresh' });
 });
 
-controls.viewSwitchButton.addEventListener('click', () => {
-  applyView(currentView === 'history' ? 'commit' : 'history', true);
+controls.historyButton.addEventListener('click', () => {
+  applyView('history', true);
+});
+controls.backButton.addEventListener('click', () => {
+  applyView('commit', true);
+});
+
+controls.searchInput.addEventListener('input', () => {
+  applyHistoryFilter();
+  scheduleGraphRender();
+});
+
+window.addEventListener('resize', () => {
+  scheduleGraphRender();
 });
 
 function setAllGroups(selected: boolean): void {
@@ -509,23 +705,52 @@ function setAllGroups(selected: boolean): void {
 }
 
 controls.selectAllButton.addEventListener('click', () => {
-  setAllGroups(true);
+  const model = currentModel;
+  if (model === undefined) {
+    return;
+  }
+  const selectable = selectableChanges(model);
+  const allSelected = selectable.length > 0
+    && selectable.every((change) => model.selectedIds.includes(change.id));
+  setAllGroups(!allSelected);
 });
-controls.clearSelectionButton.addEventListener('click', () => {
-  setAllGroups(false);
+
+controls.discardButton.addEventListener('click', () => {
+  const model = currentModel;
+  if (model === undefined) {
+    return;
+  }
+  if (!discardArmed) {
+    discardArmed = true;
+    controls.discardButton.classList.add('confirming');
+    controls.discardButton.setAttribute('aria-label', '取消舍弃');
+    controls.discardButton.title = '取消舍弃';
+    controls.discardIcon.hidden = true;
+    controls.discardText.hidden = false;
+    return;
+  }
+  resetDiscardConfirm();
+  const fileIds = trashableFileIds(model);
+  if (fileIds.length === 0) {
+    return;
+  }
+  const scope = beginRequest(model);
+  if (scope !== undefined) {
+    post({ type: 'trash', ...scope, fileIds });
+  }
 });
 
 bindDockResizer({
-  resizer: controls.commitResizer,
+  resizer: controls.splitter,
   target: window,
-  getDockHeight: () => commitDock.getBoundingClientRect().height,
+  getDockHeight: () => controls.dock.getBoundingClientRect().height,
   getViewportHeight: () => window.innerHeight,
   getPreferredHeight: () => persisted.dockHeight,
   applyHeight: applyDockHeight,
 });
 
 function postVersionAction(
-  type: 'editRemoteUrl' | 'pull' | 'pushAll',
+  type: 'pull' | 'pushAll',
 ): void {
   const model = currentModel;
   if (model === undefined) {
@@ -537,32 +762,16 @@ function postVersionAction(
   }
 }
 
-controls.trashButton.addEventListener('click', () => {
-  const model = currentModel;
-  if (model === undefined) {
-    return;
-  }
-  const scope = beginRequest(model);
-  if (scope === undefined) {
-    return;
-  }
-  const fileIds = model.changes
-    .filter((change) => change.untracked && model.selectedIds.includes(change.id))
-    .map((change) => change.id);
-  post({ type: 'trash', ...scope, fileIds });
-});
 controls.pullButton.addEventListener('click', () => {
   postVersionAction('pull');
 });
 controls.pushAllButton.addEventListener('click', () => {
   postVersionAction('pushAll');
 });
-controls.editRemoteButton.addEventListener('click', () => {
-  postVersionAction('editRemoteUrl');
-});
 
-controls.commitMessage.addEventListener('input', () => {
+function syncMessageInput(): void {
   pendingMessage = controls.commitMessage.value;
+  controls.charCount.textContent = String(controls.commitMessage.value.length);
   cancelMessageTimer();
   if (currentModel !== undefined) {
     render(currentModel);
@@ -578,12 +787,47 @@ controls.commitMessage.addEventListener('input', () => {
       });
     }, 150);
   }
+}
+
+controls.commitMessage.addEventListener('input', () => {
+  syncMessageInput();
+});
+
+controls.commitMessage.addEventListener('keydown', (event: KeyboardEvent) => {
+  if (event.key !== 'Tab') {
+    return;
+  }
+  event.preventDefault();
+  const textarea = controls.commitMessage;
+  const start = textarea.selectionStart;
+  textarea.value = textarea.value.slice(0, start)
+    + '  '
+    + textarea.value.slice(textarea.selectionEnd);
+  textarea.selectionStart = start + 2;
+  textarea.selectionEnd = start + 2;
+  syncMessageInput();
 });
 
 function submit(push: boolean): void {
   const model = currentModel;
+  if (model === undefined) {
+    return;
+  }
   const message = controls.commitMessage.value;
-  if (model === undefined || message.trim().length === 0) {
+  if (message.trim().length === 0) {
+    const button = push ? controls.commitPushButton : controls.commitButton;
+    button.classList.remove('shake');
+    void button.offsetWidth;
+    button.classList.add('shake');
+    controls.commitMessage.classList.add('invalid');
+    if (invalidTimer !== undefined) {
+      window.clearTimeout(invalidTimer);
+    }
+    invalidTimer = window.setTimeout(() => {
+      controls.commitMessage.classList.remove('invalid');
+      invalidTimer = undefined;
+    }, 1400);
+    controls.commitMessage.focus();
     return;
   }
   const scope = beginRequest(model);
@@ -613,21 +857,70 @@ controls.retryPushButton.addEventListener('click', () => {
 });
 
 controls.aiSettingsButton.addEventListener('click', () => {
-  const model = currentModel;
-  if (model?.currentRepositoryId === undefined
-    || aiSettingsRequestId !== undefined) {
+  if (aiPopoverOpen) {
+    closeAiPopover();
+  } else {
+    openAiPopover();
+  }
+});
+
+document.addEventListener('pointerdown', (event: PointerEvent) => {
+  if (!aiPopoverOpen || !(event.target instanceof Element)) {
     return;
   }
-  sequence += 1;
-  aiSettingsRequestId = `ai-settings-${String(sequence)}`;
-  render(model);
-  post({
-    type: 'selectAiSettings',
-    repositoryId: model.currentRepositoryId,
-    currentDensity: density,
-    requestId: aiSettingsRequestId,
-  });
+  if (event.target.closest('.popover') !== null
+    || event.target.closest('#btnAiSettings') !== null) {
+    return;
+  }
+  closeAiPopover();
 });
+
+document.addEventListener('keydown', (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    closeAiPopover();
+  }
+});
+
+aiPopover.addEventListener('click', (event: MouseEvent) => {
+  if (!(event.target instanceof Element)) {
+    return;
+  }
+  const item = event.target.closest('.popover-item');
+  if (!(item instanceof HTMLElement)) {
+    return;
+  }
+  const action = item.dataset.action;
+  if (action === undefined) {
+    return;
+  }
+  const separator = action.indexOf(':');
+  const kind = action.slice(0, separator);
+  const value = action.slice(separator + 1);
+  if (kind === 'density'
+    && (value === 'compact' || value === 'standard' || value === 'detailed')) {
+    density = value;
+    if (currentRepositoryId !== undefined) {
+      persisted = {
+        ...persisted,
+        densities: { ...persisted.densities, [currentRepositoryId]: value },
+      };
+      vscode.setState(persisted);
+    }
+  } else if (kind === 'model' && currentRepositoryId !== undefined) {
+    post({
+      type: 'setAiModel',
+      repositoryId: currentRepositoryId,
+      modelId: value,
+    });
+  } else {
+    return;
+  }
+  closeAiPopover();
+  if (currentModel !== undefined) {
+    render(currentModel);
+  }
+});
+
 controls.aiGenerateButton.addEventListener('click', () => {
   const model = currentModel;
   if (model?.currentRepositoryId === undefined) {
@@ -684,24 +977,18 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
   const state = message as StateMessage;
   fileIconClasses = state.fileIconClasses ?? [];
   currentAiModelSelection = state.aiModelSelection;
+  if (state.aiModels !== undefined) {
+    currentAiModels = state.aiModels;
+  }
   if (state.acknowledgedRequestId === pendingRequestId) {
     pendingRequestId = undefined;
     pendingPresentation = undefined;
     commitFlow = undefined;
   }
-  if (state.acknowledgedRequestId === aiSettingsRequestId) {
-    aiSettingsRequestId = undefined;
-    if (state.selectedDensity !== undefined
-      && currentRepositoryId !== undefined) {
-      density = state.selectedDensity;
-      persisted = {
-        ...persisted,
-        densities: { ...persisted.densities, [currentRepositoryId]: density },
-      };
-      vscode.setState(persisted);
-    }
-  }
   render(state.model);
+  if (aiPopoverOpen) {
+    renderAiPopover();
+  }
 });
 
 post({ type: 'ready' });

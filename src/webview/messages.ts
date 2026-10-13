@@ -92,10 +92,9 @@ export type WebviewMessage =
     readonly requestId: string;
   }
   | {
-    readonly type: 'selectAiSettings';
+    readonly type: 'setAiModel';
     readonly repositoryId: string;
-    readonly currentDensity: 'compact' | 'standard' | 'detailed';
-    readonly requestId: string;
+    readonly modelId: string;
   }
   | {
     readonly type: 'generateCommitMessage';
@@ -335,20 +334,15 @@ export function parseWebviewMessage(input: unknown): WebviewMessage {
           fileId: input.fileId,
         };
       }
-    case 'selectAiSettings':
-      requireExactKeys(input, [
-        'type', 'repositoryId', 'currentDensity', 'requestId',
-      ]);
-      if (input.currentDensity !== 'compact'
-        && input.currentDensity !== 'standard'
-        && input.currentDensity !== 'detailed') {
-        invalid('currentDensity');
+    case 'setAiModel':
+      requireExactKeys(input, ['type', 'repositoryId', 'modelId']);
+      if (!isNonEmptyString(input.modelId)) {
+        invalid('modelId');
       }
       return {
         type: input.type,
         repositoryId: requireRepositoryId(input),
-        currentDensity: input.currentDensity,
-        requestId: requireRequestId(input),
+        modelId: input.modelId,
       };
     case 'loadCommitDetails':
       requireExactKeys(input, [
