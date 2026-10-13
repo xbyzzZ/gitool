@@ -30,6 +30,8 @@ commits: 3d408c5..2d97b51
 - 原型弹层是独立页面语境，移植时保留了扩展特有的运行态：操作反馈条、加载状态行、多仓库切换、CSP+nonce；这些以新增类名融入原型体系而非改造原型类名。
 - 原型的两步舍弃在原型里第二次点击只是取消，移植语义是第二次点击执行；审查发现并修复了由此产生的 aria-label 反转问题——复刻交互时文案必须按实际语义重写。
 - 舍弃按钮刻意不接 `git checkout/restore` 式跟踪文件舍弃，保持仓库既有的废纸篓安全语义。
+- 交付后修订：历史 graph 的 SVG 用内联 `style` 属性上色，被 webview CSP（`style-src` 无 `unsafe-inline`）整体拦截导致线不显示——改为 `.graph-sN/.graph-fN` 类上色；JS 侧 `el.style` CSSOM 赋值不受 CSP 限制，两类写法要分清。
+- 交付后修订：固定深色在真实浅色主题下不可用，结构色改回 `var(--vscode-*, 原型兜底)` 映射；视觉骨架（圆角、间距、动效）与配色来源解耦后互不影响。
 
 ## [S1] 问题
 
@@ -39,7 +41,7 @@ commits: 3d408c5..2d97b51
 
 ### 已定决策（用户确认）
 
-1. **配色**：固定深色十六进制 token，完整照抄原型 `:root`（`--bg:#000000`、`--surface:#1d1d1f`、`--accent:#2997ff` 等），不再使用 `--vscode-*` 主题变量、不跟随用户明暗主题。
+1. **配色**：结构色（背景/表面/前景/弱化/边框/强调）跟随 VS Code 主题变量（`--vscode-sideBar-background`、`--vscode-editorWidget-background`、`--vscode-textLink-foreground` 等），原型十六进制值作为兜底；语义色（success/warn/danger）与 lane 色板保持原型固定值。（2026-10-13 修订：初版为固定深色十六进制，用户试用后改回跟随主题。）
 2. **文件图标**：保留现有动态 `file-icon-theme-loader`（跟随用户 `workbench.iconTheme`）；主题未提供图标时兜底为原型中的中性线条文件 SVG。不采用打包 `design/icons/` 的方案。
 3. **AI 设置**：改为 webview 内弹层（popover），覆盖 `ai-model-selector.md` 中宿主 Quick Pick 的旧决策（该 spec 相应标注已被本特性取代）。弹层 `position:fixed` 并 clamp 在视口内，处理侧边栏窄宽度溢出。
 4. **范围**：工作台与历史视图两个原型都复刻；历史视图仍与工作台共存于同一 webview，以视图内切换代替原型中的页面跳转。
@@ -84,7 +86,7 @@ commits: 3d408c5..2d97b51
 - 不采用打包 Material 图标方案；`design/icons/` 不进 VSIX。
 - 历史搜索仅客户端过滤已加载的 50 条，不做服务端搜索/分页。
 - 不改变 `commit`/`push` 的 git 语义与 `--only` pathspec 行为。
-- 不做亮色主题适配（用户已确认固定深色）。
+- ~~不做亮色主题适配~~（2026-10-13 修订：结构色已改为跟随 VS Code 主题，亮色主题自动可用）。
 
 ## Tasks
 

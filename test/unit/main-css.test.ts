@@ -27,19 +27,19 @@ function readMediaBlock(query: string): string {
 }
 
 describe('设计系统 token', () => {
-  it('固定深色十六进制调色板与原型一致，不使用 VS Code 主题变量', () => {
+  it('颜色跟随 VS Code 主题变量，原型十六进制值作为兜底', () => {
     const root = readRule(':root');
-    expect(root).toContain('--bg: #000000');
-    expect(root).toContain('--surface: #1d1d1f');
-    expect(root).toContain('--fg: #f5f5f7');
-    expect(root).toContain('--fg-2: #d2d2d7');
-    expect(root).toContain('--muted: #86868b');
-    expect(root).toContain('--meta: #6e6e73');
-    expect(root).toContain('--border: #424245');
-    expect(root).toContain('--border-soft: #2a2a2c');
-    expect(root).toContain('--accent: #2997ff');
-    expect(root).toContain('--accent-on: #000000');
-    expect(root).toContain('--accent-active: #0071e3');
+    expect(root).toContain('--bg: var(--vscode-sideBar-background, #000000)');
+    expect(root).toContain('--surface: var(--vscode-editorWidget-background, #1d1d1f)');
+    expect(root).toContain('--fg: var(--vscode-foreground, #f5f5f7)');
+    expect(root).toContain('--fg-2: var(--vscode-foreground, #d2d2d7)');
+    expect(root).toContain('--muted: var(--vscode-descriptionForeground, #86868b)');
+    expect(root).toContain('--meta: var(--vscode-disabledForeground, #6e6e73)');
+    expect(root).toContain('--border: var(--vscode-widget-border, #424245)');
+    expect(root).toContain('--border-soft: var(--vscode-panel-border, #2a2a2c)');
+    expect(root).toContain('--accent: var(--vscode-textLink-foreground, #2997ff)');
+    expect(root).toContain('--accent-on: var(--vscode-button-foreground, #000000)');
+    expect(root).toContain('--accent-active: var(--vscode-textLink-activeForeground, #0071e3)');
     expect(root).toContain('--success: #16a34a');
     expect(root).toContain('--warn: #eab308');
     expect(root).toContain('--danger: #dc2626');
@@ -56,7 +56,15 @@ describe('设计系统 token', () => {
     expect(root).toContain('--lane-4: #dc2626');
     expect(root).toContain('--lane-5: #86868b');
     expect(root).toContain('--lane-6: #d2d2d7');
-    expect(stylesheet).not.toMatch(/--vscode-/u);
+  });
+
+  it('graph 车道经 class 上色（CSP 禁止内联 style 属性）', () => {
+    for (const n of [1, 2, 3, 4, 5, 6]) {
+      expect(readRule(`.graph-s${String(n)}`)).toContain(`stroke: var(--lane-${String(n)})`);
+      expect(readRule(`.graph-f${String(n)}`)).toContain(`fill: var(--lane-${String(n)})`);
+    }
+    expect(readRule('.graph-surface')).toContain('fill: var(--surface)');
+    expect(readRule('.graph-accent')).toContain('stroke: var(--accent)');
   });
 
   it('全局基础样式：深色背景、隐藏溢出、焦点环', () => {

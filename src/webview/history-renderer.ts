@@ -290,8 +290,8 @@ export function laneXs(laneCount: number, width: number): readonly number[] {
     Math.round(width * (0.33 + 0.45 * index / (count - 1))));
 }
 
-function laneColor(color: number): string {
-  return `var(--lane-${String(color % GRAPH_LANE_MAX + 1)})`;
+function laneClass(color: number): string {
+  return String(color % GRAPH_LANE_MAX + 1);
 }
 
 function graphEdgeMarkup(
@@ -299,9 +299,9 @@ function graphEdgeMarkup(
   fromY: number,
   toX: number,
   toY: number,
-  color: string,
+  lane: string,
 ): string {
-  const style = `style="stroke:${color}" stroke-width="1.5" fill="none" opacity="0.55"`;
+  const style = `class="graph-s${lane}" stroke-width="1.5" fill="none" opacity="0.55"`;
   if (fromX === toX) {
     return `<path d="M ${String(fromX)} ${String(fromY)} L ${String(toX)} ${String(toY)}" ${style}/>`;
   }
@@ -316,17 +316,17 @@ function graphNodeMarkup(
   cy: number,
 ): string {
   const at = `cx="${String(cx)}" cy="${String(cy)}"`;
-  const color = laneColor(commit.color);
+  const lane = laneClass(commit.color);
   if (commit.parents.length >= 2) {
-    return `<circle ${at} r="5" style="stroke:${color};fill:var(--surface)" stroke-width="1.6"/>`
-      + `<circle ${at} r="2.6" style="stroke:${color}" stroke-width="1" fill="none" opacity="0.7"/>`;
+    return `<circle ${at} r="5" class="graph-s${lane} graph-surface" stroke-width="1.6"/>`
+      + `<circle ${at} r="2.6" class="graph-s${lane}" stroke-width="1" fill="none" opacity="0.7"/>`;
   }
   if (isCurrentCommit(commit)) {
-    return `<circle ${at} r="8.5" style="stroke:var(--accent)" stroke-width="1" fill="none" opacity="0.25"/>`
-      + `<circle ${at} r="6" style="stroke:var(--accent)" stroke-width="1.5" fill="none" opacity="0.55"/>`
-      + `<circle ${at} r="3.5" style="fill:${color}"/>`;
+    return `<circle ${at} r="8.5" class="graph-accent" stroke-width="1" fill="none" opacity="0.25"/>`
+      + `<circle ${at} r="6" class="graph-accent" stroke-width="1.5" fill="none" opacity="0.55"/>`
+      + `<circle ${at} r="3.5" class="graph-f${lane}"/>`;
   }
-  return `<circle ${at} r="3.5" style="fill:${color}"/>`;
+  return `<circle ${at} r="3.5" class="graph-f${lane}"/>`;
 }
 
 export function historyGraphMarkup(
@@ -359,13 +359,13 @@ export function historyGraphMarkup(
         return;
       }
       const edge = node.commit.parentEdges[index];
-      const color = laneColor(edge?.color ?? node.commit.color);
+      const lane = laneClass(edge?.color ?? node.commit.color);
       parts.push(graphEdgeMarkup(
         laneX(node.commit.lane),
         node.y,
         laneX(parent.lane),
         parentY,
-        color,
+        lane,
       ));
     });
   }

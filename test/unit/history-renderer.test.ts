@@ -304,24 +304,24 @@ describe('historyGraphMarkup', () => {
     );
 
     expect(svg).toContain('<svg id="graph-svg" viewBox="0 0 54 100" preserveAspectRatio="none" width="54" height="100"');
-    expect(svg).toContain('<circle cx="18" cy="16" r="3.5" style="fill:var(--lane-1)"/>');
+    expect(svg).toContain('<circle cx="18" cy="16" r="3.5" class="graph-f1"/>');
   });
 
   it('当前提交渲染发光双环加实心点', () => {
     const head = commit({ refs: [{ name: 'main', kind: 'head' }] });
     const svg = historyGraphMarkup([{ hash: head.hash, y: 16 }], [head], 54, 100);
 
-    expect(svg).toContain('r="8.5" style="stroke:var(--accent)"');
-    expect(svg).toContain('r="6" style="stroke:var(--accent)"');
-    expect(svg).toContain('r="3.5" style="fill:var(--lane-1)"');
+    expect(svg).toContain('r="8.5" class="graph-accent"');
+    expect(svg).toContain('r="6" class="graph-accent"');
+    expect(svg).toContain('r="3.5" class="graph-f1"');
   });
 
   it('合并提交渲染空心双环', () => {
     const merge = commit({ parents: ['b'.repeat(40), 'c'.repeat(40)] });
     const svg = historyGraphMarkup([{ hash: merge.hash, y: 16 }], [merge], 54, 100);
 
-    expect(svg).toContain('r="5" style="stroke:var(--lane-1);fill:var(--surface)"');
-    expect(svg).toContain('r="2.6" style="stroke:var(--lane-1)"');
+    expect(svg).toContain('r="5" class="graph-s1 graph-surface"');
+    expect(svg).toContain('r="2.6" class="graph-s1"');
   });
 
   it('同轨道父子边渲染为直线', () => {
@@ -337,7 +337,7 @@ describe('historyGraphMarkup', () => {
       100,
     );
 
-    expect(svg).toContain('<path d="M 18 16 L 18 72" style="stroke:var(--lane-1)" stroke-width="1.5" fill="none" opacity="0.55"/>');
+    expect(svg).toContain('<path d="M 18 16 L 18 72" class="graph-s1" stroke-width="1.5" fill="none" opacity="0.55"/>');
     expect(svg).not.toContain('C ');
   });
 
@@ -356,8 +356,8 @@ describe('historyGraphMarkup', () => {
       100,
     );
 
-    expect(svg).toContain('<path d="M 42 16 L 42 44" style="stroke:var(--lane-2)"');
-    expect(svg).toContain('<path d="M 42 44 C 42 72, 18 72, 18 72" style="stroke:var(--lane-2)"');
+    expect(svg).toContain('<path d="M 42 16 L 42 44" class="graph-s2"');
+    expect(svg).toContain('<path d="M 42 44 C 42 72, 18 72, 18 72" class="graph-s2"');
   });
 
   it('父提交不在可见锚点中时跳过该边', () => {
@@ -380,7 +380,21 @@ describe('historyGraphMarkup', () => {
     const colored = commit({ color: 7 });
     const svg = historyGraphMarkup([{ hash: colored.hash, y: 16 }], [colored], 54, 100);
 
-    expect(svg).toContain('var(--lane-2)');
+    expect(svg).toContain('class="graph-f2"');
+  });
+
+  it('graph 标记不含内联 style 属性（webview CSP 会拦截）', () => {
+    const parent = commit({ hash: 'b'.repeat(40), shortHash: 'bbbbbbb' });
+    const merge = commit({ parents: [parent.hash, 'c'.repeat(40)] });
+    const svg = historyGraphMarkup(
+      [{ hash: merge.hash, y: 16 }, { hash: parent.hash, y: 72 }],
+      [merge, parent],
+      54,
+      100,
+    );
+
+    expect(svg).toContain('<path');
+    expect(svg).not.toContain('style="');
   });
 });
 

@@ -1,17 +1,17 @@
-/* ============ 设计系统：唯一的十六进制颜色来源（照抄 design/ 原型 :root） ============ */
+/* ============ 设计系统：颜色跟随 VS Code 主题，原型十六进制值作为兜底 ============ */
 :root {
-  --bg: #000000;
-  --surface: #1d1d1f;
-  --surface-warm: #1d1d1f;
-  --fg: #f5f5f7;
-  --fg-2: #d2d2d7;
-  --muted: #86868b;
-  --meta: #6e6e73;
-  --border: #424245;
-  --border-soft: #2a2a2c;
-  --accent: #2997ff;
-  --accent-on: #000000;
-  --accent-active: #0071e3;
+  --bg: var(--vscode-sideBar-background, #000000);
+  --surface: var(--vscode-editorWidget-background, #1d1d1f);
+  --surface-warm: var(--vscode-editorWidget-background, #1d1d1f);
+  --fg: var(--vscode-foreground, #f5f5f7);
+  --fg-2: var(--vscode-foreground, #d2d2d7);
+  --muted: var(--vscode-descriptionForeground, #86868b);
+  --meta: var(--vscode-disabledForeground, #6e6e73);
+  --border: var(--vscode-widget-border, #424245);
+  --border-soft: var(--vscode-panel-border, #2a2a2c);
+  --accent: var(--vscode-textLink-foreground, #2997ff);
+  --accent-on: var(--vscode-button-foreground, #000000);
+  --accent-active: var(--vscode-textLink-activeForeground, #0071e3);
   --success: #16a34a;
   --warn: #eab308;
   --danger: #dc2626;
@@ -400,6 +400,22 @@ button.is-loading::after {
   overflow: hidden;
   pointer-events: none;
 }
+
+/* Graph 车道着色：SVG 只能经 class 上色（CSP style-src 无 unsafe-inline，内联 style 属性会被拦截） */
+.graph-s1 { stroke: var(--lane-1); }
+.graph-s2 { stroke: var(--lane-2); }
+.graph-s3 { stroke: var(--lane-3); }
+.graph-s4 { stroke: var(--lane-4); }
+.graph-s5 { stroke: var(--lane-5); }
+.graph-s6 { stroke: var(--lane-6); }
+.graph-f1 { fill: var(--lane-1); }
+.graph-f2 { fill: var(--lane-2); }
+.graph-f3 { fill: var(--lane-3); }
+.graph-f4 { fill: var(--lane-4); }
+.graph-f5 { fill: var(--lane-5); }
+.graph-f6 { fill: var(--lane-6); }
+.graph-surface { fill: var(--surface); }
+.graph-accent { stroke: var(--accent); }
 
 .commit-entry { position: relative; border-bottom: 1px solid var(--border-soft); }
 .commit-entry.is-current { background: color-mix(in oklab, var(--accent) 10%, transparent); }
