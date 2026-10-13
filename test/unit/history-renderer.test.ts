@@ -7,6 +7,7 @@ import {
   historyGraphMarkup,
   historyListMarkup,
   laneXs,
+  refColorClass,
   type HistoryRenderCallbacks,
   type RenderedHistoryFile,
 } from '../../src/webview/history-renderer.js';
@@ -106,10 +107,19 @@ describe('historyListMarkup', () => {
     }, NO_EXPANDED, NO_DETAILS, NOW);
 
     expect(view.markup).toContain('class="badge-head" title="HEAD · main">HEAD</span>');
-    expect(view.markup).toContain('class="badge-branch" title="feature/x"');
-    expect(view.markup).toContain('badge-branch" title="feature/x"><svg');
-    expect(view.markup).toContain('class="badge-origin" title="origin/main"');
+    expect(view.markup).toMatch(/class="badge-branch ref-c[1-6]" title="feature\/x"/u);
+    expect(view.markup).toContain(' title="feature/x"><svg');
+    expect(view.markup).toMatch(/class="badge-origin ref-c[1-6]" title="origin\/main"/u);
     expect(view.markup).toContain('class="origin-txt">origin/main</span>');
+  });
+
+  it('引用颜色按名称哈希稳定分配且互不相同', () => {
+    expect(refColorClass('main')).toBe(refColorClass('main'));
+    expect(refColorClass('main')).toMatch(/^ref-c[1-6]$/u);
+    expect(refColorClass('feature/x')).toBe(refColorClass('feature/x'));
+    const palette = new Set(['main', 'develop', 'feature/x', 'release/1.0', 'hotfix', 'origin/main']
+      .map(refColorClass));
+    expect(palette.size).toBeGreaterThan(2);
   });
 
   it('标记当前提交：is-current 类与 data-kind="current"', () => {

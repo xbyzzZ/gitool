@@ -81,14 +81,24 @@ function commitKind(commit: CommitGraphNode): 'merge' | 'current' | 'normal' {
   return isCurrentCommit(commit) ? 'current' : 'normal';
 }
 
+/* 分支名哈希 → 6 色引用调色板，同名引用颜色稳定、不同分支易区分 */
+export function refColorClass(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) % 6;
+  }
+  return `ref-c${String(hash + 1)}`;
+}
+
 function refBadge(ref: CommitRef): string {
   if (ref.kind === 'head') {
     return `<span class="badge-head" title="HEAD · ${escapeHtml(ref.name)}">HEAD</span>`;
   }
+  const color = refColorClass(ref.name);
   if (ref.kind === 'local') {
-    return `<span class="badge-branch" title="${escapeHtml(ref.name)}">${BRANCH_ICON}${escapeHtml(ref.name)}</span>`;
+    return `<span class="badge-branch ${color}" title="${escapeHtml(ref.name)}">${BRANCH_ICON}${escapeHtml(ref.name)}</span>`;
   }
-  return `<span class="badge-origin" title="${escapeHtml(ref.name)}">${CLOUD_ICON}<span class="origin-txt">${escapeHtml(ref.name)}</span></span>`;
+  return `<span class="badge-origin ${color}" title="${escapeHtml(ref.name)}">${CLOUD_ICON}<span class="origin-txt">${escapeHtml(ref.name)}</span></span>`;
 }
 
 function splitFilePath(path: string): {

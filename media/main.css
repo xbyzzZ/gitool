@@ -15,7 +15,12 @@
   --success: #16a34a;
   --warn: #eab308;
   --danger: #dc2626;
-  --remote: #a371f7;
+  --ref-1: #2997ff;
+  --ref-2: #16a34a;
+  --ref-3: #eab308;
+  --ref-4: #dc2626;
+  --ref-5: #a371f7;
+  --ref-6: #14b8a6;
   --font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
@@ -450,20 +455,19 @@ button.is-loading::after {
   background: var(--accent); color: var(--accent-on);
   font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
 }
-.badge-branch {
-  display: flex; align-items: center; gap: 3px;
-  padding: 1px 6px;
-  border: 1px solid color-mix(in oklab, var(--success) 60%, transparent);
-  border-radius: 5px;
-  color: var(--success); font-size: 11px; white-space: nowrap;
-}
-.badge-origin {
+.badge-branch, .badge-origin {
   display: flex; align-items: center; gap: 4px;
   padding: 1px 6px;
-  border: 1px solid color-mix(in oklab, var(--remote) 60%, transparent);
+  border: 1px solid color-mix(in oklab, var(--ref) 60%, transparent);
   border-radius: 5px;
-  color: var(--remote); font-size: 11px; white-space: nowrap;
+  color: var(--ref); font-size: 11px; white-space: nowrap;
 }
+.ref-c1 { --ref: var(--ref-1); }
+.ref-c2 { --ref: var(--ref-2); }
+.ref-c3 { --ref: var(--ref-3); }
+.ref-c4 { --ref: var(--ref-4); }
+.ref-c5 { --ref: var(--ref-5); }
+.ref-c6 { --ref: var(--ref-6); }
 
 .row-meta {
   display: flex; align-items: center; gap: 6px;

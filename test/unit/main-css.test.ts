@@ -243,12 +243,14 @@ describe('提交历史', () => {
     expect(readRule('.commit-entry.is-open .files')).toMatch(/display:\s*block/u);
   });
 
-  it('引用徽章三种形态', () => {
+  it('引用徽章三种形态，分支/远程颜色按名称哈希取色', () => {
     expect(readRule('.badge-head')).toContain('background: var(--accent)');
     expect(readRule('.badge-head')).toContain('color: var(--accent-on)');
-    expect(readRule('.badge-branch')).toContain('color: var(--success)');
-    expect(readRule('.badge-origin')).toContain('color: var(--remote)');
-    expect(readRule('.badge-origin')).toContain('color-mix(in oklab, var(--remote) 60%, transparent)');
+    expect(readRule('.badge-branch, .badge-origin')).toContain('color: var(--ref)');
+    expect(readRule('.badge-branch, .badge-origin')).toContain('color-mix(in oklab, var(--ref) 60%, transparent)');
+    for (const n of [1, 2, 3, 4, 5, 6]) {
+      expect(readRule(`.ref-c${String(n)}`)).toContain(`--ref: var(--ref-${String(n)})`);
+    }
   });
 
   it('哈希复制按钮悬浮显示复制图标', () => {
