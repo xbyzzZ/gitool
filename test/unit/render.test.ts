@@ -57,10 +57,10 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('<span id="discardText" hidden>确认舍弃？</span>');
     expect(html).toContain('<span class="vsep"');
     expect(html).toContain('id="btnHistory"');
-    expect(html).toContain('class="btn btn-ghost pull-btn" id="btnPull"');
-    expect(html).toContain('class="btn btn-secondary" id="btnPush"');
-    expect(html).toContain('>拉取</button>');
-    expect(html).toContain('>推送</button>');
+    expect(html).toContain('class="icon-btn" id="btnPull"');
+    expect(html).toContain('class="icon-btn" id="btnPush"');
+    expect(html).toContain('title="拉取"');
+    expect(html).toContain('title="推送"');
 
     expect(html.indexOf('id="btnRefresh"')).toBeLessThan(html.indexOf('id="btnSelectAll"'));
     expect(html.indexOf('id="btnSelectAll"')).toBeLessThan(html.indexOf('id="btnDiscard"'));

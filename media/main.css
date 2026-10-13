@@ -458,7 +458,10 @@ button.is-loading::after {
 }
 .badge-origin {
   display: flex; align-items: center; gap: 4px;
-  color: var(--muted); font-size: 11px; white-space: nowrap;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--fg-2); font-size: 11px; white-space: nowrap;
 }
 
 .row-meta {
@@ -568,7 +571,6 @@ button.is-loading::after {
 /* ============ 窄屏适配 ============ */
 @media (max-width: 520px) {
   .fdir { display: none; }
-  .pull-btn { display: none; }
   .stats .total { display: none; }
   .upstream { font-size: 11px; }
   .view-history { --graph-w: 46px; }

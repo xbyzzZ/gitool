@@ -25,6 +25,8 @@ const SVG_REFRESH = '<svg id="refreshIcon" width="16" height="16" viewBox="0 0 1
 const SVG_CHECK_ALL = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.6 8.6l3.4 3.4 7.4-8.4"/></svg>';
 const SVG_TRASH = '<svg id="discardIcon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.4h10"/><path d="M6.2 4.4V3.2h3.6v1.2"/><path d="M4.4 4.4l.7 8.2h5.8l.7-8.2"/><path d="M6.8 7v4M9.2 7v4"/></svg>';
 const SVG_HISTORY = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.6"/><path d="M8 5v3.3l2.3 1.4"/></svg>';
+const SVG_PULL = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6v7M4.6 6.8L8 10.2l3.4-3.4"/><path d="M3 13.4h10"/></svg>';
+const SVG_PUSH = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13.4v-7M4.6 9.2L8 5.8l3.4 3.4"/><path d="M3 2.6h10"/></svg>';
 const SVG_BRANCH = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4" cy="3.4" r="1.4"/><circle cx="4" cy="12.6" r="1.4"/><circle cx="12" cy="5.6" r="1.4"/><path d="M4 4.8v6.4"/><path d="M4 7.2c0 3.4 8-.6 8 1.8"/></svg>';
 const SVG_EMPTY_CHECK = '<svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.6"/><path d="M5.4 8.2l1.8 1.8 3.4-3.8"/></svg>';
 const SVG_AI_ROBOT = '<svg id="aiGenIcon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4.8V2.7"/><circle cx="8" cy="1.8" r="0.75"/><path d="M3.7 6.9v2.2M12.3 6.9v2.2"/><rect x="3.7" y="4.8" width="8.6" height="7.4" rx="2.2"/><circle cx="6.1" cy="8" r="0.95" fill="currentColor" stroke="none"/><circle cx="9.9" cy="8" r="0.95" fill="currentColor" stroke="none"/><path d="M6.3 10.4h3.4"/></svg>';
@@ -79,8 +81,8 @@ const workbenchView = `<div id="commit-view" class="view view-workbench">
         <button class="icon-btn" id="btnHistory" type="button" title="查看历史" aria-label="查看历史" aria-pressed="false">${SVG_HISTORY}</button>
       </div>
       <div class="toolbar-right" data-od-id="toolbar-secondary">
-        <button class="btn btn-ghost pull-btn" id="btnPull" type="button">拉取</button>
-        <button class="btn btn-secondary" id="btnPush" type="button">推送</button>
+        <button class="icon-btn" id="btnPull" type="button" title="拉取" aria-label="拉取">${SVG_PULL}</button>
+        <button class="icon-btn" id="btnPush" type="button" title="推送" aria-label="推送">${SVG_PUSH}</button>
       </div>
     </header>
     <div class="repo-bar" data-od-id="repo-bar" aria-label="当前仓库">

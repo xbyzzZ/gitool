@@ -247,7 +247,8 @@ describe('提交历史', () => {
     expect(readRule('.badge-head')).toContain('background: var(--accent)');
     expect(readRule('.badge-head')).toContain('color: var(--accent-on)');
     expect(readRule('.badge-branch')).toContain('color: var(--success)');
-    expect(readRule('.badge-origin')).toContain('color: var(--muted)');
+    expect(readRule('.badge-origin')).toContain('color: var(--fg-2)');
+    expect(readRule('.badge-origin')).toContain('border: 1px solid var(--border)');
   });
 
   it('哈希复制按钮悬浮显示复制图标', () => {
@@ -289,7 +290,7 @@ describe('窄屏降级与动效偏好', () => {
   it('520px 断点合并工作台与历史的降级规则', () => {
     const narrow = readMediaBlock('max-width: 520px');
     expect(narrow).toContain('.fdir');
-    expect(narrow).toContain('.pull-btn');
+    expect(narrow).not.toContain('.pull-btn');
     expect(narrow).toContain('.stats .total');
     expect(narrow).toContain('.upstream');
     expect(narrow).toContain('--graph-w: 46px');
