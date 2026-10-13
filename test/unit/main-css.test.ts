@@ -247,8 +247,8 @@ describe('提交历史', () => {
     expect(readRule('.badge-head')).toContain('background: var(--accent)');
     expect(readRule('.badge-head')).toContain('color: var(--accent-on)');
     expect(readRule('.badge-branch')).toContain('color: var(--success)');
-    expect(readRule('.badge-origin')).toContain('color: var(--fg-2)');
-    expect(readRule('.badge-origin')).toContain('border: 1px solid var(--border)');
+    expect(readRule('.badge-origin')).toContain('color: var(--remote)');
+    expect(readRule('.badge-origin')).toContain('color-mix(in oklab, var(--remote) 60%, transparent)');
   });
 
   it('哈希复制按钮悬浮显示复制图标', () => {

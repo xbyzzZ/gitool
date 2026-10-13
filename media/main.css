@@ -15,6 +15,7 @@
   --success: #16a34a;
   --warn: #eab308;
   --danger: #dc2626;
+  --remote: #a371f7;
   --font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
@@ -459,9 +460,9 @@ button.is-loading::after {
 .badge-origin {
   display: flex; align-items: center; gap: 4px;
   padding: 1px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in oklab, var(--remote) 60%, transparent);
   border-radius: 5px;
-  color: var(--fg-2); font-size: 11px; white-space: nowrap;
+  color: var(--remote); font-size: 11px; white-space: nowrap;
 }
 
 .row-meta {
