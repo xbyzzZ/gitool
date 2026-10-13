@@ -290,12 +290,8 @@ button.is-loading::after {
 }
 .message-wrap textarea::placeholder { color: var(--meta); }
 .message-wrap textarea:disabled { color: var(--meta); }
+.message-wrap textarea:focus-visible { box-shadow: none; }
 .message-wrap textarea.invalid { box-shadow: inset 0 0 0 1.5px var(--danger); border-radius: 4px; }
-.char-count {
-  position: absolute; right: 14px; bottom: 8px;
-  font-family: var(--font-mono); font-size: 11px; color: var(--meta);
-  font-variant-numeric: tabular-nums; pointer-events: none;
-}
 
 /* 提交坞底栏 */
 .dock-bar {

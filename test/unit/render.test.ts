@@ -120,7 +120,6 @@ describe('独立 Webview 壳页面', () => {
     expect(html).toContain('class="message-wrap"');
     expect(html).toContain('<textarea id="message"');
     expect(html).toContain('placeholder="输入本次提交信息…"');
-    expect(html).toContain('class="char-count" id="charCount"');
     expect(html.indexOf('id="operation-feedback"')).toBeLessThan(html.indexOf('id="message"'));
   });
 

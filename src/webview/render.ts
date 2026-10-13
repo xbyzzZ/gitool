@@ -108,7 +108,6 @@ const workbenchView = `<div id="commit-view" class="view view-workbench">
       </section>
       <div class="message-wrap" data-od-id="commit-message">
         <textarea id="message" rows="3" placeholder="输入本次提交信息…" aria-label="提交信息" spellcheck="true"></textarea>
-        <span class="char-count" id="charCount" aria-hidden="true">0</span>
       </div>
       <div class="dock-bar" data-od-id="commit-actions">
         <div class="dock-left" data-od-id="commit-ai">

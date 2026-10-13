@@ -183,7 +183,6 @@ describe('提交工作台', () => {
     expect(readRule('.message-wrap')).toMatch(/position:\s*relative/u);
     expect(readRule('.message-wrap textarea')).toMatch(/resize:\s*none/u);
     expect(readRule('.message-wrap textarea.invalid')).toContain('var(--danger)');
-    expect(readRule('.char-count')).toContain('font-family: var(--font-mono)');
   });
 
   it('操作反馈区保留在提交坞内并使用新 token', () => {

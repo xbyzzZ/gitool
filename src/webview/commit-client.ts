@@ -125,7 +125,6 @@ const controls = {
   selectedCount: element('selCount'),
   selectedTotal: element('selTotal'),
   commitMessage: element('message') as HTMLTextAreaElement,
-  charCount: element('charCount'),
   commitButton: element('btnCommit') as HTMLButtonElement,
   commitPushButton: element('btnCommitPush') as HTMLButtonElement,
   aiGenerateButton: element('btnAiGen') as HTMLButtonElement,
@@ -550,7 +549,6 @@ function render(model: RepositoryViewModel): void {
     controls.commitMessage.value = model.commitMessage;
     pendingMessage = undefined;
   }
-  controls.charCount.textContent = String(controls.commitMessage.value.length);
 
   const running = model.operation.kind === 'running';
   const hasConflict = model.changes.some((change) => change.conflicted);
@@ -771,7 +769,6 @@ controls.pushAllButton.addEventListener('click', () => {
 
 function syncMessageInput(): void {
   pendingMessage = controls.commitMessage.value;
-  controls.charCount.textContent = String(controls.commitMessage.value.length);
   cancelMessageTimer();
   if (currentModel !== undefined) {
     render(currentModel);
