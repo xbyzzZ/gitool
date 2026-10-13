@@ -237,6 +237,9 @@ export function renderChangeList(
       callbacks.toggleFile(fileId, !selectedIds.has(fileId));
     });
     row.addEventListener('keydown', (event: KeyboardEvent) => {
+      if (event.target !== row) {
+        return;
+      }
       if (activationKey(event)) {
         event.preventDefault();
         callbacks.toggleFile(fileId, !selectedIds.has(fileId));

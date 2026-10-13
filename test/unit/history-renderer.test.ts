@@ -71,7 +71,7 @@ describe('historyListMarkup', () => {
     expect(view.markup).toContain(`data-hash="${'a'.repeat(40)}"`);
     expect(view.markup).toContain('data-kind="normal"');
     expect(view.markup).toContain('data-lane="1"');
-    expect(view.markup).toContain('data-search="功能：测试提交 张三 aaaaaaa"');
+    expect(view.markup).toContain('data-search="功能：测试提交 张三 aaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"');
     expect(view.markup).toContain('class="entry-head" role="button" tabindex="0" aria-expanded="false" aria-label="展开提交 aaaaaaa"');
     expect(view.markup).toContain('<svg class="chevron"');
     expect(view.markup).toContain('class="subject">功能：测试提交</span>');

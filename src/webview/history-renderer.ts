@@ -156,7 +156,7 @@ function commitEntryMarkup(
 ): string {
   const current = isCurrentCommit(commit);
   const classes = `commit-entry${current ? ' is-current' : ''}${expanded ? ' is-open' : ''}`;
-  const search = `${commit.subject} ${commit.author} ${commit.shortHash}`.toLowerCase();
+  const search = `${commit.subject} ${commit.author} ${commit.shortHash} ${commit.hash}`.toLowerCase();
   return `<section class="${classes}" data-od-id="commit-entry" data-hash="${escapeHtml(commit.hash)}" data-kind="${commitKind(commit)}" data-lane="${String(commit.lane)}" data-search="${escapeHtml(search)}">`
     + `<div class="entry-head" role="button" tabindex="0" aria-expanded="${String(expanded)}" aria-label="展开提交 ${escapeHtml(commit.shortHash)}">`
     + '<div class="row-top">'

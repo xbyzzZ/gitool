@@ -225,10 +225,20 @@ describe('提交工作台变更列表', () => {
     let keyPrevented = false;
     rowListeners.get('keydown')?.({
       key: ' ',
+      target: row,
       preventDefault: () => { keyPrevented = true; },
     });
     expect(keyPrevented).toBe(true);
     expect(calls.at(-1)).toBe('file:src/client.ts:true');
+
+    // 事件来自行内子元素（如 diff 链接）时不触发行切换
+    let childKeyPrevented = false;
+    rowListeners.get('keydown')?.({
+      key: 'Enter',
+      target: diffLink,
+      preventDefault: () => { childKeyPrevented = true; },
+    });
+    expect(childKeyPrevented).toBe(false);
   });
 
   it('空列表渲染只切换空态类不插入分组', () => {

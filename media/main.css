@@ -559,7 +559,6 @@ button.is-loading::after {
   .pull-btn { display: none; }
   .stats .total { display: none; }
   .upstream { font-size: 11px; }
-  .model-btn { max-width: 96px; }
   .view-history { --graph-w: 46px; }
   .meta-author, .badge-origin .origin-txt, .file-dir { display: none; }
   .search { width: 140px; flex: 1; max-width: 180px; }
@@ -568,7 +567,6 @@ button.is-loading::after {
 @media (max-width: 380px) {
   .toolbar { padding: 0 8px; }
   .btn { padding: 0 10px; font-size: 12px; }
-  .model-btn { max-width: 60px; padding: 0 6px; }
   .repo-bar { padding: 0 10px; }
 }
 

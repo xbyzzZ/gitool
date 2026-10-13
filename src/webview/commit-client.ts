@@ -723,8 +723,8 @@ controls.discardButton.addEventListener('click', () => {
   if (!discardArmed) {
     discardArmed = true;
     controls.discardButton.classList.add('confirming');
-    controls.discardButton.setAttribute('aria-label', '取消舍弃');
-    controls.discardButton.title = '取消舍弃';
+    controls.discardButton.setAttribute('aria-label', '确认舍弃');
+    controls.discardButton.title = '确认舍弃';
     controls.discardIcon.hidden = true;
     controls.discardText.hidden = false;
     return;
